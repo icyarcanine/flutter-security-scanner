@@ -1,12 +1,12 @@
 Flutter Supabase Helper — Hybrid SAST Engine
 
-A high-performance, hybrid Static Application Security Testing (SAST) engine optimized for Flutter and Supabase** ecosystems. Functioning as a multi-language security analyzer, it is available as a headless Command Line Interface (CLI) and a native VS Code Extension.
+A high-performance, hybrid Static Application Security Testing (SAST) engine optimized for Flutter and Supabase ecosystems. Functioning as a multi-language security analyzer, it is available as a headless Command Line Interface (CLI) and a native VS Code Extension.
 
 How It Works
 Unlike traditional security scanners that rely exclusively on noisy regex patterns, this engine utilizes a refined three-stage pipeline to ensure precision:
 
 1.  Regex Pre-filters: Rapidly identifies high-entropy API keys, database secrets, and common Supabase configuration leaks.
-2.  AST Parsing: Utilizes `web-tree-sitter` to physically analyze the Abstract Syntax Tree of **Dart**, TypeScript, JavaScript, Python, and Go.
+2.  AST Parsing: Utilizes `web-tree-sitter` to physically analyze the Abstract Syntax Tree of Dart, TypeScript, JavaScript, Python, and Go.
 3.  Taint Tracking: Performs intra-procedural flow analysis to verify if risky user inputs reach dangerous execution sinks (e.g., `eval()`, unparameterized queries, or insecure storage).
 
 This hybrid approach drastically reduces false positives. Every finding provides a `HIGH`, `MEDIUM`, or `LOW` confidence metric accompanied by a human-readable explanation of the vulnerability logic.
