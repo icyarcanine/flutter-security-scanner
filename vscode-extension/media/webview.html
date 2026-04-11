@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-{{NONCE}}'; script-src 'nonce-{{NONCE}}';">
+    <title>Flutter Supabase Helper</title>
+    {{STYLE}}
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>Flutter Supabase Helper</h1>
+            <div id="summary-bar" class="summary-bar">
+                <!-- Injected via JS -->
+            </div>
+            <div id="stats-bar" class="stats-bar">
+                <!-- Injected via JS -->
+            </div>
+        </header>
+
+        <div id="ast-warning" class="ast-warning hidden" style="background:#b8860b;color:#fff;padding:8px 16px;border-radius:6px;margin:8px 0;font-size:13px;">
+            ⚠️ AST parsing failed on &gt;20% of analyzed files. Detection accuracy is reduced for affected files.
+        </div>
+
+        <div class="layout">
+            <aside class="sidebar">
+                <h3>Filters</h3>
+                <div class="filter-group" id="severity-filters">
+                    <label class="filter-label"><input type="checkbox" value="high" checked> <span class="badge badge-high">HIGH</span></label>
+                    <label class="filter-label"><input type="checkbox" value="medium" checked> <span class="badge badge-medium">MEDIUM</span></label>
+                    <label class="filter-label"><input type="checkbox" value="low" checked> <span class="badge badge-low">LOW</span></label>
+                    <label class="filter-label"><input type="checkbox" value="suggestion" checked> <span class="badge badge-suggestion">SUGGESTION</span></label>
+                    <label class="filter-label"><input type="checkbox" value="bug" checked> <span class="badge badge-bug">BUG</span></label>
+                    <label class="filter-label"><input type="checkbox" value="secrets" checked> <span class="badge badge-secrets">SECRETS</span></label>
+                </div>
+
+                <h3 style="margin-top:16px">Group By</h3>
+                <div class="filter-group" id="group-selector">
+                    <label class="filter-label"><input type="radio" name="group" value="file" checked> File</label>
+                    <label class="filter-label"><input type="radio" name="group" value="severity"> Severity</label>
+                    <label class="filter-label"><input type="radio" name="group" value="none"> None</label>
+                </div>
+            </aside>
+
+            <main class="content">
+                <div id="empty-state" class="empty-state hidden">
+                    <div class="empty-icon">🛡️</div>
+                    <h2>No issues found</h2>
+                    <p>Your project looks secure and well-configured.</p>
+                </div>
+
+                <div id="findings-list" class="findings-list">
+                    <!-- Cards injected via JS -->
+                </div>
+            </main>
+        </div>
+    </div>
+    {{SCRIPT}}
+</body>
+</html>

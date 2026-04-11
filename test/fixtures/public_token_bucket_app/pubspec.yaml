@@ -1,0 +1,5 @@
+name: public_token_bucket_app
+
+dependencies:
+  flutter_dotenv: ^5.0.0
+  supabase_flutter: ^2.0.0

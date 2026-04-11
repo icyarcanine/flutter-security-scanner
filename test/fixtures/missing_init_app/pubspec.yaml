@@ -1,0 +1,4 @@
+name: missing_init_app
+
+dependencies:
+  supabase_flutter: ^2.0.0

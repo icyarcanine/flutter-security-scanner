@@ -1,0 +1,7 @@
+name: placeholder_env_app
+description: Fixture — env file with placeholder values.
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+dependencies:
+  supabase_flutter: ^2.0.0
+  flutter_dotenv: ^5.0.0

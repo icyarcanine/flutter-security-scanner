@@ -1,0 +1,87 @@
+{
+  "name": "flutter-supabase-helper",
+  "displayName": "Flutter Supabase Helper",
+  "description": "Static security and configuration scanner for Flutter + Supabase projects. Detects hardcoded secrets, missing RLS, env issues, and more.",
+  "version": "1.0.0",
+  "publisher": "flutter-supabase-helper",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Other"
+  ],
+  "keywords": [
+    "flutter",
+    "supabase",
+    "security",
+    "linter",
+    "dart",
+    "RLS"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/pubspec.yaml",
+    "workspaceContains:**/package.json",
+    "workspaceContains:**/requirements.txt",
+    "workspaceContains:**/go.mod",
+    "workspaceContains:**/pom.xml"
+  ],
+  "main": "./out/extension.js",
+  "bin": {
+    "flutter-supabase-helper": "./out/cli.js"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "flutter-supabase-helper.scanWorkspace",
+        "title": "Flutter Supabase Helper: Scan Workspace",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "flutter-supabase-helper.scanFile",
+        "title": "Flutter Supabase Helper: Scan Active File's Project"
+      }
+    ],
+    "configuration": {
+      "title": "Flutter Supabase Helper",
+      "properties": {
+        "flutterSupabaseHelper.includeSuggestions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include heuristic RLS policy suggestions in scan results."
+        },
+        "flutterSupabaseHelper.autoScanOnOpen": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically scan the workspace when a Flutter+Supabase project is detected."
+        }
+      }
+    },
+    "menus": {
+      "editor/title": [
+        {
+          "command": "flutter-supabase-helper.scanWorkspace",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "test": "npm run compile && node scripts/precision-self-test.js && node scripts/test-ast.js",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.5.11",
+    "tree-sitter-dart": "^1.0.0",
+    "tree-sitter-wasms": "^0.1.13",
+    "web-tree-sitter": "^0.21.0"
+  }
+}
