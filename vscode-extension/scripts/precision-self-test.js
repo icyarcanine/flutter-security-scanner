@@ -79,6 +79,63 @@ function dup(req, db) {
 }
 `);
 
+  // ── Fix 2: reassignment clears taint ────────────
+  // After a clean `=` assignment the variable must NOT reach the sink as tainted.
+  fs.writeFileSync(path.join(root, 'reassign_clean.js'), `
+function testCleanReassign(req, db) {
+  let x = req.body.id;
+  x = 42;
+  db.query(x);
+}
+`);
+
+  // Augmented assignment (+=) must preserve existing taint on the LHS.
+  fs.writeFileSync(path.join(root, 'augmented_assign.js'), `
+const { exec } = require('child_process');
+function testAugmented(req) {
+  let cmd = req.body.cmd;
+  cmd += " --flag";
+  exec(cmd);
+}
+`);
+
+  // ── Fix 3: function summary (return param) ───────
+  // wrap() directly returns its parameter; result must still be detected as tainted.
+  fs.writeFileSync(path.join(root, 'summary_test.js'), `
+function wrap(p) {
+  return p;
+}
+function testSummary(req, db) {
+  const id = req.body.id;
+  const v = wrap(id);
+  db.query(v);
+}
+`);
+
+  // ── Fix 4: Object.assign scalar noise ───────────
+  // config.timeout is a safe scalar — must NOT generate a HIGH injection finding.
+  fs.writeFileSync(path.join(root, 'object_assign.js'), `
+function testObjectAssign(req, db) {
+  const config = { timeout: 5000 };
+  Object.assign(config, req.body);
+  db.query(config.timeout);
+}
+`);
+
+  // ── Fix 5: indirect taint depth limit ───────────
+  // Chain of 4 aliases exceeds MAX_TAINT_DEPTH (3); the final variable must NOT
+  // generate a HIGH finding (it may generate MEDIUM via weakTainted/indirect path).
+  fs.writeFileSync(path.join(root, 'deep_alias.js'), `
+const { exec } = require('child_process');
+function testDeepAlias(req) {
+  const a = req.body.cmd;
+  const b = a;
+  const c = b;
+  const d = c;
+  exec(d);
+}
+`);
+
   // ── Scan ────────────────────────────────────────
 
   const report = await new ProjectScanner(false).scan(root);
@@ -142,6 +199,60 @@ function dup(req, db) {
     `Example test credentials should be suppressed. Findings: ${JSON.stringify(findings, null, 2)}`
   );
 
+  // ── Fix 2: reassignment ─────────────────────────
+
+  // Clean reassignment must clear taint — no HIGH injection finding expected.
+  assert(
+    !findings.some(f =>
+      f.code === 'injection-flaw' &&
+      f.severity === 'high' &&
+      f.filePath === 'reassign_clean.js'),
+    `Clean reassignment should clear taint — no HIGH injection. Findings: ${JSON.stringify(findings, null, 2)}`
+  );
+
+  // Augmented assignment must keep taint flowing → HIGH finding expected.
+  assert(
+    findings.some(f =>
+      f.code === 'injection-flaw' &&
+      f.severity === 'high' &&
+      f.filePath === 'augmented_assign.js' &&
+      f.astUsed === true),
+    `Augmented assignment should preserve taint — expected HIGH injection. Findings: ${JSON.stringify(findings, null, 2)}`
+  );
+
+  // ── Fix 3: function summaries ────────────────────
+
+  // wrap(id) where id is tainted → db.query(v) must be detected.
+  assert(
+    findings.some(f =>
+      f.code === 'injection-flaw' &&
+      f.filePath === 'summary_test.js' &&
+      f.astUsed === true),
+    `Function summary: wrap(tainted) should propagate taint to sink. Findings: ${JSON.stringify(findings, null, 2)}`
+  );
+
+  // ── Fix 4: Object.assign scalar noise ───────────
+
+  // config.timeout is a safe scalar even if config is weakly tainted via Object.assign.
+  assert(
+    !findings.some(f =>
+      f.code === 'injection-flaw' &&
+      f.severity === 'high' &&
+      f.filePath === 'object_assign.js'),
+    `Object.assign scalar property (config.timeout) must NOT produce a HIGH injection finding. Findings: ${JSON.stringify(findings, null, 2)}`
+  );
+
+  // ── Fix 5: depth limit degrades to non-HIGH ──────
+
+  // A 4-alias chain exceeds MAX_TAINT_DEPTH; must NOT produce a HIGH finding.
+  assert(
+    !findings.some(f =>
+      f.code === 'injection-flaw' &&
+      f.severity === 'high' &&
+      f.filePath === 'deep_alias.js'),
+    `Deep alias chain (depth > MAX) must NOT produce a HIGH injection finding. Findings: ${JSON.stringify(findings, null, 2)}`
+  );
+
   // ── MUST NOT DETECT ─────────────────────────────
 
   // 7. Hashes should not trigger entropy
@@ -188,8 +299,8 @@ function dup(req, db) {
 
   // 13. totalFiles
   assert(
-    report.totalFiles >= 7,
-    `totalFiles should be >= 7. Got: ${report.totalFiles}`
+    report.totalFiles >= 12,
+    `totalFiles should be >= 12. Got: ${report.totalFiles}`
   );
 
   fs.rmSync(root, { recursive: true, force: true });

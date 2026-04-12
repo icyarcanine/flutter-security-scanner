@@ -44,11 +44,16 @@ export class InjectionRule implements Rule {
         for (const finding of vulnerableSinks) {
           if (finding.isSanitized) continue;
 
+          // Indirect (weakTainted) findings are reported at medium confidence to
+          // avoid inflating HIGH counts for long alias chains or Object.assign merges.
+          const sev = finding.isIndirect ? FindingSeverity.medium : FindingSeverity.high;
+          const conf = finding.isIndirect ? FindingConfidence.medium : FindingConfidence.high;
+
           findings.push(new Finding({
             category: FindingCategory.security,
             code: this.code,
-            severity: FindingSeverity.high,
-            confidence: FindingConfidence.high,
+            severity: sev,
+            confidence: conf,
             message: `Detected tainted input flowing into ${finding.sinkKind} sink -> ${finding.sinkName}`,
             fix: 'Sanitize input thoroughly before passing it to this function or use parameterized abstractions.',
             risk: 'Unsanitized input reaching SQL, command, code execution, or HTML sinks can let attackers execute code, steal data, or run scripts in user sessions.',
@@ -58,6 +63,8 @@ export class InjectionRule implements Rule {
           }));
         }
 
+        // All taint-confirmed lines (HIGH or MEDIUM-indirect) suppress duplicate
+        // dynamic-AST findings on the same line.
         const highFindingLines = new Set(vulnerableSinks
           .filter(finding => !finding.isSanitized)
           .map(finding => finding.node.startPosition.row + 1));
