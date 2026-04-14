@@ -30,11 +30,25 @@ export function findNodesByType(root: AstNode, type: string | string[]): AstNode
 export function isAssignment(node: AstNode): boolean {
   return [
     'assignment_expression', // JS, TS, Java
+    'augmented_assignment_expression', // JS, TS (e.g. `x += y`)
     'assignment',            // Python, Go
     'variable_declarator',   // JS, Java
     'short_var_declaration', // Go
     'augmented_assignment',   // Python
     'initialized_variable_definition', // Dart
+  ].includes(node.type);
+}
+
+/**
+ * True if the assignment is "augmented" (e.g. `x += y`, `x |= y`). For these
+ * the right-hand side is concatenated with / combined into the left, so taint
+ * tracking must be additive: if RHS is tainted, mark LHS tainted, but never
+ * clear LHS taint just because RHS is a literal.
+ */
+export function isAugmentedAssignment(node: AstNode): boolean {
+  return [
+    'augmented_assignment_expression',
+    'augmented_assignment',
   ].includes(node.type);
 }
 
@@ -44,7 +58,8 @@ export function isFunctionCall(node: AstNode): boolean {
   }
 
   return [
-    'call_expression',     // JS, Python, Go
+    'call_expression',     // JS, TS, Go
+    'call',                // Python, Ruby
     'new_expression',      // JS constructors like new Function(...)
     'method_invocation',   // Java
     'constructor_invocation', // Dart
@@ -72,12 +87,13 @@ export function isFunctionScope(node: AstNode): boolean {
 export function getAssignmentNames(node: AstNode, lang: string): string[] {
   // This extracts LHS of assignments to track what gets tainted
   const names: string[] = [];
-  if (['assignment_expression', 'assignment'].includes(node.type)) {
+  if (['assignment_expression', 'assignment',
+       'augmented_assignment_expression', 'augmented_assignment'].includes(node.type)) {
     const left = childForFieldName(node, 'left');
-    if (left?.text) names.push(left.text);
+    if (left) names.push(...extractBindingNames(left));
   } else if (node.type === 'variable_declarator') {
     const name = childForFieldName(node, 'name');
-    if (name?.text) names.push(name.text);
+    if (name) names.push(...extractBindingNames(name));
   } else if (node.type === 'initialized_variable_definition') {
     const name = childForFieldName(node, 'name');
     if (name?.text) names.push(name.text);
@@ -91,6 +107,67 @@ export function getAssignmentNames(node: AstNode, lang: string): string[] {
     }
   }
   return names;
+}
+
+/**
+ * Extract identifier names from a binding pattern. Handles:
+ *   - bare identifier: `x` -> ['x']
+ *   - object pattern: `{ a, b: c }` -> ['a', 'c']
+ *   - array pattern: `[a, b]` -> ['a', 'b']
+ *   - rest element: `...rest` -> ['rest']
+ *   - default value: `{ a = 1 }` -> ['a']
+ *   - nested: `{ a: { b } }` -> ['b']
+ *
+ * Falls back to the raw text for unrecognized patterns so simple
+ * identifiers continue to round-trip exactly as before.
+ */
+function extractBindingNames(node: AstNode): string[] {
+  if (!node) return [];
+
+  if (node.type === 'identifier' || node.type === 'shorthand_property_identifier_pattern') {
+    return [node.text];
+  }
+
+  // Object/array destructuring patterns — recurse into named children
+  if (node.type === 'object_pattern' || node.type === 'array_pattern' ||
+      node.type === 'tuple_pattern' || node.type === 'list_pattern') {
+    const out: string[] = [];
+    for (let i = 0; i < namedChildCount(node); i++) {
+      const child = namedChild(node, i);
+      if (child) out.push(...extractBindingNames(child));
+    }
+    return out;
+  }
+
+  // pair_pattern { key: value } — the value is the binding
+  if (node.type === 'pair_pattern') {
+    const value = childForFieldName(node, 'value');
+    if (value) return extractBindingNames(value);
+  }
+
+  // object_assignment_pattern { x = default } — the LEFT side is the binding,
+  // the right side is the default value (which we discard).
+  if (node.type === 'object_assignment_pattern') {
+    const left = childForFieldName(node, 'left') ?? namedChild(node, 0);
+    if (left) return extractBindingNames(left);
+  }
+
+  // assignment_pattern (destructure with default): { x = 1 }
+  if (node.type === 'assignment_pattern') {
+    const left = childForFieldName(node, 'left') ?? namedChild(node, 0);
+    if (left) return extractBindingNames(left);
+  }
+
+  // rest_pattern / spread_element
+  if (node.type === 'rest_pattern' || node.type === 'rest_element' || node.type === 'spread_element') {
+    const inner = namedChild(node, 0);
+    if (inner) return extractBindingNames(inner);
+  }
+
+  // Fallback: return the raw text so simple identifiers still work,
+  // and unrecognized patterns are passed through to _normalizeSymbol
+  // (which will reject anything non-identifier-shaped).
+  return node.text ? [node.text] : [];
 }
 
 export function getAssignmentValue(node: AstNode): AstNode | null {
@@ -140,7 +217,7 @@ export function getFunctionParameterNames(node: AstNode): string[] {
   const names: string[] = [];
   walkAst(params, (child) => {
     if (child === params) { return; }
-    if (child.type === 'identifier') {
+    if (child.type === 'identifier' || child.type === 'shorthand_property_identifier_pattern') {
       names.push(child.text);
       return;
     }
@@ -151,6 +228,107 @@ export function getFunctionParameterNames(node: AstNode): string[] {
     }
   });
   return Array.from(new Set(names));
+}
+
+export interface ParameterSlot {
+  /** Names bound by this parameter slot. Multiple names imply destructuring. */
+  names: string[];
+  /** True if the parameter was a destructuring pattern (object/array/tuple). */
+  destructured: boolean;
+}
+
+/**
+ * Returns the parameter slots of a function. Each slot represents one
+ * positional parameter and tracks whether it was destructured.
+ *
+ * Examples:
+ *   `(req, res)`           -> [{names:['req'], destructured:false}, {names:['res'], destructured:false}]
+ *   `({ query, body })`    -> [{names:['query','body'], destructured:true}]
+ *   `({ query }, res)`     -> [{names:['query'], destructured:true}, {names:['res'], destructured:false}]
+ *
+ * Used by the taint engine to recognize destructured request handlers,
+ * where the inner names (`query`/`body`/etc.) inherit taint from the
+ * implicit request parameter slot — but a bare `function f(query)` does not.
+ */
+export function getFunctionParameterGroups(node: AstNode): ParameterSlot[] {
+  const signature = node.type === 'function_body'
+    ? previousNamedSibling(node)
+    : node;
+  const params = childForFieldName(signature, 'parameters') ??
+    children(signature).find((c: AstNode) =>
+      ['formal_parameters', 'parameters', 'parameter_list', 'formal_parameter_list'].includes(c.type)) ??
+    findFirstDescendantByType(signature, ['formal_parameters', 'parameters', 'parameter_list', 'formal_parameter_list']);
+  if (!params) { return []; }
+
+  const slots: ParameterSlot[] = [];
+  for (const param of namedChildren(params)) {
+    if (param.type === ',' || param.type === ';') { continue; }
+
+    // Direct identifier parameter
+    if (param.type === 'identifier') {
+      slots.push({ names: [param.text], destructured: false });
+      continue;
+    }
+
+    // Destructuring pattern directly in slot
+    if (param.type === 'object_pattern' || param.type === 'array_pattern' ||
+        param.type === 'tuple_pattern' || param.type === 'list_pattern') {
+      slots.push({ names: extractBindingNames(param), destructured: true });
+      continue;
+    }
+
+    // Default value wrapper: `({ query = {} } = {})` parses as
+    // `assignment_pattern { left: object_pattern, right: object }`. We need
+    // to treat the inner pattern as destructured even though it isn't the
+    // outermost node.
+    if (param.type === 'assignment_pattern') {
+      const left = childForFieldName(param, 'left') ?? namedChild(param, 0);
+      if (left && (
+        left.type === 'object_pattern' || left.type === 'array_pattern' ||
+        left.type === 'tuple_pattern' || left.type === 'list_pattern'
+      )) {
+        slots.push({ names: extractBindingNames(left), destructured: true });
+        continue;
+      }
+      if (left && left.type === 'identifier') {
+        slots.push({ names: [left.text], destructured: false });
+        continue;
+      }
+    }
+
+    // Common wrappers: required_parameter, optional_parameter, parameter, etc.
+    const innerName = childForFieldName(param, 'name') ??
+      childForFieldName(param, 'pattern') ??
+      param;
+
+    if (innerName && (
+      innerName.type === 'object_pattern' ||
+      innerName.type === 'array_pattern' ||
+      innerName.type === 'tuple_pattern' ||
+      innerName.type === 'list_pattern'
+    )) {
+      slots.push({ names: extractBindingNames(innerName), destructured: true });
+      continue;
+    }
+
+    if (innerName && innerName.type === 'identifier') {
+      slots.push({ names: [innerName.text], destructured: false });
+      continue;
+    }
+
+    // Fallback: collect any identifier-shaped descendants. Treat as
+    // non-destructured since we can't be sure of the structure.
+    const collected: string[] = [];
+    walkAst(param, (child) => {
+      if (child.type === 'identifier' || child.type === 'shorthand_property_identifier_pattern') {
+        collected.push(child.text);
+      }
+    });
+    if (collected.length > 0) {
+      slots.push({ names: collected, destructured: collected.length > 1 });
+    }
+  }
+  return slots;
 }
 
 export function childForFieldName(node: AstNode | null | undefined, fieldName: string): AstNode | null {

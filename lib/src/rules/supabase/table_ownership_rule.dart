@@ -5,6 +5,18 @@ import '../../rule.dart';
 class TableOwnershipRule extends Rule {
   const TableOwnershipRule();
 
+  /// Tables with explicit column mappings (high-confidence ownership detection).
+  static const _knownTables = {
+    'profiles',
+    'users',
+    'posts',
+    'messages',
+    'todos',
+    'notes',
+    'orders',
+    'comments',
+  };
+
   @override
   String get code => 'table-ownership-filter';
 
@@ -22,12 +34,16 @@ class TableOwnershipRule extends Rule {
         continue;
       }
 
+      final isKnownTable = _knownTables.contains(access.table.toLowerCase());
+
       findings.add(
         Finding(
           severity: access.operation == 'update' || access.operation == 'delete'
               ? FindingSeverity.high
               : FindingSeverity.medium,
-          confidence: FindingConfidence.medium,
+          confidence: isKnownTable
+              ? FindingConfidence.medium
+              : FindingConfidence.low,
           category: FindingCategory.supabase,
           code: code,
           message: "Query on '${access.table}' has no obvious ownership filter",

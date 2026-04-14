@@ -1,0 +1,9 @@
+android {
+    signingConfigs {
+        release {
+            storePassword = "mySecretStorePass123"
+            keyPassword = "myKeyPassword456"
+            keyAlias = "myAppRelease"
+        }
+    }
+}

@@ -1,0 +1,5 @@
+name: clipboard_exposure_app
+dependencies:
+  flutter:
+    sdk: flutter
+  supabase_flutter: ^1.0.0

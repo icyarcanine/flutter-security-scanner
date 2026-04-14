@@ -21,9 +21,7 @@ void main() {
   print(accessToken);
 
   // Multi-line logging must trigger sensitive logging
-  print(
-    accessToken
-  );
+  print(accessToken);
 
   // Storage safe upload must not be HIGH
   final userId = '123';
@@ -33,5 +31,10 @@ void main() {
   // private bucket, has userId (must NOT be HIGH)
   supabase.storage.from('private_docs').upload('temp/$userId/log.txt', []);
   // public bucket, safe context not matching "avatar, profile, user, private"
-  supabase.storage.from('public').upload('temp/$userId/log.txt', []); // Wait, the rule says: REQUIRE BOTH user identifier AND sensitive context.
+  supabase.storage
+      .from('public')
+      .upload(
+        'temp/$userId/log.txt',
+        [],
+      ); // Wait, the rule says: REQUIRE BOTH user identifier AND sensitive context.
 }

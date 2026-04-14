@@ -1,6 +1,85 @@
 import '../models/project_context.dart';
 import '../models/scanned_file.dart';
 
+/// Extracts all string literal contents from Dart source code, handling:
+/// - Single-quoted strings: 'abc'
+/// - Double-quoted strings: "abc"
+/// - Triple-quoted strings: '''abc''' and """abc"""
+/// - Raw strings: r'abc', r"abc", r'''abc''', r"""abc"""
+///
+/// Returns a list of (offset, content) pairs for each string literal found.
+List<(int offset, String content)> extractStringLiterals(String source) {
+  final results = <(int, String)>[];
+  var i = 0;
+
+  while (i < source.length) {
+    // Skip single-line comments.
+    if (i + 1 < source.length && source[i] == '/' && source[i + 1] == '/') {
+      while (i < source.length && source[i] != '\n') {
+        i++;
+      }
+      continue;
+    }
+    // Skip block comments.
+    if (i + 1 < source.length && source[i] == '/' && source[i + 1] == '*') {
+      i += 2;
+      while (i + 1 < source.length &&
+          !(source[i] == '*' && source[i + 1] == '/')) {
+        i++;
+      }
+      i += 2;
+      continue;
+    }
+
+    final isRaw =
+        source[i] == 'r' &&
+        i + 1 < source.length &&
+        (source[i + 1] == "'" || source[i + 1] == '"');
+    final quoteStart = isRaw ? i + 1 : i;
+    final quoteChar = quoteStart < source.length ? source[quoteStart] : '\x00';
+
+    if (quoteChar != "'" && quoteChar != '"') {
+      i++;
+      continue;
+    }
+
+    // Check for triple quote.
+    final isTriple =
+        quoteStart + 2 < source.length &&
+        source[quoteStart + 1] == quoteChar &&
+        source[quoteStart + 2] == quoteChar;
+
+    final contentStart = quoteStart + (isTriple ? 3 : 1);
+
+    var j = contentStart;
+    final buffer = StringBuffer();
+    while (j < source.length) {
+      if (!isRaw && source[j] == '\\' && j + 1 < source.length) {
+        buffer.write(source[j + 1]);
+        j += 2;
+        continue;
+      }
+      if (isTriple) {
+        if (j + 2 < source.length &&
+            source[j] == quoteChar &&
+            source[j + 1] == quoteChar &&
+            source[j + 2] == quoteChar) {
+          break;
+        }
+      } else {
+        if (source[j] == quoteChar) break;
+      }
+      buffer.write(source[j]);
+      j++;
+    }
+
+    results.add((isRaw ? i : quoteStart, buffer.toString()));
+    i = j + (isTriple ? 3 : 1);
+  }
+
+  return results;
+}
+
 bool isTestLikePath(String path) {
   return path.startsWith('test/') ||
       path.startsWith('integration_test/') ||
@@ -72,9 +151,7 @@ List<LogStatement> collectLogStatements(
   int maxContinuationLines = 8,
 }) {
   final result = <LogStatement>[];
-  final callPattern = RegExp(
-    r'''\b(?:print|debugPrint|developer\.log)\s*\(''',
-  );
+  final callPattern = RegExp(r'''\b(?:print|debugPrint|developer\.log)\s*\(''');
 
   final lines = file.lines;
 
@@ -108,12 +185,15 @@ List<LogStatement> collectLogStatements(
     final buffer = StringBuffer(afterParen);
     // Depth counts the net open parens. We start at 1 to account for the '('
     // that opened the `print(` call.
-    var depth = 1 + _countOpenParens(afterParen) - _countCloseParens(afterParen);
+    var depth =
+        1 + _countOpenParens(afterParen) - _countCloseParens(afterParen);
     var closed = false;
 
-    for (var j = i + 1;
-        j < lines.length && j <= i + maxContinuationLines;
-        j++) {
+    for (
+      var j = i + 1;
+      j < lines.length && j <= i + maxContinuationLines;
+      j++
+    ) {
       final continuation = lines[j].trim();
       // Stop at a blank line or a comment-only line that looks like a new
       // statement — avoids bleeding into unrelated code.

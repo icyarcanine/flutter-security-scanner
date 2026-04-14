@@ -61,6 +61,14 @@ class SensitiveLoggingRule extends Rule {
       return true;
     }
 
+    // Interpolated PII variables: $email, ${phoneNumber}, $password, etc.
+    if (RegExp(
+      r'''\$\{?\s*(email|password|passwd|phoneNumber|phone|ssn|socialSecurity|creditCard|cardNumber|cvv|dateOfBirth|dob)\b''',
+      caseSensitive: false,
+    ).hasMatch(argument)) {
+      return true;
+    }
+
     // Strip string literals so text inside quoted strings doesn't create
     // false positives.  Non-greedy to handle: 'label: ' + accessToken
     final strippedArgument = argument
@@ -69,10 +77,23 @@ class SensitiveLoggingRule extends Rule {
 
     // After stripping, look for identifiers that are exclusively auth-related.
     // Deliberately excludes bare `user` (too broad — matches userCount, etc.)
-    return RegExp(
+    if (RegExp(
       r'''(?<!\w)(session|accessToken|refreshToken|jwt|idToken|currentUser|currentSession|authState|authorization)(?!\w)'''
       r'''|\.(?:currentUser|currentSession|accessToken|refreshToken|idToken)\b''',
       caseSensitive: false,
-    ).hasMatch(strippedArgument);
+    ).hasMatch(strippedArgument)) {
+      return true;
+    }
+
+    // PII identifiers: email, password, phone, SSN, credit card, etc.
+    if (RegExp(
+      r'''(?<!\w)(password|passwd|creditCard|cardNumber|cvv|ssn|socialSecurity|dateOfBirth)(?!\w)'''
+      r'''|\.(?:password|creditCard|cardNumber|ssn|socialSecurity)\b''',
+      caseSensitive: false,
+    ).hasMatch(strippedArgument)) {
+      return true;
+    }
+
+    return false;
   }
 }

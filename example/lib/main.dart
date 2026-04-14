@@ -13,7 +13,9 @@ Future<void> main() async {
   final session = Supabase.instance.client.auth.currentSession;
 
   // Bad: Printing sensitive details to the console leaks memory and security info automatically in production
-  print('Current session token starts with: ${session?.accessToken.substring(0, 5)}');
+  print(
+    'Current session token starts with: ${session?.accessToken.substring(0, 5)}',
+  );
 
   runApp(const MyApp());
 }
@@ -24,11 +26,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const MaterialApp(
-      home: Scaffold(
-        body: Center(
-          child: Text('Example Security Setup Demo'),
-        ),
-      ),
+      home: Scaffold(body: Center(child: Text('Example Security Setup Demo'))),
     );
   }
 }

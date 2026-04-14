@@ -1,0 +1,4 @@
+name: plaintext_http_app
+dependencies:
+  http: ^0.13.0
+  supabase_flutter: ^1.0.0

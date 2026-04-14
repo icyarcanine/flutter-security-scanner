@@ -43,6 +43,14 @@ class ProjectContext {
     '.md',
     '.txt',
     '.json',
+    '.plist',
+    '.xml',
+    '.properties',
+    '.gradle',
+    '.kt',
+    '.swift',
+    '.java',
+    '.env',
   };
 
   static ProjectContext load(String rootPath) {
@@ -99,8 +107,9 @@ class ProjectContext {
   }
 
   Iterable<ScannedFile> get dartFiles => files.where((file) => file.isDart);
-  Iterable<ScannedFile> get appDartFiles =>
-      dartFiles.where((file) => !_isTestLikePath(file.relativePath));
+  Iterable<ScannedFile> get appDartFiles => dartFiles.where(
+    (file) => !_isTestLikePath(file.relativePath) && !_isGeneratedCode(file),
+  );
   Iterable<ScannedFile> get supabaseCandidateDartFiles =>
       appDartFiles.where(_looksLikeSupabaseFile);
   Iterable<ScannedFile> get envFiles => files.where((file) => file.isEnvFile);
@@ -624,7 +633,23 @@ class ProjectContext {
 
   static String _readTextFile(File file) {
     try {
-      return utf8.decode(file.readAsBytesSync(), allowMalformed: true);
+      var bytes = file.readAsBytesSync();
+
+      // Strip UTF-8 BOM (EF BB BF) if present — prevents offset miscalculation.
+      if (bytes.length >= 3 &&
+          bytes[0] == 0xEF &&
+          bytes[1] == 0xBB &&
+          bytes[2] == 0xBF) {
+        bytes = bytes.sublist(3);
+      }
+
+      var content = utf8.decode(bytes, allowMalformed: true);
+
+      // Normalize CRLF → LF so line splitting works consistently across
+      // platforms and line-offset calculations are correct.
+      content = content.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+
+      return content;
     } on FileSystemException {
       return '';
     }
@@ -768,6 +793,30 @@ class ProjectContext {
         path.contains('/integration_test/') ||
         path.contains('/example/');
   }
+
+  /// Returns true for auto-generated files that should be excluded from
+  /// security scanning (high false-positive rate, not human-authored).
+  static bool _isGeneratedCode(ScannedFile file) {
+    final name = file.name;
+    if (name.endsWith('.g.dart') ||
+        name.endsWith('.freezed.dart') ||
+        name.endsWith('.gen.dart') ||
+        name.endsWith('.mocks.dart') ||
+        name.endsWith('.gr.dart') ||
+        name.endsWith('.config.dart') && name.contains('router')) {
+      return true;
+    }
+    // Check first few lines for code-gen markers.
+    final checkLines = file.lines.length < 5 ? file.lines.length : 5;
+    for (var i = 0; i < checkLines; i++) {
+      if (file.lines[i].contains('GENERATED CODE') ||
+          file.lines[i].contains('DO NOT MODIFY BY HAND') ||
+          file.lines[i].contains('AUTO-GENERATED')) {
+        return true;
+      }
+    }
+    return false;
+  }
 }
 
 class EnvEntry {
@@ -868,7 +917,14 @@ Set<String> ownerColumnsForTable(String tableName) {
     'comments': {'user_id'},
   };
 
-  return mapping[normalized] ?? const {};
+  if (mapping.containsKey(normalized)) {
+    return mapping[normalized]!;
+  }
+
+  // Heuristic fallback for unknown tables: use common ownership column names.
+  // This enables the scanner to flag unfiltered queries on ANY table, not just
+  // the 8 hardcoded ones.
+  return const {'user_id', 'owner_id', 'created_by', 'author_id'};
 }
 
 String? suggestedPolicyForTable(String tableName) {

@@ -1,0 +1,4 @@
+name: gradle_secrets_app
+dependencies:
+  flutter:
+    sdk: flutter

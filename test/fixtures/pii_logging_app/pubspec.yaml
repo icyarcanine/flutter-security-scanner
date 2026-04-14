@@ -1,0 +1,3 @@
+name: pii_logging_app
+dependencies:
+  supabase_flutter: ^1.0.0

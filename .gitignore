@@ -12,3 +12,4 @@ vscode-extension/*.vsix
 !test/fixtures/**/.env
 !test/fixtures/**/.env.*
 !test/fixtures/**/config/.env.*
+.claude/

@@ -1,0 +1,4 @@
+name: insecure_manifest_app
+dependencies:
+  flutter:
+    sdk: flutter

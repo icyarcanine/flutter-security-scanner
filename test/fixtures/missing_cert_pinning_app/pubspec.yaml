@@ -1,0 +1,5 @@
+name: missing_cert_pinning_app
+dependencies:
+  supabase_flutter: ^1.0.0
+  firebase_auth: ^4.0.0
+  dio: ^5.0.0

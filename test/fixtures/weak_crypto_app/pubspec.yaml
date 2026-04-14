@@ -1,0 +1,4 @@
+name: weak_crypto_app
+dependencies:
+  crypto: ^3.0.0
+  supabase_flutter: ^1.0.0

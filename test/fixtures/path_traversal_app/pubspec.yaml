@@ -1,0 +1,4 @@
+name: path_traversal_app
+dependencies:
+  flutter:
+    sdk: flutter

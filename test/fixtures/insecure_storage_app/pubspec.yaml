@@ -1,0 +1,4 @@
+name: insecure_storage_app
+dependencies:
+  shared_preferences: ^2.0.0
+  supabase_flutter: ^1.0.0

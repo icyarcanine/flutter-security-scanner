@@ -6,13 +6,13 @@ void main() {
   // This should be flagged by SensitiveLoggingRule
   print(
     'User session is: '
-    '\${session?.accessToken}'
+    '\${session?.accessToken}',
   );
 
   // This should be flagged by DebugCodeRule, NOT SensitiveLoggingRule
   print(
     'Just some '
     'harmless '
-    'debug info'
+    'debug info',
   );
 }

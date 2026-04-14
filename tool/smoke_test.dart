@@ -67,8 +67,7 @@ void main() {
   _runCase(
     name: 'migration_schema_only_app',
     includeSuggestions: false,
-    expectedCodes: {'missing-rls-awareness'},
-    expectedIssueCount: 1,
+    expectedCodes: {'missing-rls-awareness', 'table-ownership-filter'},
     failures: failures,
   );
 
@@ -115,8 +114,7 @@ void main() {
   _runCase(
     name: 'generic_api_key_app',
     includeSuggestions: false,
-    expectedCodes: const {},
-    expectedIssueCount: 0,
+    expectedCodes: {'generic-secret', 'high-entropy-secret'},
     failures: failures,
   );
 
@@ -195,8 +193,7 @@ void main() {
   _runCase(
     name: 'readme_rls_only_app',
     includeSuggestions: false,
-    expectedCodes: {'missing-rls-awareness'},
-    expectedIssueCount: 1,
+    expectedCodes: {'missing-rls-awareness', 'table-ownership-filter'},
     failures: failures,
   );
 
@@ -258,10 +255,91 @@ void main() {
   _runCase(
     name: 'extreme_edge_cases_app',
     includeSuggestions: false,
-    expectedCodes: {
-      'improper-initialization',
-      'debug-print',
-    },
+    expectedCodes: {'improper-initialization', 'debug-print'},
+    failures: failures,
+  );
+
+  _runCase(
+    name: 'path_traversal_app',
+    includeSuggestions: false,
+    expectedCodes: {'path-traversal'},
+    failures: failures,
+  );
+
+  _runCase(
+    name: 'unobscured_password_app',
+    includeSuggestions: false,
+    expectedCodes: {'unobscured-password-field'},
+    failures: failures,
+  );
+
+  _runCase(
+    name: 'gradle_secrets_app',
+    includeSuggestions: false,
+    expectedCodes: {'gradle-secrets'},
+    failures: failures,
+  );
+
+  _runCase(
+    name: 'weak_crypto_app',
+    includeSuggestions: false,
+    expectedCodes: {'weak-crypto'},
+    failures: failures,
+  );
+
+  _runCase(
+    name: 'clipboard_exposure_app',
+    includeSuggestions: false,
+    expectedCodes: {'clipboard-exposure'},
+    failures: failures,
+  );
+
+  _runCase(
+    name: 'insecure_manifest_app',
+    includeSuggestions: false,
+    expectedCodes: {'platform-security'},
+    failures: failures,
+  );
+
+  _runCase(
+    name: 'webview_insecure_app',
+    includeSuggestions: false,
+    expectedCodes: {'webview-security'},
+    failures: failures,
+  );
+
+  _runCase(
+    name: 'missing_cert_pinning_app',
+    includeSuggestions: false,
+    expectedCodes: {'missing-cert-pinning'},
+    failures: failures,
+  );
+
+  _runCase(
+    name: 'deep_link_app',
+    includeSuggestions: false,
+    expectedCodes: {'deep-link-validation'},
+    failures: failures,
+  );
+
+  _runCase(
+    name: 'insecure_storage_app',
+    includeSuggestions: false,
+    expectedCodes: {'insecure-storage'},
+    failures: failures,
+  );
+
+  _runCase(
+    name: 'plaintext_http_app',
+    includeSuggestions: false,
+    expectedCodes: {'plaintext-http'},
+    failures: failures,
+  );
+
+  _runCase(
+    name: 'pii_logging_app',
+    includeSuggestions: false,
+    expectedCodes: {'sensitive-logging'},
     failures: failures,
   );
 

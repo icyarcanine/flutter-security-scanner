@@ -12,9 +12,9 @@ export class InjectionRule implements Rule {
     const tracker = new IntraProceduralTaintTracker();
 
     const sinkPrefilter =
-      /\.(?:query|execute|executeQuery|raw|rawQuery)\s*\(|\b(?:exec|execSync|execFile|spawn|system|popen|eval|Function)\s*\(|\bProcess\s*\.\s*(?:run|start)\s*\(|document\s*\.\s*write\s*\(|\.(?:innerHTML|outerHTML)\s*=/i;
+      /\.(?:query|execute|executeQuery|executemany|executescript|raw|rawQuery)\s*\(|\b(?:exec|execSync|execFile|spawn|system|popen|eval|Function)\s*\(|\bProcess\s*\.\s*(?:run|start)\s*\(|document\s*\.\s*write\s*\(|\.(?:innerHTML|outerHTML)\s*=|\brender_template_string\s*\(|\bsubprocess\s*\.\s*(?:run|call|check_output|Popen)\s*\(|\bos\s*\.\s*(?:system|popen)\s*\(|\bfetch\s*\(|\baxios\s*(?:\.\s*(?:get|post|put|delete|patch|head|options|request))?\s*\(|\bhttps?\s*\.\s*(?:get|request)\s*\(|\brequests\s*\.\s*(?:get|post|put|delete|patch|head|options|request)\s*\(|\b(?:urllib\s*\.\s*request\s*\.\s*)?urlopen\s*\(|\bfs(?:\s*\.\s*promises)?\s*\.\s*(?:readFile|readFileSync|createReadStream|writeFile|writeFileSync|createWriteStream|appendFile|appendFileSync|open|openSync|unlink|unlinkSync|stat|statSync|lstat|lstatSync|readdir|readdirSync)\s*\(|\bres\s*\.\s*(?:redirect|location)\s*\(|\bset(?:Timeout|Interval)\s*\(|\$(?:where|function|accumulator)\b|\b(?:c?pickle|_pickle|marshal|yaml)\s*\.\s*(?:loads?|load_all|unsafe_load|full_load)\s*\(|\bxpath\s*\.\s*(?:select1?|evaluate)\s*\(|\.(?:selectSingleNode|selectNodes|search_s|searchEntries?)\s*\(|\bldap(?:client)?\s*\.\s*search\s*\(/i;
     const sourcePrefilter =
-      /\b(?:req|request)\s*\.\s*(?:body|query|params)\b|\bprocess\s*\.\s*(?:env|stdin)\b|\bstdin\b|\b(?:input|userInput|data|payload)\b/i;
+      /\b(?:req|request)\s*\??\.\s*(?:body|query|params|args|form|values|json|cookies|headers|files|file|data|query_params|path_params|session|signedCookies|rawHeaders)\b|\b(?:req|request)\s*\[\s*['"](?:body|query|params|file|files|headers|cookies|args|form|session)['"]\s*\]|\bprocess\s*\.\s*(?:env|stdin)\b|\bstdin\b|\b(?:input|userInput|data|payload)\b|\(\s*\{[^}]*\b(?:query|body|params|headers|cookies|signedCookies|session|files|rawHeaders|queryParams|pathParams)\b/i;
 
     const tierFiles = context.files.filter(f =>
       f.isDart || f.name.endsWith('.js') || f.name.endsWith('.ts') ||
@@ -46,14 +46,18 @@ export class InjectionRule implements Rule {
 
           // Indirect (weakTainted) findings are reported at medium confidence to
           // avoid inflating HIGH counts for long alias chains or Object.assign merges.
-          const sev = finding.isIndirect ? FindingSeverity.medium : FindingSeverity.high;
-          const conf = finding.isIndirect ? FindingConfidence.medium : FindingConfidence.high;
+          const severity = finding.chainStrength === 'direct'
+            ? FindingSeverity.high
+            : FindingSeverity.medium;
+          const confidence = finding.chainStrength === 'direct'
+            ? FindingConfidence.high
+            : FindingConfidence.medium;
 
           findings.push(new Finding({
             category: FindingCategory.security,
             code: this.code,
-            severity: sev,
-            confidence: conf,
+            severity,
+            confidence,
             message: `Detected tainted input flowing into ${finding.sinkKind} sink -> ${finding.sinkName}`,
             fix: 'Sanitize input thoroughly before passing it to this function or use parameterized abstractions.',
             risk: 'Unsanitized input reaching SQL, command, code execution, or HTML sinks can let attackers execute code, steal data, or run scripts in user sessions.',
