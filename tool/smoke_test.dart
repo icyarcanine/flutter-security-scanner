@@ -119,6 +119,17 @@ void main() {
   );
 
   _runCase(
+    name: 'service_role_in_client_app',
+    includeSuggestions: false,
+    expectedCodes: {
+      'supabase-service-role-key-in-client',
+      'missing-env-vars',
+      'hardcoded-secrets',
+    },
+    failures: failures,
+  );
+
+  _runCase(
     name: 'private_files_bucket_app',
     includeSuggestions: false,
     expectedCodes: const {},

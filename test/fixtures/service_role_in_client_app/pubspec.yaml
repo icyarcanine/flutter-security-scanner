@@ -1,0 +1,7 @@
+name: service_role_in_client_app
+description: Fixture for the supabase-service-role-key-in-client rule.
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  supabase_flutter: ^2.0.0

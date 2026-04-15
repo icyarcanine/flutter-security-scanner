@@ -29,6 +29,7 @@ import 'rules/security/webview_security_rule.dart';
 import 'rules/security/xss_rule.dart';
 import 'rules/supabase/missing_rls_awareness_rule.dart';
 import 'rules/supabase/rls_policy_suggestion_rule.dart';
+import 'rules/supabase/service_role_key_rule.dart';
 import 'rules/supabase/table_ownership_rule.dart';
 
 List<Rule> buildDefaultRules({required bool includeSuggestions}) {
@@ -65,6 +66,7 @@ List<Rule> buildDefaultRules({required bool includeSuggestions}) {
     const ImproperInitializationRule(),
     const DebugCodeRule(),
     // Supabase / RLS
+    const ServiceRoleKeyRule(),
     const MissingRlsAwarenessRule(),
     const TableOwnershipRule(),
   ];
