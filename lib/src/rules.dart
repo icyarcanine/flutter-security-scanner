@@ -21,6 +21,7 @@ import 'rules/security/path_traversal_rule.dart';
 import 'rules/security/plaintext_http_rule.dart';
 import 'rules/security/platform_security_rule.dart';
 import 'rules/security/public_storage_rule.dart';
+import 'rules/security/release_hardening_rule.dart';
 import 'rules/security/sensitive_logging_rule.dart';
 import 'rules/security/unobscured_password_rule.dart';
 import 'rules/security/unsafe_eval_rule.dart';
@@ -58,6 +59,7 @@ List<Rule> buildDefaultRules({required bool includeSuggestions}) {
     const PathTraversalRule(),
     const UnobscuredPasswordRule(),
     const GradleSecretsRule(),
+    const ReleaseHardeningRule(),
     // Config
     const EnvironmentVariablesRule(),
     const PlaceholderEnvValuesRule(),

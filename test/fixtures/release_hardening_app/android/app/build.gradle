@@ -1,0 +1,28 @@
+android {
+    compileSdkVersion 34
+
+    defaultConfig {
+        applicationId "com.example.release_hardening"
+        minSdkVersion 24
+        targetSdkVersion 34
+    }
+
+    buildTypes {
+        release {
+            // All three red flags at once: no R8, debuggable, and signed
+            // with the public Android debug key.
+            minifyEnabled false
+            shrinkResources false
+            debuggable true
+            signingConfig signingConfigs.debug
+        }
+
+        debug {
+            // Debug buildType can legitimately carry these settings — the
+            // rule should NOT touch it.
+            debuggable true
+            signingConfig signingConfigs.debug
+            minifyEnabled false
+        }
+    }
+}

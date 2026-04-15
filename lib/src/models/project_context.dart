@@ -47,6 +47,7 @@ class ProjectContext {
     '.xml',
     '.properties',
     '.gradle',
+    '.kts', // Kotlin-DSL Gradle files (build.gradle.kts, settings.gradle.kts)
     '.kt',
     '.swift',
     '.java',

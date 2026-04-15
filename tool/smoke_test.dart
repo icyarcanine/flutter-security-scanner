@@ -292,6 +292,13 @@ void main() {
   );
 
   _runCase(
+    name: 'release_hardening_app',
+    includeSuggestions: false,
+    expectedCodes: {'release-hardening'},
+    failures: failures,
+  );
+
+  _runCase(
     name: 'weak_crypto_app',
     includeSuggestions: false,
     expectedCodes: {'weak-crypto'},
