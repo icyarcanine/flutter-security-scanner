@@ -34,20 +34,26 @@ void main(List<String> args) {
   final issueCount = issues.length;
   final suggestionCount = suggestions.length;
 
-  if (options.jsonOutput) {
-    _emitJson(
-      findings: report.findings,
-      issueCount: issueCount,
-      suggestionCount: suggestionCount,
-      targetPath: options.targetPath,
-    );
-  } else {
-    _emitHuman(
-      findings: report.findings,
-      issues: issues,
-      issueCount: issueCount,
-      suggestionCount: suggestionCount,
-    );
+  switch (options.format) {
+    case _OutputFormat.sarif:
+      _emitSarif(
+        findings: report.findings,
+        targetPath: options.targetPath,
+      );
+    case _OutputFormat.json:
+      _emitJson(
+        findings: report.findings,
+        issueCount: issueCount,
+        suggestionCount: suggestionCount,
+        targetPath: options.targetPath,
+      );
+    case _OutputFormat.human:
+      _emitHuman(
+        findings: report.findings,
+        issues: issues,
+        issueCount: issueCount,
+        suggestionCount: suggestionCount,
+      );
   }
 
   exit(_computeExitCode(issues: issues, threshold: options.failOn));
@@ -91,6 +97,14 @@ void _emitHuman({
       'No major security or config issues detected. Basic security posture looks good.',
     );
   }
+}
+
+void _emitSarif({
+  required List<Finding> findings,
+  required String targetPath,
+}) {
+  const writer = SarifWriter();
+  stdout.writeln(writer.encode(findings, targetPath: targetPath));
 }
 
 void _emitJson({
@@ -139,11 +153,13 @@ int _computeExitCode({
   return 0;
 }
 
+enum _OutputFormat { human, json, sarif }
+
 class _CliOptions {
   _CliOptions({
     required this.targetPath,
     required this.includeSuggestions,
-    required this.jsonOutput,
+    required this.format,
     required this.failOn,
     required this.showHelp,
     required this.error,
@@ -151,7 +167,7 @@ class _CliOptions {
 
   final String targetPath;
   final bool includeSuggestions;
-  final bool jsonOutput;
+  final _OutputFormat format;
   final FindingSeverity failOn;
   final bool showHelp;
   final String? error;
@@ -166,7 +182,10 @@ Arguments:
 
 Options:
   --no-suggestions      Hide heuristic RLS policy suggestions.
-  --json                Emit machine-readable JSON instead of the human report.
+  --format=<fmt>        Output format: human (default), json, sarif.
+  --json                Alias for --format=json.
+  --sarif               Alias for --format=sarif (SARIF 2.1.0 for GitHub
+                        Code Scanning and other SAST integrations).
   --fail-on=<level>     Exit non-zero only when an issue at or above <level> is
                         found. Levels: high, medium, low. Default: low.
   --help, -h            Show this message.
@@ -180,7 +199,7 @@ Exit codes:
   static _CliOptions parse(List<String> args) {
     var targetPath = '.';
     var includeSuggestions = true;
-    var jsonOutput = false;
+    var format = _OutputFormat.human;
     var failOn = FindingSeverity.low;
     var showHelp = false;
     String? error;
@@ -191,7 +210,24 @@ Exit codes:
       } else if (arg == '--no-suggestions') {
         includeSuggestions = false;
       } else if (arg == '--json') {
-        jsonOutput = true;
+        format = _OutputFormat.json;
+      } else if (arg == '--sarif') {
+        format = _OutputFormat.sarif;
+      } else if (arg.startsWith('--format=')) {
+        final value = arg.substring('--format='.length).toLowerCase();
+        switch (value) {
+          case 'human':
+            format = _OutputFormat.human;
+          case 'json':
+            format = _OutputFormat.json;
+          case 'sarif':
+            format = _OutputFormat.sarif;
+          default:
+            error =
+                'Unknown --format value: $value (expected human|json|sarif)';
+        }
+      } else if (arg == '--format') {
+        error = '--format requires a value, e.g. --format=sarif';
       } else if (arg.startsWith('--fail-on=')) {
         final value = arg.substring('--fail-on='.length).toLowerCase();
         switch (value) {
@@ -218,7 +254,7 @@ Exit codes:
     return _CliOptions(
       targetPath: targetPath,
       includeSuggestions: includeSuggestions,
-      jsonOutput: jsonOutput,
+      format: format,
       failOn: failOn,
       showHelp: showHelp,
       error: error,

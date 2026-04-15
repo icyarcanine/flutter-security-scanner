@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:fluttersupabasehelper/fluttersupabasehelper.dart';
@@ -474,6 +475,7 @@ void main() {
   );
 
   _runMalformedEncodingCase(failures);
+  _runSarifCase(failures);
 
   if (failures.isNotEmpty) {
     stderr.writeln('Smoke test failures:');
@@ -530,6 +532,117 @@ void _runCase({
 
   if (!Directory(path).existsSync()) {
     failures.add('Fixture directory $path does not exist.');
+  }
+}
+
+void _runSarifCase(List<String> failures) {
+  // SARIF output is the single biggest CI integration lever this tool has, so
+  // we pin the shape of the emitted document. The test runs the real scanner
+  // on a fixture we know produces multiple findings, then asserts the JSON
+  // parses and carries the SARIF 2.1.0 contract GitHub Code Scanning (and
+  // other SAST consumers) expect.
+  const fixturePath = 'test/fixtures/edge_function_secrets_app';
+  try {
+    final report = const ProjectScanner(
+      includeSuggestions: false,
+    ).scan(fixturePath);
+
+    if (report.findings.isEmpty) {
+      failures.add(
+        'sarif smoke case: $fixturePath produced zero findings, cannot exercise writer.',
+      );
+      return;
+    }
+
+    const writer = SarifWriter();
+    final encoded = writer.encode(report.findings, targetPath: fixturePath);
+    final decoded = jsonDecode(encoded);
+    if (decoded is! Map) {
+      failures.add('sarif smoke case: top-level value is not a JSON object.');
+      return;
+    }
+
+    if (decoded[r'$schema'] is! String) {
+      failures.add('sarif smoke case: `\$schema` missing or not a string.');
+    }
+    if (decoded['version'] != '2.1.0') {
+      failures.add(
+        'sarif smoke case: expected version "2.1.0" but saw ${decoded['version']}.',
+      );
+    }
+
+    final runs = decoded['runs'];
+    if (runs is! List || runs.isEmpty) {
+      failures.add('sarif smoke case: `runs` missing or empty.');
+      return;
+    }
+    final run = runs.first;
+    if (run is! Map) {
+      failures.add('sarif smoke case: `runs[0]` is not an object.');
+      return;
+    }
+
+    final driver = (run['tool'] as Map?)?['driver'];
+    if (driver is! Map) {
+      failures.add('sarif smoke case: `tool.driver` missing.');
+      return;
+    }
+    if (driver['name'] != 'fluttersupabasehelper') {
+      failures.add(
+        'sarif smoke case: driver name is ${driver['name']}, expected fluttersupabasehelper.',
+      );
+    }
+    final rules = driver['rules'];
+    if (rules is! List || rules.isEmpty) {
+      failures.add('sarif smoke case: `driver.rules` missing or empty.');
+    } else {
+      final first = rules.first;
+      if (first is! Map ||
+          first['id'] is! String ||
+          first['shortDescription'] is! Map) {
+        failures.add('sarif smoke case: rule entry is missing required keys.');
+      }
+    }
+
+    final results = run['results'];
+    if (results is! List || results.isEmpty) {
+      failures.add('sarif smoke case: `results` missing or empty.');
+      return;
+    }
+    for (final result in results) {
+      if (result is! Map) {
+        failures.add('sarif smoke case: result entry is not an object.');
+        continue;
+      }
+      if (result['ruleId'] is! String) {
+        failures.add('sarif smoke case: result missing ruleId.');
+      }
+      if (result['message'] is! Map ||
+          (result['message'] as Map)['text'] is! String) {
+        failures.add('sarif smoke case: result message is not {text: ...}.');
+      }
+      final level = result['level'];
+      if (level is! String ||
+          !const {'error', 'warning', 'note', 'none'}.contains(level)) {
+        failures.add(
+          'sarif smoke case: unexpected result level $level.',
+        );
+      }
+      final fingerprints = result['partialFingerprints'];
+      if (fingerprints is! Map ||
+          fingerprints['primaryLocationLineHash/v1'] is! String) {
+        failures.add('sarif smoke case: partialFingerprints missing.');
+      }
+    }
+
+    // Determinism: encoding twice must yield byte-identical output, otherwise
+    // CI baselines will churn for cosmetic reasons.
+    final second = writer.encode(report.findings, targetPath: fixturePath);
+    if (second != encoded) {
+      failures.add('sarif smoke case: output is not deterministic.');
+    }
+  } catch (error, stack) {
+    failures.add('sarif smoke case crashed: $error\n$stack');
   }
 }
 
