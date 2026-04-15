@@ -160,6 +160,21 @@ void main() {
   );
 
   _runCase(
+    name: 'signed_url_ttl_app',
+    includeSuggestions: false,
+    expectedCodes: {'supabase-signed-url-ttl'},
+    failures: failures,
+  );
+
+  _runCase(
+    name: 'signed_url_ttl_ok_app',
+    includeSuggestions: false,
+    expectedCodes: const {},
+    expectedIssueCount: 0,
+    failures: failures,
+  );
+
+  _runCase(
     name: 'private_files_bucket_app',
     includeSuggestions: false,
     expectedCodes: const {},

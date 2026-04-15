@@ -34,6 +34,7 @@ import 'rules/supabase/realtime_filter_rule.dart';
 import 'rules/supabase/rls_policy_suggestion_rule.dart';
 import 'rules/supabase/rpc_injection_rule.dart';
 import 'rules/supabase/service_role_key_rule.dart';
+import 'rules/supabase/signed_url_ttl_rule.dart';
 import 'rules/supabase/table_ownership_rule.dart';
 
 List<Rule> buildDefaultRules({required bool includeSuggestions}) {
@@ -75,6 +76,7 @@ List<Rule> buildDefaultRules({required bool includeSuggestions}) {
     const ServiceRoleKeyRule(),
     const SupabaseRpcInjectionRule(),
     const SupabaseRealtimeFilterRule(),
+    const SupabaseSignedUrlTtlRule(),
     const MissingRlsAwarenessRule(),
     const TableOwnershipRule(),
   ];
