@@ -175,6 +175,21 @@ void main() {
   );
 
   _runCase(
+    name: 'edge_function_secrets_app',
+    includeSuggestions: false,
+    expectedCodes: {'supabase-edge-function-secrets'},
+    failures: failures,
+  );
+
+  _runCase(
+    name: 'edge_function_secrets_ok_app',
+    includeSuggestions: false,
+    expectedCodes: const {},
+    expectedIssueCount: 0,
+    failures: failures,
+  );
+
+  _runCase(
     name: 'private_files_bucket_app',
     includeSuggestions: false,
     expectedCodes: const {},

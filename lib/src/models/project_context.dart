@@ -52,6 +52,15 @@ class ProjectContext {
     '.swift',
     '.java',
     '.env',
+    '.toml', // supabase/config.toml, Cargo.toml, pyproject.toml, …
+    // Web surfaces: Supabase Edge Functions (Deno/TS), and web clients
+    // that share the same Supabase project key material.
+    '.ts',
+    '.tsx',
+    '.js',
+    '.jsx',
+    '.mjs',
+    '.cjs',
   };
 
   static ProjectContext load(String rootPath) {

@@ -74,7 +74,18 @@ class ServiceRoleKeyRule extends Rule {
 
   bool _isClientSourceFile(ScannedFile file) {
     const webExtensions = {'.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs'};
-    return webExtensions.contains(file.extension);
+    if (!webExtensions.contains(file.extension)) return false;
+    // Supabase Edge Functions run server-side (Deno) and legitimately
+    // need the service role. A service_role reference inside
+    // `supabase/functions/...` is NOT a client leak; the dedicated
+    // edge-function-secrets rule handles the narrower concerns there
+    // (CORS wildcards, `verify_jwt = false`, response-body leaks).
+    final normalized = file.relativePath.replaceAll(r'\\', '/');
+    if (normalized.startsWith('supabase/functions/') ||
+        normalized.contains('/supabase/functions/')) {
+      return false;
+    }
+    return true;
   }
 
   List<Finding> _checkFile(ScannedFile file, ProjectContext context) {

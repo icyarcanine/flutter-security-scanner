@@ -29,6 +29,7 @@ import 'rules/security/unsafe_eval_rule.dart';
 import 'rules/security/weak_crypto_rule.dart';
 import 'rules/security/webview_security_rule.dart';
 import 'rules/security/xss_rule.dart';
+import 'rules/supabase/edge_function_secrets_rule.dart';
 import 'rules/supabase/missing_rls_awareness_rule.dart';
 import 'rules/supabase/realtime_filter_rule.dart';
 import 'rules/supabase/rls_policy_suggestion_rule.dart';
@@ -77,6 +78,7 @@ List<Rule> buildDefaultRules({required bool includeSuggestions}) {
     const SupabaseRpcInjectionRule(),
     const SupabaseRealtimeFilterRule(),
     const SupabaseSignedUrlTtlRule(),
+    const SupabaseEdgeFunctionSecretsRule(),
     const MissingRlsAwarenessRule(),
     const TableOwnershipRule(),
   ];
