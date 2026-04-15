@@ -1,0 +1,37 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.platformsec">
+
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="33" />
+
+    <!-- Dangerous permission group: each of these should be flagged. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
+    <application
+        android:allowBackup="true"
+        android:testOnly="true">
+
+        <!-- Exported with no intent filter and no permission — classic hole. -->
+        <activity
+            android:name=".ExportedHoleActivity"
+            android:exported="true" />
+
+        <!-- Exported service with an intent filter — legitimately reachable,
+             must NOT be flagged. -->
+        <service
+            android:name=".LegitService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.example.platformsec.ACTION_DO" />
+            </intent-filter>
+        </service>
+
+        <!-- Exported receiver gated by a permission — also must NOT flag. -->
+        <receiver
+            android:name=".GatedReceiver"
+            android:exported="true"
+            android:permission="com.example.platformsec.permission.PRIVATE" />
+    </application>
+</manifest>

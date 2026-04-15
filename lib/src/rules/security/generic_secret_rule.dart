@@ -37,6 +37,11 @@ class GenericSecretRule extends Rule {
     '.zip', '.tar', '.gz', '.bz2', '.7z', '.jar',
     '.map',
     '.md', '.txt', '.rst', // documentation
+    // Markup / config where quoted values are schema keys, resource
+    // identifiers, or package names — not programming-language string
+    // literals. Entropy here is almost always a false positive (e.g.
+    // `android.permission.REQUEST_INSTALL_PACKAGES` clears the 4.5 bar).
+    '.xml', '.plist', '.properties',
   };
 
   static final _testPathPattern = RegExp(

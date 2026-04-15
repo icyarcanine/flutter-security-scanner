@@ -313,6 +313,13 @@ void main() {
   );
 
   _runCase(
+    name: 'platform_security_deep_app',
+    includeSuggestions: false,
+    expectedCodes: {'platform-security'},
+    failures: failures,
+  );
+
+  _runCase(
     name: 'webview_insecure_app',
     includeSuggestions: false,
     expectedCodes: {'webview-security'},
