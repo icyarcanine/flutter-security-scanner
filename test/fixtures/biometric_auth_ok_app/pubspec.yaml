@@ -1,0 +1,9 @@
+name: biometric_auth_ok_app
+description: Negative fixture for the biometric-auth rule (correctly configured local_auth).
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  local_auth: ^2.1.0

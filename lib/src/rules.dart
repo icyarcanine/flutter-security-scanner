@@ -5,6 +5,7 @@ import 'rules/config/improper_initialization_rule.dart';
 import 'rules/config/invalid_supabase_url_rule.dart';
 import 'rules/config/multiple_supabase_clients_rule.dart';
 import 'rules/config/placeholder_env_values_rule.dart';
+import 'rules/security/biometric_auth_rule.dart';
 import 'rules/security/client_side_trust_rule.dart';
 import 'rules/security/committed_env_rule.dart';
 import 'rules/security/file_upload_validation_rule.dart';
@@ -60,6 +61,7 @@ List<Rule> buildDefaultRules({required bool includeSuggestions}) {
     const UnobscuredPasswordRule(),
     const GradleSecretsRule(),
     const ReleaseHardeningRule(),
+    const BiometricAuthRule(),
     // Config
     const EnvironmentVariablesRule(),
     const PlaceholderEnvValuesRule(),

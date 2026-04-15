@@ -299,6 +299,21 @@ void main() {
   );
 
   _runCase(
+    name: 'biometric_auth_app',
+    includeSuggestions: false,
+    expectedCodes: {'biometric-auth'},
+    failures: failures,
+  );
+
+  _runCase(
+    name: 'biometric_auth_ok_app',
+    includeSuggestions: false,
+    expectedCodes: const {},
+    expectedIssueCount: 0,
+    failures: failures,
+  );
+
+  _runCase(
     name: 'weak_crypto_app',
     includeSuggestions: false,
     expectedCodes: {'weak-crypto'},
