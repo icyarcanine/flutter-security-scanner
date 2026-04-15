@@ -31,8 +31,19 @@ class PathTraversalRule extends Rule {
   );
 
   /// Sanitization patterns that indicate the developer validates the path.
+  ///
+  /// The previous version of this list included a bare `\.\.` regex "to
+  /// detect `..` traversal awareness". That pattern also matches Dart's
+  /// cascade operator (`file..createSync()`, `path..trim()`), so virtually
+  /// every file that used cascades was silently treated as already-sanitized
+  /// — a catastrophic false negative. We now look only for patterns that
+  /// clearly target path components: a `..` inside a string literal, or a
+  /// `..` followed by a path separator.
   static final _sanitizationPatterns = [
-    RegExp(r'''\.\.'''), // Check for .. traversal
+    // Traversal marker inside a string literal: `"\.\."`, `'..'`, etc.
+    RegExp(r'''['"]\.\.['"]'''),
+    // Traversal marker in a path fragment: `"../"`, `"..\\"`.
+    RegExp(r'''\.\.[\\/]'''),
     RegExp(
       r'''canonicalize|normalize|sanitize|validate''',
       caseSensitive: false,
@@ -57,6 +68,7 @@ class PathTraversalRule extends Rule {
 
   void _checkPattern(ScannedFile file, RegExp pattern, List<Finding> findings) {
     for (final match in pattern.allMatches(file.content)) {
+      if (isOffsetCommented(file, match.start)) continue;
       final line = file.lineForOffset(match.start);
       if (isCommentLine(file.lines[line - 1])) continue;
 

@@ -1,15 +1,22 @@
 # Flutter Supabase Helper — Hybrid SAST Engine
 
-A static application security testing (SAST) tool available as a VS Code extension and headless CLI. Detects security vulnerabilities, hardcoded secrets, and misconfigurations across multiple languages using a three-stage analysis pipeline.
+A static application security testing (SAST) toolkit for Flutter + Supabase projects. The repository ships **two separate scanners** that share the same finding codes but run different engines:
+
+| Component | Location | Engine | When to use it |
+|-----------|----------|--------|----------------|
+| **VS Code extension** | `vscode-extension/` | Regex **+** tree-sitter AST **+** intra-procedural taint tracking (TypeScript, Node.js, `web-tree-sitter@0.21.0`) | Day-to-day authoring — inline quick fixes, AST/REGEX badges, taint-confirmed findings |
+| **Dart CLI** | `bin/fluttersupabasehelper.dart` | Regex-only, Flutter-/Supabase-specific rules (Dart) | CI gating on Flutter apps, headless scans, local `dart run` |
+
+The Dart CLI deliberately **does not** use tree-sitter or taint tracking. It is a fast, zero-dependency lint pass that complements `dart analyze` with Flutter- and Supabase-specific checks (missing RLS awareness, committed `.env`, unobscured password fields, weak platform manifests, etc.). Everything under the "Analysis Pipeline", "Taint Model", and "Confidence Levels" sections below describes the **VS Code extension engine**, not the CLI.
 
 ## What It Detects
 
-- **Injection flaws** — SQL injection, command injection, XSS, unsafe eval (source-to-sink taint confirmed)
+- **Injection flaws** — SQL injection, command injection, XSS, unsafe eval (source-to-sink taint confirmed, extension only)
 - **Hardcoded secrets** — AWS keys, private keys, JWT tokens, high-entropy strings
 - **Supabase misconfigurations** — missing RLS, insecure storage rules, committed `.env` files
 - **Unsafe patterns** — sensitive logging, debug artifacts, client-side trust violations
 
-## Supported Languages
+## Supported Languages (VS Code extension)
 
 | Tier | Languages | Analysis |
 |------|-----------|----------|
@@ -17,7 +24,7 @@ A static application security testing (SAST) tool available as a VS Code extensi
 | **AST** | Python, Go, Java | Regex + AST structural patterns |
 | **Regex** | SQL, YAML, JSON, `.env` | Heuristic rules only |
 
-## Analysis Pipeline
+## Analysis Pipeline (VS Code extension)
 
 1. **Regex** — fast heuristic pass across all files
 2. **AST** — selective parsing via `web-tree-sitter` WASM grammars
@@ -45,6 +52,22 @@ The taint tracker performs intra-procedural source-to-sink analysis with the fol
 | **LOW** | Regex / entropy heuristic | Higher — informational |
 
 ## CLI Usage
+
+### Dart CLI (regex-only, ships from the repo root)
+
+The Dart CLI is the recommended path for scanning a Flutter + Supabase app from CI or a terminal without Node.js. It loads the project, runs the rule set in `lib/src/rules/`, and prints human-readable findings.
+
+```bash
+dart run fluttersupabasehelper              # scan the current directory
+dart run fluttersupabasehelper ./my-project # scan a specific path
+dart run fluttersupabasehelper --no-suggestions
+```
+
+Exit code `1` when any non-suggestion finding is reported, `0` otherwise — drop it straight into CI.
+
+The Dart CLI does **not** perform AST parsing or taint tracking. It uses targeted regular expressions plus a small amount of statement-level context (nearest `.from(...)` call, nearby filter methods, comment-line heuristics). That keeps it fast (< 1 s on a typical Flutter repo) and hermetic, at the cost of missing data-flow vulnerabilities that only surface across multiple statements. For those, use the VS Code extension.
+
+### Node CLI (ships with the VS Code extension)
 
 ```bash
 npx flutter-supabase-helper scan ./my-project

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { DiagnosticsProvider } from './diagnostics/diagnosticsProvider';
 import { scanWorkspace } from './commands/scanWorkspace';
 import { scanFile } from './commands/scanFile';
+import { runSecurityChecks } from './commands/runSecurityChecks';
 import { PanelProvider } from './webview/panelProvider';
 import { SastCodeActionProvider } from './codeActions';
 
@@ -12,15 +13,22 @@ export function activate(context: vscode.ExtensionContext) {
     PanelProvider.initialize(context);
     context.subscriptions.push(diagnostics);
 
-    // Status bar item (stable API, works across all VS Code forks)
+    // Status bar item (stable API, works across all VS Code forks).
+    // The button now binds to the friendlier `runSecurityChecks` command so a
+    // single click runs every rule and pops a summary toast.
     const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    statusBar.command = 'flutter-supabase-helper.scanWorkspace';
+    statusBar.command = 'flutter-supabase-helper.runSecurityChecks';
     statusBar.text = '$(shield) Scan';
-    statusBar.tooltip = 'Flutter Supabase Helper: Scan Workspace';
+    statusBar.tooltip = 'Flutter Supabase Helper: Run Security Checks';
     context.subscriptions.push(statusBar);
 
-    // Register commands
+    // Register commands. `runSecurityChecks` is the primary one-click entry
+    // point for new developers; `scanWorkspace` and `scanFile` remain for
+    // backward compatibility with anything bound to the older command IDs.
     context.subscriptions.push(
+      vscode.commands.registerCommand('flutter-supabase-helper.runSecurityChecks', () =>
+        runSecurityChecks(diagnostics, statusBar)
+      ),
       vscode.commands.registerCommand('flutter-supabase-helper.scanWorkspace', () =>
         scanWorkspace(diagnostics, statusBar)
       ),
@@ -55,7 +63,9 @@ export function activate(context: vscode.ExtensionContext) {
       console.error('[SAST] Code actions unavailable in this editor — quick fixes disabled.');
     }
 
-    // Show status bar if workspace is open
+    // Show status bar whenever a workspace is open. Previously it was only
+    // visible after a supported-language editor was activated, which made the
+    // one-click button hard to find for new developers.
     if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
       statusBar.show();
 
@@ -69,20 +79,18 @@ export function activate(context: vscode.ExtensionContext) {
           1
         ).then((uris) => {
           if (uris.length > 0) {
-            vscode.commands.executeCommand('flutter-supabase-helper.scanWorkspace');
+            vscode.commands.executeCommand('flutter-supabase-helper.runSecurityChecks');
           }
         });
       }
     }
 
-    // Show status bar when switching to any supported language
+    // Re-show the status bar when a new workspace folder is added, so the
+    // shield button stays visible even if VS Code recycled the bar item.
     context.subscriptions.push(
-      vscode.window.onDidChangeActiveTextEditor(editor => {
-        if (editor) {
-          const lang = editor.document.languageId;
-          if (['dart', 'javascript', 'typescript', 'python', 'go', 'java'].includes(lang)) {
-            statusBar.show();
-          }
+      vscode.workspace.onDidChangeWorkspaceFolders(() => {
+        if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+          statusBar.show();
         }
       })
     );

@@ -44,6 +44,45 @@ class WebViewSecurityRule extends Rule {
     r'''\.loadUrl\s*\(\s*(?:widget\.|args\.|params\[|queryParameters\[|\$)''',
   );
 
+  /// `javascript:` URI fed to a WebView loader. This is a direct script-
+  /// execution channel and is essentially never legitimate — even with a
+  /// hardcoded literal it pollutes the page with attacker-controlled DOM.
+  static final _javascriptUriPattern = RegExp(
+    r'''(?:loadUrl|loadRequest|load)\s*\(\s*(?:Uri\.parse\s*\(\s*)?['"]\s*javascript:''',
+    caseSensitive: false,
+  );
+
+  /// Dynamic script execution: `runJavaScript($foo)`,
+  /// `runJavaScriptReturningResult("alert($x)")`,
+  /// `evaluateJavascript('…$bar…')`. Any time the executed source is built
+  /// from interpolation, the WebView is one tainted variable away from XSS.
+  ///
+  /// We detect interpolation by looking for a `$` character anywhere in the
+  /// first 500 chars of the argument list. A more precise scan would have to
+  /// understand Dart string-literal boundaries; the cost is not worth it for
+  /// a rule that just needs to flag suspicious code for a human to review.
+  static final _dynamicEvalPattern = RegExp(
+    r'''(?:runJavaScript|runJavaScriptReturningResult|evaluateJavascript)\s*\([^)]{0,500}\$''',
+  );
+
+  /// String-concat variant: `runJavaScript('alert("' + userInput + '")')`.
+  /// Catches the common builder pattern that escapes the simple `$` test.
+  static final _concatEvalPattern = RegExp(
+    r'''(?:runJavaScript|runJavaScriptReturningResult|evaluateJavascript)\s*\([^)]{0,500}['"][^)]{0,500}\+\s*[a-zA-Z_]''',
+  );
+
+  /// `loadHtmlString` with interpolated HTML — the `<script>` tag inside the
+  /// page sees whatever the developer glued in, so user-supplied values become
+  /// executable script.
+  static final _dynamicHtmlPattern = RegExp(
+    r'''loadHtmlString\s*\([^)]{0,500}\$''',
+  );
+
+  /// String-concat variant of `loadHtmlString` for the same reason as above.
+  static final _concatHtmlPattern = RegExp(
+    r'''loadHtmlString\s*\([^)]{0,500}['"][^)]{0,500}\+\s*[a-zA-Z_]''',
+  );
+
   @override
   List<Finding> evaluate(ProjectContext context) {
     final findings = <Finding>[];
@@ -57,6 +96,8 @@ class WebViewSecurityRule extends Rule {
       findings.addAll(_checkDebugMode(file));
       findings.addAll(_checkFileAccess(file));
       findings.addAll(_checkDynamicUrlLoad(file));
+      findings.addAll(_checkJavascriptUri(file));
+      findings.addAll(_checkDynamicScriptExecution(file));
     }
 
     return findings;
@@ -80,6 +121,7 @@ class WebViewSecurityRule extends Rule {
       _androidJsEnabledPattern,
     ]) {
       for (final match in pattern.allMatches(file.content)) {
+        if (isOffsetCommented(file, match.start)) continue;
         final line = file.lineForOffset(match.start);
         if (isCommentLine(file.lines[line - 1])) continue;
 
@@ -111,6 +153,7 @@ class WebViewSecurityRule extends Rule {
     final findings = <Finding>[];
 
     for (final match in _debugEnabledPattern.allMatches(file.content)) {
+      if (isOffsetCommented(file, match.start)) continue;
       final line = file.lineForOffset(match.start);
       if (isCommentLine(file.lines[line - 1])) continue;
 
@@ -140,6 +183,7 @@ class WebViewSecurityRule extends Rule {
     final findings = <Finding>[];
 
     for (final match in _fileAccessPattern.allMatches(file.content)) {
+      if (isOffsetCommented(file, match.start)) continue;
       final line = file.lineForOffset(match.start);
       if (isCommentLine(file.lines[line - 1])) continue;
 
@@ -169,6 +213,7 @@ class WebViewSecurityRule extends Rule {
     final findings = <Finding>[];
 
     for (final match in _dynamicUrlLoadPattern.allMatches(file.content)) {
+      if (isOffsetCommented(file, match.start)) continue;
       final line = file.lineForOffset(match.start);
       if (isCommentLine(file.lines[line - 1])) continue;
 
@@ -189,6 +234,82 @@ class WebViewSecurityRule extends Rule {
           line: line,
         ),
       );
+    }
+
+    return findings;
+  }
+
+  List<Finding> _checkJavascriptUri(ScannedFile file) {
+    final findings = <Finding>[];
+
+    for (final match in _javascriptUriPattern.allMatches(file.content)) {
+      if (isOffsetCommented(file, match.start)) continue;
+      final line = file.lineForOffset(match.start);
+      if (isCommentLine(file.lines[line - 1])) continue;
+
+      findings.add(
+        Finding(
+          severity: FindingSeverity.high,
+          confidence: FindingConfidence.high,
+          category: FindingCategory.security,
+          code: code,
+          message: 'WebView loads a javascript: URI (XSS sink)',
+          fix:
+              'Never load javascript: URIs through loadUrl/loadRequest. '
+              'Use runJavaScript() with a static, audited script and pass '
+              'data via channel arguments instead of string-building.',
+          risk:
+              'javascript: URIs execute arbitrary script in the page context. '
+              'Combined with any user-controlled fragment this is a direct XSS.',
+          filePath: file.relativePath,
+          line: line,
+        ),
+      );
+    }
+
+    return findings;
+  }
+
+  List<Finding> _checkDynamicScriptExecution(ScannedFile file) {
+    final findings = <Finding>[];
+
+    // Dedupe per (line, code) so the eval and concat patterns hitting the
+    // same line don't double-report.
+    final reported = <int>{};
+
+    for (final pattern in [
+      _dynamicEvalPattern,
+      _concatEvalPattern,
+      _dynamicHtmlPattern,
+      _concatHtmlPattern,
+    ]) {
+      for (final match in pattern.allMatches(file.content)) {
+        if (isOffsetCommented(file, match.start)) continue;
+        final line = file.lineForOffset(match.start);
+        if (isCommentLine(file.lines[line - 1])) continue;
+        if (!reported.add(line)) continue;
+
+        findings.add(
+          Finding(
+            severity: FindingSeverity.high,
+            confidence: FindingConfidence.medium,
+            category: FindingCategory.security,
+            code: code,
+            message:
+                'WebView executes dynamically built JavaScript or HTML',
+            fix:
+                'Do not interpolate values into runJavaScript / evaluateJavascript / '
+                'loadHtmlString. Use postMessage channels (JavaScriptChannel) and '
+                'jsonEncode() the payload, or build the script from a static template '
+                'with parameterised channel calls.',
+            risk:
+                'Interpolated JavaScript/HTML executes attacker-controlled values as '
+                'code, enabling XSS, cookie theft, and bridge escape.',
+            filePath: file.relativePath,
+            line: line,
+          ),
+        );
+      }
     }
 
     return findings;

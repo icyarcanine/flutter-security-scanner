@@ -33,6 +33,11 @@
   "contributes": {
     "commands": [
       {
+        "command": "flutter-supabase-helper.runSecurityChecks",
+        "title": "Flutter Supabase Helper: Run Security Checks",
+        "icon": "$(shield)"
+      },
+      {
         "command": "flutter-supabase-helper.scanWorkspace",
         "title": "Flutter Supabase Helper: Scan Workspace",
         "icon": "$(shield)"
@@ -60,8 +65,19 @@
     "menus": {
       "editor/title": [
         {
-          "command": "flutter-supabase-helper.scanWorkspace",
+          "command": "flutter-supabase-helper.runSecurityChecks",
           "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "flutter-supabase-helper.runSecurityChecks"
+        },
+        {
+          "command": "flutter-supabase-helper.scanWorkspace"
+        },
+        {
+          "command": "flutter-supabase-helper.scanFile"
         }
       ]
     }

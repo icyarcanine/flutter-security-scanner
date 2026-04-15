@@ -101,4 +101,22 @@ class Finding {
     }
     return buffer.toString();
   }
+
+  /// Stable JSON representation suitable for `--json` CLI output and CI
+  /// pipelines. Keys are intentionally snake_case so downstream tools written
+  /// in any language can parse them without re-mapping.
+  Map<String, Object?> toJson() {
+    return <String, Object?>{
+      'code': code,
+      'category': category.label.toLowerCase(),
+      'severity': severity?.label.toLowerCase(),
+      'confidence': confidence?.label.toLowerCase(),
+      'message': message,
+      'fix': fix,
+      if (risk != null) 'risk': risk,
+      if (filePath != null) 'file': filePath,
+      if (line != null) 'line': line,
+      'is_suggestion': isSuggestion,
+    };
+  }
 }
