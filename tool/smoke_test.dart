@@ -137,6 +137,13 @@ void main() {
   );
 
   _runCase(
+    name: 'supabase_rpc_injection_app',
+    includeSuggestions: false,
+    expectedCodes: {'supabase-rpc-injection'},
+    failures: failures,
+  );
+
+  _runCase(
     name: 'private_files_bucket_app',
     includeSuggestions: false,
     expectedCodes: const {},
