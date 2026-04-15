@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math';
 
 import '../../models/finding.dart';
@@ -31,16 +32,23 @@ class GenericSecretRule extends Rule {
     'packages.lock.json',
   };
 
-  static const _entropySkipExtensions = {
+  /// Binary / encoded file formats where neither targeted regexes nor the
+  /// entropy heuristic make sense. These are skipped entirely.
+  static const _binarySkipExtensions = {
     '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico',
     '.woff', '.woff2', '.ttf', '.eot',
     '.zip', '.tar', '.gz', '.bz2', '.7z', '.jar',
     '.map',
+  };
+
+  /// Text formats where targeted vendor regexes (JWT, ghp_, AKIA, …) still
+  /// run, but the entropy heuristic is too noisy to be useful. Covers
+  /// documentation and markup/config files where quoted values are schema
+  /// keys, resource identifiers, or package names — not programming-language
+  /// string literals. Entropy here is almost always a false positive (e.g.
+  /// `android.permission.REQUEST_INSTALL_PACKAGES` clears the 4.5 bar).
+  static const _entropySkipExtensions = {
     '.md', '.txt', '.rst', // documentation
-    // Markup / config where quoted values are schema keys, resource
-    // identifiers, or package names — not programming-language string
-    // literals. Entropy here is almost always a false positive (e.g.
-    // `android.permission.REQUEST_INSTALL_PACKAGES` clears the 4.5 bar).
     '.xml', '.plist', '.properties',
   };
 
@@ -161,9 +169,11 @@ class GenericSecretRule extends Rule {
     final findings = <Finding>[];
 
     for (final file in context.files) {
-      if (_isSkippedExtension(file)) continue;
+      if (_isBinaryExtension(file)) continue;
 
-      // Targeted patterns run on all text files.
+      // Targeted patterns run on all text files — including docs, XML, and
+      // config. A leaked vendor token is still a leaked token regardless of
+      // which file it hides in.
       for (final pattern in _patterns) {
         for (final match in pattern.regex.allMatches(file.content)) {
           // Use the STRICT placeholder filter for targeted patterns. The
@@ -176,6 +186,31 @@ class GenericSecretRule extends Rule {
           final line = file.lineForOffset(match.start);
           if (isOffsetCommented(file, match.start) ||
               isCommentLine(file.lines[line - 1])) continue;
+
+          // JWT special case: decode the payload so a Supabase service_role
+          // token gets the critical-severity treatment it deserves, while a
+          // harmless anon token is downgraded. The dedicated
+          // ServiceRoleKeyRule handles Dart/env/web client files — we
+          // intentionally still run the generic path so docs, YAML, JSON,
+          // and similar configuration files also get coverage.
+          if (pattern.type == 'JWT Token') {
+            final token = match.group(0)!;
+            final classification = _classifyJwt(token);
+            findings.add(
+              Finding(
+                severity: classification.severity,
+                confidence: classification.confidence,
+                category: FindingCategory.security,
+                code: code,
+                message: classification.message,
+                fix: classification.fix,
+                risk: classification.risk,
+                filePath: file.relativePath,
+                line: line,
+              ),
+            );
+            continue;
+          }
 
           findings.add(
             Finding(
@@ -195,7 +230,8 @@ class GenericSecretRule extends Rule {
         }
       }
 
-      // Entropy scan — skip noisy files.
+      // Entropy scan — skip noisy files, doc/markup extensions, and tests.
+      if (_entropySkipExtensions.contains(file.extension)) continue;
       if (_isEntropySkipped(file)) continue;
 
       for (final match in _literalPattern.allMatches(file.content)) {
@@ -230,8 +266,8 @@ class GenericSecretRule extends Rule {
     return findings;
   }
 
-  bool _isSkippedExtension(ScannedFile file) {
-    return _entropySkipExtensions.contains(file.extension);
+  bool _isBinaryExtension(ScannedFile file) {
+    return _binarySkipExtensions.contains(file.extension);
   }
 
   bool _isEntropySkipped(ScannedFile file) {
@@ -322,10 +358,78 @@ class GenericSecretRule extends Rule {
 
     return entropy >= 4.5;
   }
+
+  /// Decodes a JWT payload and differentiates Supabase service_role tokens
+  /// from anon tokens so generic_secret reports the right severity in docs,
+  /// YAML, JSON and any other non-Dart surface that ServiceRoleKeyRule does
+  /// not cover. Any decode failure falls back to the generic JWT finding.
+  static _JwtClassification _classifyJwt(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return _defaultJwtClassification;
+      final payloadSegment = parts[1];
+      if (payloadSegment.isEmpty) return _defaultJwtClassification;
+      final decodedBytes = base64Url.decode(base64.normalize(payloadSegment));
+      final claims = jsonDecode(utf8.decode(decodedBytes));
+      if (claims is! Map<String, dynamic>) return _defaultJwtClassification;
+
+      final role = claims['role'];
+      if (role == 'service_role') {
+        return const _JwtClassification(
+          severity: FindingSeverity.high,
+          confidence: FindingConfidence.high,
+          message: 'Hardcoded Supabase service_role JWT detected',
+          fix:
+              'Rotate this key immediately and remove it from the repository. The service_role key bypasses Row Level Security and grants unrestricted database access — it must NEVER be shipped in clients, docs, fixtures, or configuration files. Use environment variables on a trusted backend only.',
+          risk:
+              'A leaked service_role JWT bypasses every Row Level Security policy and gives unrestricted read/write/delete access to the entire Supabase project. An attacker holding this token can exfiltrate user data, tamper with records, or destroy tables.',
+        );
+      }
+      if (role == 'anon') {
+        return const _JwtClassification(
+          severity: FindingSeverity.low,
+          confidence: FindingConfidence.high,
+          message: 'Supabase anon JWT detected',
+          fix:
+              'Anon keys are intended to be shipped to clients. Confirm this key matches the target project and that Row Level Security is enabled on every table it can reach.',
+          risk:
+              'Anon keys are only safe when RLS is fully configured. A project with missing or permissive RLS policies will leak data through the anon role.',
+        );
+      }
+      return _defaultJwtClassification;
+    } catch (_) {
+      return _defaultJwtClassification;
+    }
+  }
+
+  static const _defaultJwtClassification = _JwtClassification(
+    severity: FindingSeverity.high,
+    confidence: FindingConfidence.low,
+    message: 'Potential hardcoded JWT Token detected',
+    fix: 'Move this JWT Token to environment variables or a secure vault.',
+    risk:
+        'Hardcoded secrets can be extracted from source code and binaries, leading to system compromise.',
+  );
 }
 
 class _SecretPattern {
   const _SecretPattern(this.regex, this.type);
   final RegExp regex;
   final String type;
+}
+
+class _JwtClassification {
+  const _JwtClassification({
+    required this.severity,
+    required this.confidence,
+    required this.message,
+    required this.fix,
+    required this.risk,
+  });
+
+  final FindingSeverity severity;
+  final FindingConfidence confidence;
+  final String message;
+  final String fix;
+  final String risk;
 }

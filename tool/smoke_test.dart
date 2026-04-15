@@ -130,6 +130,13 @@ void main() {
   );
 
   _runCase(
+    name: 'supabase_service_role_in_docs_app',
+    includeSuggestions: false,
+    expectedCodes: {'generic-secret'},
+    failures: failures,
+  );
+
+  _runCase(
     name: 'private_files_bucket_app',
     includeSuggestions: false,
     expectedCodes: const {},
