@@ -1,0 +1,9 @@
+name: sqflite_unencrypted_app
+description: Fixture for insecure-storage rule (sqflite without SQLCipher).
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  sqflite: ^2.3.0

@@ -314,6 +314,36 @@ void main() {
   );
 
   _runCase(
+    name: 'sqflite_unencrypted_app',
+    includeSuggestions: false,
+    expectedCodes: {'insecure-storage'},
+    failures: failures,
+  );
+
+  _runCase(
+    name: 'sqflite_sqlcipher_ok_app',
+    includeSuggestions: false,
+    expectedCodes: const {},
+    expectedIssueCount: 0,
+    failures: failures,
+  );
+
+  _runCase(
+    name: 'hive_unencrypted_app',
+    includeSuggestions: false,
+    expectedCodes: {'insecure-storage'},
+    failures: failures,
+  );
+
+  _runCase(
+    name: 'hive_encrypted_ok_app',
+    includeSuggestions: false,
+    expectedCodes: const {},
+    expectedIssueCount: 0,
+    failures: failures,
+  );
+
+  _runCase(
     name: 'weak_crypto_app',
     includeSuggestions: false,
     expectedCodes: {'weak-crypto'},

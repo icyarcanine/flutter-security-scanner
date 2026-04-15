@@ -1,0 +1,9 @@
+name: sqflite_sqlcipher_ok_app
+description: Negative fixture — sqflite with SQLCipher is acceptable.
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  sqflite_sqlcipher: ^2.2.0
