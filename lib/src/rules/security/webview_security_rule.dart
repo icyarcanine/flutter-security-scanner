@@ -83,6 +83,41 @@ class WebViewSecurityRule extends Rule {
     r'''loadHtmlString\s*\([^)]{0,500}['"][^)]{0,500}\+\s*[a-zA-Z_]''',
   );
 
+  /// `content://` access enabled — lets the WebView pull data from any
+  /// ContentProvider on the device.
+  static final _contentAccessPattern = RegExp(
+    r'''setAllowContentAccess\s*\(\s*true\s*\)|allowContentAccess\s*:\s*true''',
+  );
+
+  /// Universal-origin access from file URLs — classic same-origin bypass.
+  static final _universalFileAccessPattern = RegExp(
+    r'''(?:setAllowUniversalAccessFromFileURLs|allowUniversalAccessFromFileURLs)\s*(?::\s*|\(\s*)true''',
+  );
+
+  /// `setAllowFileAccessFromFileURLs(true)` — can read cross-origin file://
+  /// URLs.
+  static final _fileFromFilePattern = RegExp(
+    r'''(?:setAllowFileAccessFromFileURLs|allowFileAccessFromFileURLs)\s*(?::\s*|\(\s*)true''',
+  );
+
+  /// Mixed content mode always allow — HTTP subresources on HTTPS pages.
+  static final _mixedContentPattern = RegExp(
+    r'''MIXED_CONTENT_ALWAYS_ALLOW|mixedContentMode\s*:\s*MixedContentMode\.alwaysAllow''',
+  );
+
+  /// JavaScript channel registration. Any `JavaScriptChannel(name: …)`
+  /// instance exposes native method handlers to page scripts.
+  static final _javaScriptChannelPattern = RegExp(
+    r'''JavaScriptChannel\s*\(''',
+  );
+
+  /// Navigation guard indicator — if either a NavigationDelegate or an
+  /// explicit onNavigationRequest handler exists in the same file, the
+  /// developer at least has a chokepoint to validate origins.
+  static final _navGuardPattern = RegExp(
+    r'''NavigationDelegate\s*\(|onNavigationRequest\s*:|shouldOverrideUrlLoading\s*:''',
+  );
+
   @override
   List<Finding> evaluate(ProjectContext context) {
     final findings = <Finding>[];
@@ -98,8 +133,175 @@ class WebViewSecurityRule extends Rule {
       findings.addAll(_checkDynamicUrlLoad(file));
       findings.addAll(_checkJavascriptUri(file));
       findings.addAll(_checkDynamicScriptExecution(file));
+      findings.addAll(_checkContentAccess(file));
+      findings.addAll(_checkUniversalFileAccess(file));
+      findings.addAll(_checkMixedContent(file));
+      findings.addAll(_checkJavaScriptChannelOrigin(file));
     }
 
+    return findings;
+  }
+
+  List<Finding> _checkContentAccess(ScannedFile file) {
+    final findings = <Finding>[];
+    for (final match in _contentAccessPattern.allMatches(file.content)) {
+      if (isOffsetCommented(file, match.start)) continue;
+      final line = file.lineForOffset(match.start);
+      if (isCommentLine(file.lines[line - 1])) continue;
+      findings.add(
+        Finding(
+          severity: FindingSeverity.high,
+          confidence: FindingConfidence.high,
+          category: FindingCategory.security,
+          code: code,
+          message: 'WebView has content:// URI access enabled',
+          fix:
+              'Disable setAllowContentAccess. If you genuinely need to load '
+              'data from a ContentProvider, load it yourself and pass the '
+              'bytes into the WebView instead of granting the page '
+              'unrestricted ContentResolver access.',
+          risk:
+              'Allowing content:// in a WebView lets scripts inside the '
+              'loaded page pull data from any ContentProvider the host app '
+              'can see — contacts, calendar, shared storage, other app '
+              'databases.',
+          filePath: file.relativePath,
+          line: line,
+        ),
+      );
+    }
+    return findings;
+  }
+
+  List<Finding> _checkUniversalFileAccess(ScannedFile file) {
+    final findings = <Finding>[];
+    for (final match in _universalFileAccessPattern.allMatches(file.content)) {
+      if (isOffsetCommented(file, match.start)) continue;
+      final line = file.lineForOffset(match.start);
+      if (isCommentLine(file.lines[line - 1])) continue;
+      findings.add(
+        Finding(
+          severity: FindingSeverity.high,
+          confidence: FindingConfidence.high,
+          category: FindingCategory.security,
+          code: code,
+          message:
+              'WebView enables universal cross-origin access from file:// URLs',
+          fix:
+              'Set setAllowUniversalAccessFromFileURLs to false. Cross-origin '
+              'reads from file:// URLs break the same-origin model and let a '
+              'local HTML page read any other file:// URL on the device.',
+          risk:
+              'With universal file access, a page loaded from file:// can '
+              'fetch() any other local file the app can see — arbitrary '
+              'read of app-private storage from whatever HTML the WebView '
+              'renders.',
+          filePath: file.relativePath,
+          line: line,
+        ),
+      );
+    }
+    for (final match in _fileFromFilePattern.allMatches(file.content)) {
+      if (isOffsetCommented(file, match.start)) continue;
+      final line = file.lineForOffset(match.start);
+      if (isCommentLine(file.lines[line - 1])) continue;
+      findings.add(
+        Finding(
+          severity: FindingSeverity.medium,
+          confidence: FindingConfidence.high,
+          category: FindingCategory.security,
+          code: code,
+          message:
+              'WebView allows cross-origin file access between file:// pages',
+          fix:
+              'Disable setAllowFileAccessFromFileURLs. Even without the '
+              'universal variant, cross-origin reads between local pages '
+              'are rarely what you want.',
+          risk:
+              'A local page can fetch neighbouring file:// resources, '
+              'leaking any data the app left in its private directories.',
+          filePath: file.relativePath,
+          line: line,
+        ),
+      );
+    }
+    return findings;
+  }
+
+  List<Finding> _checkMixedContent(ScannedFile file) {
+    final findings = <Finding>[];
+    for (final match in _mixedContentPattern.allMatches(file.content)) {
+      if (isOffsetCommented(file, match.start)) continue;
+      final line = file.lineForOffset(match.start);
+      if (isCommentLine(file.lines[line - 1])) continue;
+      findings.add(
+        Finding(
+          severity: FindingSeverity.medium,
+          confidence: FindingConfidence.high,
+          category: FindingCategory.security,
+          code: code,
+          message:
+              'WebView mixed-content mode is set to ALWAYS_ALLOW — HTTP '
+              'resources load inside HTTPS pages',
+          fix:
+              'Switch to MIXED_CONTENT_NEVER_ALLOW (or '
+              'MixedContentMode.neverAllow). If a specific HTTP endpoint is '
+              'required, proxy it through HTTPS instead of lowering the '
+              'WebView policy globally.',
+          risk:
+              'Allowing HTTP subresources on an HTTPS page gives a network '
+              'attacker an injection point — any script, stylesheet, or '
+              'image they can intercept runs inside the secure page.',
+          filePath: file.relativePath,
+          line: line,
+        ),
+      );
+    }
+    return findings;
+  }
+
+  /// A JavaScriptChannel exposes Dart methods to the loaded page. If the
+  /// file registers one but does NOT also contain a NavigationDelegate or
+  /// onNavigationRequest handler, there is no place to pin the channel to
+  /// a trusted origin — any redirect into attacker HTML inherits the
+  /// bridge and can call the native handler.
+  List<Finding> _checkJavaScriptChannelOrigin(ScannedFile file) {
+    final findings = <Finding>[];
+    final matches = _javaScriptChannelPattern.allMatches(file.content).toList();
+    if (matches.isEmpty) return findings;
+    if (_navGuardPattern.hasMatch(file.content)) return findings;
+
+    // Only emit once per file — this is a structural observation, not a
+    // per-call-site complaint.
+    final first = matches.first;
+    if (isOffsetCommented(file, first.start)) return findings;
+    final line = file.lineForOffset(first.start);
+    if (isCommentLine(file.lines[line - 1])) return findings;
+
+    findings.add(
+      Finding(
+        severity: FindingSeverity.high,
+        confidence: FindingConfidence.medium,
+        category: FindingCategory.security,
+        code: code,
+        message:
+            'JavaScriptChannel is registered without a NavigationDelegate '
+            'or onNavigationRequest guard',
+        fix:
+            'Wrap the WebViewController with a NavigationDelegate and '
+            'reject navigations whose `request.url` is not on your '
+            'allow-list. Without the guard, any redirect into attacker '
+            'HTML inherits the channel and can call the native handler.',
+        risk:
+            'A JavaScript channel is a native-code bridge exposed to '
+            'whatever page the WebView is currently rendering. If the '
+            'WebView can be steered to third-party HTML (open redirect, '
+            'cross-origin link, http→https downgrade) that page becomes '
+            'able to invoke your native handlers.',
+        filePath: file.relativePath,
+        line: line,
+      ),
+    );
     return findings;
   }
 

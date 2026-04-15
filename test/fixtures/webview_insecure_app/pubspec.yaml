@@ -1,4 +1,5 @@
 name: webview_insecure_app
 dependencies:
   webview_flutter: ^4.0.0
+  flutter_inappwebview: ^6.0.0
   supabase_flutter: ^1.0.0
