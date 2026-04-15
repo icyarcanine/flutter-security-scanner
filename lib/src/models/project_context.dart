@@ -63,7 +63,10 @@ class ProjectContext {
     '.cjs',
   };
 
-  static ProjectContext load(String rootPath) {
+  static ProjectContext load(
+    String rootPath, {
+    bool Function(String relativePath)? excludePath,
+  }) {
     final rootDirectory = Directory(rootPath).absolute;
     final files = <ScannedFile>[];
 
@@ -81,6 +84,12 @@ class ProjectContext {
           if (_ignoredDirectories.contains(entityName)) {
             continue;
           }
+          // Also honour user-configured directory excludes so the walker
+          // does not recurse into huge trees we're going to drop anyway.
+          final dirRelative = relativePath(rootDirectory.path, entity.path);
+          if (excludePath != null && excludePath(dirRelative)) {
+            continue;
+          }
           walk(entity);
           continue;
         }
@@ -91,6 +100,9 @@ class ProjectContext {
 
         final relative = relativePath(rootDirectory.path, entity.path);
         if (!_shouldScan(relative)) {
+          continue;
+        }
+        if (excludePath != null && excludePath(relative)) {
           continue;
         }
 

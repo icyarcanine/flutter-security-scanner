@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'config/scanner_config.dart';
 import 'models/finding.dart';
 import 'models/project_context.dart';
 import 'rule.dart';
@@ -13,17 +14,33 @@ class ProjectScanReport {
 }
 
 class ProjectScanner {
-  const ProjectScanner({this.includeSuggestions = true});
+  const ProjectScanner({
+    this.includeSuggestions = true,
+    this.config = ScannerConfig.empty,
+  });
 
   final bool includeSuggestions;
 
+  /// In-repo configuration (`.fshrc.yaml` / `.fshrc.json`). When
+  /// [ScannerConfig.empty] is used the scanner behaves exactly as before
+  /// config support landed — all discovered rules run, no severity remap,
+  /// no path filtering.
+  final ScannerConfig config;
+
   ProjectScanReport scan(String rootPath) {
-    final context = ProjectContext.load(rootPath);
+    final context = ProjectContext.load(
+      rootPath,
+      excludePath: config.excludePatterns.isEmpty
+          ? null
+          : config.isPathExcluded,
+    );
     final findings = <Finding>[];
 
-    for (final rule in buildDefaultRules(
+    final rules = buildDefaultRules(
       includeSuggestions: includeSuggestions,
-    )) {
+    ).where((rule) => !config.isRuleDisabled(rule.code));
+
+    for (final rule in rules) {
       try {
         findings.addAll(rule.evaluate(context));
       } catch (error, stackTrace) {
@@ -39,10 +56,46 @@ class ProjectScanner {
       }
     }
 
-    final dedupedFindings = _dedupe(findings);
+    final postConfig = _applyConfig(findings);
+    final dedupedFindings = _dedupe(postConfig);
     dedupedFindings.sort(_compareFindings);
 
     return ProjectScanReport(context: context, findings: dedupedFindings);
+  }
+
+  /// Applies per-rule exclude globs and severity overrides from [config].
+  /// Runs after rule evaluation so rule bodies stay agnostic of config.
+  List<Finding> _applyConfig(List<Finding> findings) {
+    if (config.severityOverrides.isEmpty &&
+        config.ruleExcludePatterns.isEmpty) {
+      return findings;
+    }
+    final result = <Finding>[];
+    for (final finding in findings) {
+      final path = finding.filePath;
+      if (path != null && config.isRulePathExcluded(finding.code, path)) {
+        continue;
+      }
+      final override = config.severityFor(finding.code);
+      if (override != null && finding.severity != null) {
+        result.add(
+          Finding(
+            category: finding.category,
+            code: finding.code,
+            message: finding.message,
+            fix: finding.fix,
+            risk: finding.risk,
+            severity: override,
+            confidence: finding.confidence,
+            filePath: finding.filePath,
+            line: finding.line,
+          ),
+        );
+        continue;
+      }
+      result.add(finding);
+    }
+    return result;
   }
 
   static Finding _internalRuleFailureFinding(Rule rule, Object error) {

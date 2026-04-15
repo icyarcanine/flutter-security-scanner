@@ -474,6 +474,15 @@ void main() {
     failures: failures,
   );
 
+  _runCase(
+    name: 'config_file_app',
+    includeSuggestions: true,
+    expectedCodes: {'supabase-signed-url-ttl'},
+    expectedIssueCount: 1,
+    failures: failures,
+  );
+  _runConfigCase(failures);
+
   _runMalformedEncodingCase(failures);
   _runSarifCase(failures);
 
@@ -496,8 +505,13 @@ void _runCase({
   required List<String> failures,
 }) {
   final path = 'test/fixtures/$name';
+  // Mirror CLI behaviour: auto-load .fshrc.{yaml,yml,json} from the fixture
+  // root so config-file fixtures exercise the real code path. Fixtures
+  // without a config file get ScannerConfig.empty (the previous behaviour).
+  final config = const ConfigLoader().loadFromRoot(path);
   final report = ProjectScanner(
     includeSuggestions: includeSuggestions,
+    config: config,
   ).scan(path);
 
   final actualCodes = report.findings.map((finding) => finding.code).toSet();
@@ -643,6 +657,81 @@ void _runSarifCase(List<String> failures) {
     }
   } catch (error, stack) {
     failures.add('sarif smoke case crashed: $error\n$stack');
+  }
+}
+
+/// Verifies that `.fshrc.yaml` is actually being applied. The fixture the
+/// case points at declares `supabase-signed-url-ttl.severity: low` and
+/// `rls-policy-suggestion: off`, so:
+///   * the finding must exist with severity LOW (not HIGH),
+///   * the suggestion rule must be silent,
+///   * the config-level `fail_on: high` must mean the LOW finding does not
+///     trigger a non-zero exit under the CLI semantics.
+void _runConfigCase(List<String> failures) {
+  const path = 'test/fixtures/config_file_app';
+  try {
+    final config = const ConfigLoader().loadFromRoot(path);
+    if (config.isEmpty) {
+      failures.add('config_file_app: expected non-empty ScannerConfig.');
+      return;
+    }
+    if (!config.isRuleDisabled('rls-policy-suggestion')) {
+      failures.add(
+        'config_file_app: `rls-policy-suggestion` should be disabled.',
+      );
+    }
+    if (config.severityFor('supabase-signed-url-ttl') !=
+        FindingSeverity.low) {
+      failures.add(
+        'config_file_app: signed-url-ttl severity override was not read.',
+      );
+    }
+    if (config.failOn != FindingSeverity.high) {
+      failures.add(
+        'config_file_app: fail_on should parse to FindingSeverity.high.',
+      );
+    }
+
+    final report = ProjectScanner(
+      includeSuggestions: true,
+      config: config,
+    ).scan(path);
+
+    final signed = report.findings.where(
+      (f) => f.code == 'supabase-signed-url-ttl',
+    );
+    if (signed.isEmpty) {
+      failures.add(
+        'config_file_app: expected signed-url-ttl finding to still fire.',
+      );
+    } else if (signed.first.severity != FindingSeverity.low) {
+      failures.add(
+        'config_file_app: severity override not applied '
+        '(got ${signed.first.severity}).',
+      );
+    }
+
+    final suggestionCount = report.findings
+        .where((f) => f.code == 'rls-policy-suggestion')
+        .length;
+    if (suggestionCount != 0) {
+      failures.add(
+        'config_file_app: disabled suggestion rule still produced '
+        '$suggestionCount finding(s).',
+      );
+    }
+
+    // Simulate the CLI's exit-code computation with effectiveFailOn=HIGH.
+    final hasFail = report.findings
+        .where((f) => !f.isSuggestion)
+        .any((f) => (f.severity?.sortOrder ?? 3) <= FindingSeverity.high.sortOrder);
+    if (hasFail) {
+      failures.add(
+        'config_file_app: LOW finding should not trip fail_on=high.',
+      );
+    }
+  } catch (error, stack) {
+    failures.add('config_file_app: smoke case crashed: $error\n$stack');
   }
 }
 

@@ -1,0 +1,10 @@
+name: config_file_app
+description: Positive fixture for .fshrc.yaml — disables one rule and downgrades another.
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_dotenv: ^5.0.0
+  supabase_flutter: ^2.0.0

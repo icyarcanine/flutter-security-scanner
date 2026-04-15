@@ -23,8 +23,31 @@ void main(List<String> args) {
     exit(2);
   }
 
+  // Load .fshrc.{yaml,yml,json} if present (or the explicit --config=path).
+  // A malformed config is treated as a CLI error so CI fails fast.
+  ScannerConfig fileConfig;
+  try {
+    if (options.configPath != null) {
+      fileConfig = const ConfigLoader().loadFromFile(options.configPath!);
+    } else {
+      fileConfig = const ConfigLoader().loadFromRoot(root.path);
+    }
+  } on ConfigFormatException catch (e) {
+    stderr.writeln('Config error: $e');
+    exit(2);
+  }
+
+  // CLI flags always win over config values.
+  final effectiveIncludeSuggestions = options.explicitNoSuggestions
+      ? false
+      : (fileConfig.includeSuggestions ?? options.includeSuggestions);
+  final effectiveFailOn = options.explicitFailOn
+      ? options.failOn
+      : (fileConfig.failOn ?? options.failOn);
+
   final scanner = ProjectScanner(
-    includeSuggestions: options.includeSuggestions,
+    includeSuggestions: effectiveIncludeSuggestions,
+    config: fileConfig,
   );
   final report = scanner.scan(root.path);
 
@@ -56,7 +79,7 @@ void main(List<String> args) {
       );
   }
 
-  exit(_computeExitCode(issues: issues, threshold: options.failOn));
+  exit(_computeExitCode(issues: issues, threshold: effectiveFailOn));
 }
 
 void _emitHuman({
@@ -159,16 +182,22 @@ class _CliOptions {
   _CliOptions({
     required this.targetPath,
     required this.includeSuggestions,
+    required this.explicitNoSuggestions,
     required this.format,
     required this.failOn,
+    required this.explicitFailOn,
+    required this.configPath,
     required this.showHelp,
     required this.error,
   });
 
   final String targetPath;
   final bool includeSuggestions;
+  final bool explicitNoSuggestions;
   final _OutputFormat format;
   final FindingSeverity failOn;
+  final bool explicitFailOn;
+  final String? configPath;
   final bool showHelp;
   final String? error;
 
@@ -188,19 +217,25 @@ Options:
                         Code Scanning and other SAST integrations).
   --fail-on=<level>     Exit non-zero only when an issue at or above <level> is
                         found. Levels: high, medium, low. Default: low.
+  --config=<path>       Explicit path to a config file. By default the scanner
+                        looks for .fshrc.yaml / .fshrc.yml / .fshrc.json at the
+                        target root. CLI flags override config values.
   --help, -h            Show this message.
 
 Exit codes:
   0   No issues at or above --fail-on threshold (or report was clean).
   1   At least one issue met the --fail-on threshold.
-  2   Invalid invocation (bad path, unknown flag, …).
+  2   Invalid invocation (bad path, unknown flag, malformed config, …).
 ''';
 
   static _CliOptions parse(List<String> args) {
     var targetPath = '.';
     var includeSuggestions = true;
+    var explicitNoSuggestions = false;
     var format = _OutputFormat.human;
     var failOn = FindingSeverity.low;
+    var explicitFailOn = false;
+    String? configPath;
     var showHelp = false;
     String? error;
 
@@ -209,6 +244,7 @@ Exit codes:
         showHelp = true;
       } else if (arg == '--no-suggestions') {
         includeSuggestions = false;
+        explicitNoSuggestions = true;
       } else if (arg == '--json') {
         format = _OutputFormat.json;
       } else if (arg == '--sarif') {
@@ -240,8 +276,16 @@ Exit codes:
           default:
             error = 'Unknown --fail-on level: $value (expected high|medium|low)';
         }
+        explicitFailOn = true;
       } else if (arg == '--fail-on') {
         error = '--fail-on requires a value, e.g. --fail-on=high';
+      } else if (arg.startsWith('--config=')) {
+        configPath = arg.substring('--config='.length);
+        if (configPath.isEmpty) {
+          error = '--config requires a path, e.g. --config=.fshrc.yaml';
+        }
+      } else if (arg == '--config') {
+        error = '--config requires a path, e.g. --config=.fshrc.yaml';
       } else if (arg.startsWith('--')) {
         error = 'Unknown option: $arg';
       } else if (targetPath == '.') {
@@ -254,8 +298,11 @@ Exit codes:
     return _CliOptions(
       targetPath: targetPath,
       includeSuggestions: includeSuggestions,
+      explicitNoSuggestions: explicitNoSuggestions,
       format: format,
       failOn: failOn,
+      explicitFailOn: explicitFailOn,
+      configPath: configPath,
       showHelp: showHelp,
       error: error,
     );
