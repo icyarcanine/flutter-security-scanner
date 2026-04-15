@@ -144,6 +144,22 @@ void main() {
   );
 
   _runCase(
+    name: 'realtime_no_filter_app',
+    includeSuggestions: false,
+    expectedCodes: {'supabase-realtime-filter'},
+    expectedIssueCount: 1,
+    failures: failures,
+  );
+
+  _runCase(
+    name: 'realtime_filter_ok_app',
+    includeSuggestions: false,
+    expectedCodes: const {},
+    expectedIssueCount: 0,
+    failures: failures,
+  );
+
+  _runCase(
     name: 'private_files_bucket_app',
     includeSuggestions: false,
     expectedCodes: const {},
