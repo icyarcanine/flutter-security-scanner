@@ -84,7 +84,7 @@
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "test": "npm run compile && node scripts/precision-self-test.js && node scripts/test-ast.js",
+    "test": "npm run compile && node scripts/precision-self-test.js && node scripts/test-ast.js && node scripts/ifds-self-test.js",
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run compile",
     "lint": "eslint src --ext ts"

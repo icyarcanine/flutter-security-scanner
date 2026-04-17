@@ -20,6 +20,7 @@ import { GenericSecretRule } from './secrets/genericSecretRule';
 import { InjectionRule } from './security/injectionRule';
 import { XssRule } from './security/xssRule';
 import { UnsafeEvalRule } from './bugs/unsafeEvalRule';
+import { IfdsTaintRule } from './security/ifdsTaintRule';
 
 export function buildDefaultRules(includeSuggestions: boolean): Rule[] {
   const rules: Rule[] = [
@@ -28,6 +29,7 @@ export function buildDefaultRules(includeSuggestions: boolean): Rule[] {
     new InjectionRule(),
     new XssRule(),
     new UnsafeEvalRule(),
+    new IfdsTaintRule(),
 
     // Security
     new HardcodedSecretsRule(),
