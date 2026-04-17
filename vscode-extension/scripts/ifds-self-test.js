@@ -117,6 +117,17 @@ void vulnMulti(String userInput, db) {
 this is not ??? valid dart {{{{ syntax at all $$ <<<<< >>>>>>>
 void  (
 `);
+  // 11. inline-suppression: `// sast-ignore ifds-taint` on the line above
+  //     the sink must drop the finding. Regression-locks that consumers
+  //     can silence IFDS findings the same way they silence every other
+  //     rule in the scanner.
+  fs.writeFileSync(path.join(root, 'taint_suppressed.dart'), `
+void vulnSuppressed(String userInput, db) {
+  final sql = "SELECT * FROM users WHERE id = $userInput";
+  // sast-ignore ifds-taint
+  db.rawQuery(sql);
+}
+`);
 }
 
 async function main() {
@@ -165,6 +176,11 @@ async function main() {
   //     must be present, and no finding attributed to broken.dart is expected.
   assert(ifds.length >= 7,
     `10. Broken file must not block other findings. Got ${ifds.length}. ${dump}`);
+  // 11. inline-suppression: `// sast-ignore ifds-taint` above the sink
+  //     must suppress the finding even though the engine would otherwise
+  //     fire (same fixture shape as case 1, plus one comment line).
+  assert(lacks('taint_suppressed.dart'),
+    `11. inline sast-ignore must suppress ifds-taint findings. Findings: ${dump}`);
 
   fs.rmSync(root, { recursive: true, force: true });
   console.log(`IFDS self-test passed. ${ifds.length} taint finding(s).`);

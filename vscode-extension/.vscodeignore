@@ -1,0 +1,27 @@
+.vscode/**
+.vscode-test/**
+src/**
+scripts/**
+**/tsconfig.json
+**/*.map
+**/*.ts
+!out/**/*.d.ts
+test-cli.*
+test_abi.js
+test_exports.js
+
+# Third-party noise that ships inside node_modules but is never executed.
+node_modules/**/test/**
+node_modules/**/tests/**
+node_modules/**/docs/**
+node_modules/**/doc/**
+node_modules/**/example/**
+node_modules/**/examples/**
+node_modules/**/*.md
+node_modules/**/*.markdown
+node_modules/**/*.ts
+!node_modules/**/*.d.ts
+node_modules/**/.github/**
+node_modules/**/.editorconfig
+node_modules/**/.eslintrc*
+node_modules/**/.npmignore
