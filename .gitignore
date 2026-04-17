@@ -17,3 +17,8 @@ vscode-extension/*.vsix
 .sast-telemetry.json
 .sast-baseline.json
 
+# In-progress Rust/WASM engine workspace. Will be un-ignored once it
+# builds and has test coverage.
+engine/
+
+

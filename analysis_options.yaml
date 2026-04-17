@@ -1,3 +1,5 @@
 analyzer:
   exclude:
     - test/fixtures/**
+    - example/**
+    - vscode-extension/node_modules/**
