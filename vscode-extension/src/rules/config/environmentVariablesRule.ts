@@ -1,5 +1,5 @@
 import { Rule } from '../rule';
-import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
+import { Finding, FindingSeverity, FindingCategory, FindingConfidence, DetectionMethod } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 import { ScannedFile } from '../../scanner/scannedFile';
 import { firstReferenceFor } from '../ruleHelpers';
@@ -38,6 +38,7 @@ export class EnvironmentVariablesRule implements Rule {
         findings.push(new Finding({
           severity: FindingSeverity.low,
           confidence: FindingConfidence.low,
+          detectionMethod: DetectionMethod.config,
           category: FindingCategory.config,
           code: this.code,
           message: 'Environment variable used but only example config found',
@@ -50,6 +51,7 @@ export class EnvironmentVariablesRule implements Rule {
         findings.push(new Finding({
           severity: FindingSeverity.medium,
           confidence: FindingConfidence.medium,
+          detectionMethod: DetectionMethod.config,
           category: FindingCategory.config,
           code: this.code,
           message: 'Environment variable used but no configuration detected',

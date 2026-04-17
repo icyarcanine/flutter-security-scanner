@@ -13,3 +13,7 @@ vscode-extension/*.vsix
 !test/fixtures/**/.env.*
 !test/fixtures/**/config/.env.*
 
+# Scanner-generated run artefacts.
+.sast-telemetry.json
+.sast-baseline.json
+

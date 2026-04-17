@@ -1,5 +1,5 @@
 import { Rule } from '../rule';
-import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
+import { Finding, FindingSeverity, FindingCategory, FindingConfidence, DetectionMethod } from '../../models/finding';
 import { ProjectContext, RlsEvidenceLevel } from '../../scanner/projectContext';
 
 export class MissingRlsAwarenessRule implements Rule {
@@ -16,6 +16,7 @@ export class MissingRlsAwarenessRule implements Rule {
       return [new Finding({
         severity: FindingSeverity.low,
         confidence: FindingConfidence.low,
+        detectionMethod: DetectionMethod.heuristic,
         category: FindingCategory.supabase,
         code: this.code,
         message: 'Only informal RLS mentions found — no CREATE POLICY or ENABLE ROW LEVEL SECURITY detected',
@@ -29,6 +30,7 @@ export class MissingRlsAwarenessRule implements Rule {
     return [new Finding({
       severity: FindingSeverity.high,
       confidence: FindingConfidence.high,
+      detectionMethod: DetectionMethod.heuristic,
       category: FindingCategory.supabase,
       code: this.code,
       message: 'Supabase table queries found but no RLS setup detected anywhere in the project',

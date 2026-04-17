@@ -1,5 +1,5 @@
 import { Rule } from '../rule';
-import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
+import { Finding, FindingSeverity, FindingCategory, FindingConfidence, DetectionMethod } from '../../models/finding';
 import { ProjectContext, ownerColumnsForTable, suggestedPolicyForTable } from '../../scanner/projectContext';
 
 export class TableOwnershipRule implements Rule {
@@ -16,6 +16,7 @@ export class TableOwnershipRule implements Rule {
           ? FindingSeverity.high
           : FindingSeverity.medium,
         confidence: FindingConfidence.medium,
+        detectionMethod: DetectionMethod.structural,
         category: FindingCategory.supabase,
         code: this.code,
         message: `Query on '${access.table}' has no obvious ownership filter`,

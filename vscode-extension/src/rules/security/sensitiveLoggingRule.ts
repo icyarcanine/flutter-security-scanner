@@ -1,5 +1,5 @@
 import { Rule } from '../rule';
-import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
+import { Finding, FindingSeverity, FindingCategory, FindingConfidence, DetectionMethod } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 import { collectLogStatements } from '../ruleHelpers';
 
@@ -14,6 +14,7 @@ export class SensitiveLoggingRule implements Rule {
         findings.push(new Finding({
           severity: FindingSeverity.high,
           confidence: FindingConfidence.high,
+          detectionMethod: DetectionMethod.structural,
           category: FindingCategory.security,
           code: this.code,
           message: 'Sensitive auth or user data is being logged',

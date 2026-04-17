@@ -1,5 +1,5 @@
 import { Rule } from '../rule';
-import { Finding, FindingCategory, FindingConfidence } from '../../models/finding';
+import { Finding, FindingCategory, FindingConfidence, DetectionMethod } from '../../models/finding';
 import { ProjectContext, suggestedPolicyForTable } from '../../scanner/projectContext';
 
 export class RlsPolicySuggestionRule implements Rule {
@@ -22,6 +22,7 @@ export class RlsPolicySuggestionRule implements Rule {
       findings.push(new Finding({
         category: FindingCategory.suggestion,
         confidence,
+        detectionMethod: DetectionMethod.heuristic,
         code: this.code,
         message: `Heuristic RLS suggestion for table '${access.table}' (${confidence.toUpperCase()} confidence — verify against your schema)`,
         fix: `Consider: \`${policy}\`  — this is a heuristic; confirm column names match your actual schema before applying.`,

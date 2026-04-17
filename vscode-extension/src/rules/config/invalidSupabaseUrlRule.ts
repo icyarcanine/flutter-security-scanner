@@ -1,5 +1,5 @@
 import { Rule } from '../rule';
-import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
+import { Finding, FindingSeverity, FindingCategory, FindingConfidence, DetectionMethod } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 import { isCommentLine } from '../ruleHelpers';
 
@@ -15,6 +15,7 @@ export class InvalidSupabaseUrlRule implements Rule {
       findings.push(new Finding({
         severity: FindingSeverity.medium,
         confidence: FindingConfidence.high,
+        detectionMethod: DetectionMethod.config,
         category: FindingCategory.config,
         code: this.code,
         message: 'SUPABASE_URL does not look like a valid Supabase HTTPS URL',
@@ -40,6 +41,7 @@ export class InvalidSupabaseUrlRule implements Rule {
           findings.push(new Finding({
             severity: FindingSeverity.medium,
             confidence: FindingConfidence.high,
+            detectionMethod: DetectionMethod.regex,
             category: FindingCategory.config,
             code: this.code,
             message: 'Hardcoded Supabase URL is malformed',

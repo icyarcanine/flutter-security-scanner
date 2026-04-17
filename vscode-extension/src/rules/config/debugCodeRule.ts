@@ -1,5 +1,5 @@
 import { Rule } from '../rule';
-import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
+import { Finding, FindingSeverity, FindingCategory, FindingConfidence, DetectionMethod } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 import { isProductionDartFile, collectLogStatements, isCommentLine } from '../ruleHelpers';
 
@@ -20,6 +20,7 @@ export class DebugCodeRule implements Rule {
         findings.push(new Finding({
           severity: FindingSeverity.low,
           confidence: FindingConfidence.medium,
+          detectionMethod: DetectionMethod.structural,
           category: FindingCategory.config,
           code: this.code,
           message: 'print() left in production code',

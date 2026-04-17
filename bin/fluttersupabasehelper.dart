@@ -51,32 +51,77 @@ void main(List<String> args) {
   );
   final report = scanner.scan(root.path);
 
+  // --write-baseline: snapshot *everything* the scanner found (before
+  // baseline filtering) so the new baseline reflects the current state of
+  // the repo. A caller that both writes and applies a baseline in the same
+  // invocation still sees unsuppressed output, which is what they want for
+  // the "capture then verify" workflow.
+  if (options.writeBaselinePath != null) {
+    try {
+      BaselineFile.fromFindings(
+        report.findings,
+        toolVersion: SarifWriter.kToolVersion,
+      ).writeToFile(options.writeBaselinePath!);
+      stderr.writeln(
+        'Baseline written to ${options.writeBaselinePath} '
+        '(${report.findings.length} finding${report.findings.length == 1 ? '' : 's'}).',
+      );
+    } catch (e) {
+      stderr.writeln('Failed to write baseline: $e');
+      exit(2);
+    }
+  }
+
+  // --baseline: suppress findings that were already present when the
+  // baseline was captured. This is the primary adoption lever for existing
+  // codebases — teams lock in the current state and only pay attention to
+  // what the scanner newly discovers.
+  var filtered = report.findings;
+  var suppressedCount = 0;
+  if (options.baselinePath != null) {
+    try {
+      final baseline = BaselineFile.loadFromFile(options.baselinePath!);
+      filtered = baseline.filter(report.findings);
+      suppressedCount = report.findings.length - filtered.length;
+    } on BaselineFormatException catch (e) {
+      stderr.writeln('Baseline error: $e');
+      exit(2);
+    }
+  }
+
   // Partition findings once — both human and JSON paths need the counts.
-  final issues = report.findings.where((f) => !f.isSuggestion).toList();
-  final suggestions = report.findings.where((f) => f.isSuggestion).toList();
+  final issues = filtered.where((f) => !f.isSuggestion).toList();
+  final suggestions = filtered.where((f) => f.isSuggestion).toList();
   final issueCount = issues.length;
   final suggestionCount = suggestions.length;
 
   switch (options.format) {
     case _OutputFormat.sarif:
       _emitSarif(
-        findings: report.findings,
+        findings: filtered,
         targetPath: options.targetPath,
       );
     case _OutputFormat.json:
       _emitJson(
-        findings: report.findings,
+        findings: filtered,
         issueCount: issueCount,
         suggestionCount: suggestionCount,
         targetPath: options.targetPath,
       );
     case _OutputFormat.human:
       _emitHuman(
-        findings: report.findings,
+        findings: filtered,
         issues: issues,
         issueCount: issueCount,
         suggestionCount: suggestionCount,
       );
+      if (suppressedCount > 0) {
+        stdout.writeln();
+        stdout.writeln(
+          '$suppressedCount finding(s) suppressed by baseline '
+          '${options.baselinePath}.',
+        );
+      }
   }
 
   exit(_computeExitCode(issues: issues, threshold: effectiveFailOn));
@@ -187,6 +232,8 @@ class _CliOptions {
     required this.failOn,
     required this.explicitFailOn,
     required this.configPath,
+    required this.baselinePath,
+    required this.writeBaselinePath,
     required this.showHelp,
     required this.error,
   });
@@ -198,6 +245,8 @@ class _CliOptions {
   final FindingSeverity failOn;
   final bool explicitFailOn;
   final String? configPath;
+  final String? baselinePath;
+  final String? writeBaselinePath;
   final bool showHelp;
   final String? error;
 
@@ -220,6 +269,12 @@ Options:
   --config=<path>       Explicit path to a config file. By default the scanner
                         looks for .fshrc.yaml / .fshrc.yml / .fshrc.json at the
                         target root. CLI flags override config values.
+  --baseline=<path>     Suppress findings whose fingerprint is present in the
+                        baseline file. Use this to adopt the scanner on an
+                        existing codebase without fixing every finding up
+                        front — only NEW findings break the build.
+  --write-baseline=<p>  Write the current run's findings to <p> as a fresh
+                        baseline file. Combine with --baseline to regenerate.
   --help, -h            Show this message.
 
 Exit codes:
@@ -236,6 +291,8 @@ Exit codes:
     var failOn = FindingSeverity.low;
     var explicitFailOn = false;
     String? configPath;
+    String? baselinePath;
+    String? writeBaselinePath;
     var showHelp = false;
     String? error;
 
@@ -286,6 +343,21 @@ Exit codes:
         }
       } else if (arg == '--config') {
         error = '--config requires a path, e.g. --config=.fshrc.yaml';
+      } else if (arg.startsWith('--baseline=')) {
+        baselinePath = arg.substring('--baseline='.length);
+        if (baselinePath.isEmpty) {
+          error = '--baseline requires a path';
+        }
+      } else if (arg == '--baseline') {
+        error = '--baseline requires a path, e.g. --baseline=.fsbaseline.json';
+      } else if (arg.startsWith('--write-baseline=')) {
+        writeBaselinePath = arg.substring('--write-baseline='.length);
+        if (writeBaselinePath.isEmpty) {
+          error = '--write-baseline requires a path';
+        }
+      } else if (arg == '--write-baseline') {
+        error =
+            '--write-baseline requires a path, e.g. --write-baseline=.fsbaseline.json';
       } else if (arg.startsWith('--')) {
         error = 'Unknown option: $arg';
       } else if (targetPath == '.') {
@@ -303,6 +375,8 @@ Exit codes:
       failOn: failOn,
       explicitFailOn: explicitFailOn,
       configPath: configPath,
+      baselinePath: baselinePath,
+      writeBaselinePath: writeBaselinePath,
       showHelp: showHelp,
       error: error,
     );

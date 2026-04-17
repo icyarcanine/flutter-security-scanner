@@ -1,5 +1,5 @@
 import { Rule } from '../rule';
-import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
+import { Finding, FindingSeverity, FindingCategory, FindingConfidence, DetectionMethod } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 
 const HIGH_RISK_BUCKETS = new Set(['public']);
@@ -25,6 +25,7 @@ export class PublicStorageRule implements Rule {
       findings.push(new Finding({
         severity: FindingSeverity.high,
         confidence: FindingConfidence.high,
+        detectionMethod: DetectionMethod.structural,
         category: FindingCategory.security,
         code: this.code,
         message: `Potentially public storage bucket '${bucket.bucketName}' is used for app data`,

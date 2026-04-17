@@ -1,5 +1,5 @@
 import { Rule, RuleStage } from '../rule';
-import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
+import { Finding, FindingSeverity, FindingCategory, FindingConfidence, DetectionMethod } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 import { IntraProceduralTaintTracker } from '../../taint/dataFlow';
 
@@ -58,6 +58,7 @@ export class InjectionRule implements Rule {
             code: this.code,
             severity,
             confidence,
+            detectionMethod: DetectionMethod.taint,
             message: `Detected tainted input flowing into ${finding.sinkKind} sink -> ${finding.sinkName}`,
             fix: 'Sanitize input thoroughly before passing it to this function or use parameterized abstractions.',
             risk: 'Unsanitized input reaching SQL, command, code execution, or HTML sinks can let attackers execute code, steal data, or run scripts in user sessions.',
@@ -83,6 +84,7 @@ export class InjectionRule implements Rule {
             code: this.code,
             severity: FindingSeverity.medium,
             confidence: FindingConfidence.medium,
+            detectionMethod: DetectionMethod.structural,
             message: `Detected dynamic value passed into ${finding.sinkKind} sink -> ${finding.sinkName}`,
             fix: 'Use parameterized APIs, strict validation, or sanitizer/escaping helpers before this sink.',
             risk: 'Dynamic values in security-sensitive sinks are risky unless all inputs are validated or parameterized.',
@@ -131,6 +133,7 @@ export class InjectionRule implements Rule {
           code: this.code,
           severity: FindingSeverity.medium,
           confidence: FindingConfidence.low,
+          detectionMethod: DetectionMethod.regex,
           message: `Potential injection: sink near user input source (AST unavailable, regex fallback)`,
           fix: 'Ensure user input is sanitized before reaching this sink. Use parameterized queries or safe APIs.',
           risk: 'Without AST confirmation, this finding has lower confidence but may still represent a real vulnerability.',

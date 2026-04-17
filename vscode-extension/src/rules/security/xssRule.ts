@@ -1,5 +1,5 @@
 import { Rule, RuleStage } from '../rule';
-import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
+import { Finding, FindingSeverity, FindingCategory, FindingConfidence, DetectionMethod } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 import { childForFieldName, findNodesByType, getCallName, isAssignment, isFunctionCall, namedChild } from '../../ast/traversal';
 
@@ -44,6 +44,7 @@ export class XssRule implements Rule {
               code: this.code,
               severity: tainted ? FindingSeverity.high : FindingSeverity.medium,
               confidence: tainted ? FindingConfidence.high : FindingConfidence.medium,
+              detectionMethod: tainted ? DetectionMethod.taint : DetectionMethod.structural,
               message: `Detected ${tainted ? 'tainted input flowing into ' : 'usage of '}unsafe HTML rendering sink -> ${sink}`,
               fix: 'Avoid direct HTML injection. Rely on safer framework mechanisms (e.g., textContent or standard React binding) or strictly sanitize the input using DOMPurify.',
               risk: 'Cross-Site Scripting (XSS) allows attackers to execute arbitrary scripts in other users\' browsers.',
@@ -69,6 +70,7 @@ export class XssRule implements Rule {
               code: this.code,
               severity: FindingSeverity.medium,
               confidence: FindingConfidence.low,
+              detectionMethod: DetectionMethod.regex,
               message: `Potential XSS: unsafe HTML sink detected (AST unavailable, regex fallback)`,
               fix: 'Sanitize content with DOMPurify or use textContent instead of innerHTML.',
               risk: 'Without AST analysis, this is pattern-matched only.',

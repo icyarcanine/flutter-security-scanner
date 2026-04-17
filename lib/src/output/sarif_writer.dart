@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../models/finding.dart';
+import 'finding_fingerprint.dart';
 
 /// Emits a SARIF 2.1.0 document from a list of [Finding]s.
 ///
@@ -149,10 +150,14 @@ class SarifWriter {
         'confidence': finding.confidence!.label.toLowerCase(),
       if (finding.severity != null)
         'severity': finding.severity!.label.toLowerCase(),
+      if (finding.detectionMethod != null)
+        'detectionMethod': finding.detectionMethod!.label,
+      'confidenceReason': finding.confidenceReason,
       'isSuggestion': finding.isSuggestion,
     };
 
     final fingerprint = _fingerprint(finding);
+    final codeFlows = _codeFlowsFor(finding);
 
     return <String, Object?>{
       'ruleId': finding.code,
@@ -162,11 +167,114 @@ class SarifWriter {
         'text': finding.message,
       },
       if (locations.isNotEmpty) 'locations': locations,
+      if (codeFlows != null) 'codeFlows': codeFlows,
       'partialFingerprints': <String, Object?>{
         'primaryLocationLineHash/v1': fingerprint,
       },
       'properties': properties,
     };
+  }
+
+  /// Builds the SARIF `codeFlows` array for a finding. Emits a full
+  /// source→sink trace when the finding carries a [TaintTrace], or a
+  /// single-step "finding location" flow when only the sink is known —
+  /// consumers like GitHub Code Scanning render both styles.
+  ///
+  /// Returns null when there is no usable location information, so the
+  /// emitted SARIF stays compact and the `codeFlows` key is omitted entirely
+  /// instead of appearing as an empty list.
+  List<Map<String, Object?>>? _codeFlowsFor(Finding finding) {
+    final trace = finding.trace;
+    if (trace != null && trace.steps.isNotEmpty) {
+      final locations = <Map<String, Object?>>[];
+      for (var i = 0; i < trace.steps.length; i++) {
+        final step = trace.steps[i];
+        final region = <String, Object?>{
+          if (step.line > 0) 'startLine': step.line,
+        };
+        final stepText = step.message ??
+            switch (step.kind) {
+              'source' => 'Source: untrusted input enters here',
+              'propagation' => 'Propagation: taint is carried through here',
+              'sanitizer-bypass' =>
+                'Sanitizer bypass: value passes an unsafe gate',
+              'sink' => 'Sink: tainted value reaches a dangerous operation',
+              _ => step.kind,
+            };
+        locations.add(<String, Object?>{
+          'location': <String, Object?>{
+            'physicalLocation': <String, Object?>{
+              'artifactLocation': <String, Object?>{
+                'uri': step.filePath,
+                'uriBaseId': 'SRCROOT',
+              },
+              if (region.isNotEmpty) 'region': region,
+            },
+            'message': <String, Object?>{
+              'text': '${i + 1}. $stepText',
+            },
+          },
+          'nestingLevel': 0,
+          'executionOrder': i + 1,
+          'importance': step.kind == 'sink' || step.kind == 'source'
+              ? 'essential'
+              : 'important',
+        });
+      }
+      return <Map<String, Object?>>[
+        <String, Object?>{
+          'message': <String, Object?>{
+            'text': 'Data flow: '
+                '${trace.steps.first.kind} → ${trace.steps.last.kind} '
+                '(${trace.steps.length} step${trace.steps.length == 1 ? '' : 's'})',
+          },
+          'threadFlows': <Map<String, Object?>>[
+            <String, Object?>{
+              'locations': locations,
+            },
+          ],
+        },
+      ];
+    }
+
+    // No explicit trace — emit a minimal single-location flow so SARIF
+    // viewers still have a structured anchor. Only useful when the finding
+    // has a file + line; otherwise skip the codeFlows key entirely.
+    final path = finding.filePath;
+    final line = finding.line;
+    if (path == null || line == null || line <= 0) {
+      return null;
+    }
+    return <Map<String, Object?>>[
+      <String, Object?>{
+        'message': <String, Object?>{
+          'text': 'Finding location',
+        },
+        'threadFlows': <Map<String, Object?>>[
+          <String, Object?>{
+            'locations': <Map<String, Object?>>[
+              <String, Object?>{
+                'location': <String, Object?>{
+                  'physicalLocation': <String, Object?>{
+                    'artifactLocation': <String, Object?>{
+                      'uri': path,
+                      'uriBaseId': 'SRCROOT',
+                    },
+                    'region': <String, Object?>{'startLine': line},
+                  },
+                  'message': <String, Object?>{
+                    'text': finding.message,
+                  },
+                },
+                'nestingLevel': 0,
+                'executionOrder': 1,
+                'importance': 'essential',
+              },
+            ],
+          },
+        ],
+      },
+    ];
   }
 
   static String _sarifLevelForSeverity(FindingSeverity? severity) {
@@ -194,36 +302,9 @@ class SarifWriter {
     return clean;
   }
 
-  /// Stable fingerprint for a finding. Used in SARIF
-  /// `partialFingerprints.primaryLocationLineHash/v1` so CI systems (notably
-  /// GitHub Code Scanning) can match the same finding across runs even when
-  /// the line number shifts slightly.
-  ///
-  /// Implemented as FNV-1a 64-bit over rule code + file path + message. We
-  /// intentionally exclude the line number so a cosmetic reformat above the
-  /// finding does not generate a new fingerprint and reopen the alert.
-  static String _fingerprint(Finding finding) {
-    final input = <Object?>[
-      finding.code,
-      finding.filePath ?? '',
-      finding.message,
-    ].join('\u0001');
-    return _fnv1a64Hex(input);
-  }
-
-  static String _fnv1a64Hex(String input) {
-    // 64-bit FNV-1a implemented with BigInt arithmetic to stay dependency-free
-    // and deterministic across Dart runtimes. Only called once per finding so
-    // the BigInt overhead is negligible compared to JSON encoding.
-    final prime = BigInt.parse('0x100000001b3');
-    final mask = BigInt.parse('0xffffffffffffffff');
-    var hash = BigInt.parse('0xcbf29ce484222325');
-    final bytes = utf8.encode(input);
-    for (final byte in bytes) {
-      hash = ((hash ^ BigInt.from(byte)) * prime) & mask;
-    }
-    return hash.toRadixString(16).padLeft(16, '0');
-  }
+  /// Stable fingerprint for a finding. Delegates to the shared helper so
+  /// SARIF output and the baseline file use the same identifier.
+  static String _fingerprint(Finding finding) => fingerprintFinding(finding);
 }
 
 /// Aggregated per-rule metadata built while walking the findings list. Used to

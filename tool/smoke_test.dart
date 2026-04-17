@@ -485,6 +485,7 @@ void main() {
 
   _runMalformedEncodingCase(failures);
   _runSarifCase(failures);
+  _runBaselineCase(failures);
 
   if (failures.isNotEmpty) {
     stderr.writeln('Smoke test failures:');
@@ -732,6 +733,119 @@ void _runConfigCase(List<String> failures) {
     }
   } catch (error, stack) {
     failures.add('config_file_app: smoke case crashed: $error\n$stack');
+  }
+}
+
+/// Exercises the baseline round-trip: capture → encode → decode → filter.
+///
+/// The adoption workflow is: a team with an existing codebase runs the
+/// scanner once, writes a baseline, and expects *future* runs against the
+/// same code to suppress every finding. We model that flow on a fixture
+/// that deliberately produces several findings.
+void _runBaselineCase(List<String> failures) {
+  const fixturePath = 'test/fixtures/edge_function_secrets_app';
+  final tempDir = Directory.systemTemp.createTempSync('fshelper-baseline-');
+  try {
+    final report = const ProjectScanner(
+      includeSuggestions: false,
+    ).scan(fixturePath);
+    if (report.findings.isEmpty) {
+      failures.add(
+        'baseline smoke case: fixture produced zero findings, cannot exercise baseline.',
+      );
+      return;
+    }
+
+    final baseline = BaselineFile.fromFindings(
+      report.findings,
+      toolVersion: SarifWriter.kToolVersion,
+    );
+    final encoded = baseline.encode();
+
+    // Encoded baseline must parse as JSON with the expected shape.
+    final decoded = jsonDecode(encoded);
+    if (decoded is! Map) {
+      failures.add('baseline smoke case: encoded baseline is not an object.');
+      return;
+    }
+    if (decoded['schema_version'] != 1) {
+      failures.add(
+        'baseline smoke case: schema_version is ${decoded['schema_version']}, expected 1.',
+      );
+    }
+    final rawEntries = decoded['fingerprints'];
+    if (rawEntries is! List || rawEntries.length != report.findings.length) {
+      failures.add(
+        'baseline smoke case: fingerprints count mismatch '
+        '(${(rawEntries is List) ? rawEntries.length : "not a list"} vs ${report.findings.length}).',
+      );
+    }
+
+    // Write + read round-trip.
+    final baselineFile = File('${tempDir.path}/.fsbaseline.json');
+    baseline.writeToFile(baselineFile.path);
+    final reloaded = BaselineFile.loadFromFile(baselineFile.path);
+    if (reloaded.entries.length != report.findings.length) {
+      failures.add(
+        'baseline smoke case: reloaded entries count is '
+        '${reloaded.entries.length} (expected ${report.findings.length}).',
+      );
+    }
+
+    // Filtering: every finding in the current report must be suppressed
+    // because the baseline was built from exactly this list.
+    final filtered = reloaded.filter(report.findings);
+    if (filtered.isNotEmpty) {
+      failures.add(
+        'baseline smoke case: expected all findings to be suppressed, '
+        'but ${filtered.length} survived.',
+      );
+    }
+
+    // A synthetic "new" finding (different message) must pass through the
+    // filter — baseline suppression must be opt-in per fingerprint.
+    final synthetic = Finding(
+      severity: FindingSeverity.high,
+      confidence: FindingConfidence.high,
+      category: FindingCategory.security,
+      code: 'supabase-edge-function-secrets',
+      message: 'Synthetic new finding — not in baseline',
+      fix: 'n/a',
+      filePath: 'supabase/functions/hello/index.ts',
+      line: 999,
+    );
+    final withSynthetic = reloaded.filter(<Finding>[...report.findings, synthetic]);
+    if (withSynthetic.length != 1 || withSynthetic.first.message != synthetic.message) {
+      failures.add(
+        'baseline smoke case: synthetic new finding should pass through, '
+        'got ${withSynthetic.map((f) => f.message).toList()}.',
+      );
+    }
+
+    // Fingerprint determinism: encoding twice must yield the same result so
+    // the baseline file does not churn in git.
+    final secondEncoded = BaselineFile.fromFindings(
+      report.findings,
+      toolVersion: SarifWriter.kToolVersion,
+      now: DateTime.utc(2026, 4, 15),
+    ).encode();
+    final thirdEncoded = BaselineFile.fromFindings(
+      report.findings,
+      toolVersion: SarifWriter.kToolVersion,
+      now: DateTime.utc(2026, 4, 15),
+    ).encode();
+    if (secondEncoded != thirdEncoded) {
+      failures.add(
+        'baseline smoke case: encoded baseline is not deterministic for the '
+        'same inputs.',
+      );
+    }
+  } catch (error, stack) {
+    failures.add('baseline smoke case crashed: $error\n$stack');
+  } finally {
+    if (tempDir.existsSync()) {
+      tempDir.deleteSync(recursive: true);
+    }
   }
 }
 

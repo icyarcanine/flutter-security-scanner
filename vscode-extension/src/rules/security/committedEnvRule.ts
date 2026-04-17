@@ -1,5 +1,5 @@
 import { Rule } from '../rule';
-import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
+import { Finding, FindingSeverity, FindingCategory, FindingConfidence, DetectionMethod } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 
 export class CommittedEnvRule implements Rule {
@@ -14,6 +14,7 @@ export class CommittedEnvRule implements Rule {
       findings.push(new Finding({
         severity: FindingSeverity.high,
         confidence: FindingConfidence.high,
+        detectionMethod: DetectionMethod.filesystem,
         category: FindingCategory.security,
         code: this.code,
         message: '.env file is present but not ignored by git',

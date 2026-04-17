@@ -128,6 +128,16 @@ class InjectionRule extends Rule {
           Finding(
             severity: FindingSeverity.high,
             confidence: FindingConfidence.medium,
+            detectionMethod: FindingDetectionMethod.structural,
+            trace: TaintTrace([
+              TaintStep(
+                kind: 'sink',
+                filePath: file.relativePath,
+                line: line,
+                message:
+                    'Dynamic SQL string passed to ${match.group(0)!.trim()}',
+              ),
+            ]),
             category: FindingCategory.security,
             code: code,
             message:
@@ -197,6 +207,16 @@ class InjectionRule extends Rule {
           Finding(
             severity: FindingSeverity.high,
             confidence: FindingConfidence.medium,
+            detectionMethod: FindingDetectionMethod.structural,
+            trace: TaintTrace([
+              TaintStep(
+                kind: 'sink',
+                filePath: file.relativePath,
+                line: line,
+                message:
+                    'Dynamic string passed to Process.run / Process.start',
+              ),
+            ]),
             category: FindingCategory.security,
             code: code,
             message:
