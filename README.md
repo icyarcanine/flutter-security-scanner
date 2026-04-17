@@ -4,7 +4,7 @@ A static application security testing (SAST) toolkit for Flutter + Supabase proj
 
 | Component | Location | Engine | When to use it |
 |-----------|----------|--------|----------------|
-| **VS Code extension** | `vscode-extension/` | Regex **+** tree-sitter AST **+** intra-procedural taint tracking (TypeScript, Node.js, `web-tree-sitter@0.21.0`) | Day-to-day authoring — inline quick fixes, AST/REGEX badges, taint-confirmed findings |
+| **VS Code extension** | `vscode-extension/` | Regex **+** tree-sitter AST **+** taint tracking — intra-procedural for JS/TS/Dart, **inter-procedural IFDS for Dart** (TypeScript, Node.js, `web-tree-sitter@0.21.0`) | Day-to-day authoring — inline quick fixes, AST/REGEX badges, taint-confirmed findings |
 | **Dart CLI** | `bin/fluttersupabasehelper.dart` | Regex-only, Flutter-/Supabase-specific rules (Dart) | CI gating on Flutter apps, headless scans, local `dart run` |
 
 The Dart CLI deliberately **does not** use tree-sitter or taint tracking. It is a fast, zero-dependency lint pass that complements `dart analyze` with Flutter- and Supabase-specific checks (missing RLS awareness, committed `.env`, unobscured password fields, weak platform manifests, etc.). Everything under the "Analysis Pipeline", "Taint Model", and "Confidence Levels" sections below describes the **VS Code extension engine**, not the CLI.
@@ -20,7 +20,8 @@ The Dart CLI deliberately **does not** use tree-sitter or taint tracking. It is 
 
 | Tier | Languages | Analysis |
 |------|-----------|----------|
-| **Full** | JavaScript, TypeScript, Dart | Regex + AST + intra-procedural taint tracking |
+| **Full** | JavaScript, TypeScript | Regex + AST + intra-procedural taint tracking |
+| **Full (IFDS)** | Dart | Regex + AST + intra-procedural taint tracking + inter-procedural IFDS (`ifds-taint`) |
 | **AST** | Python, Go, Java | Regex + AST structural patterns |
 | **Regex** | SQL, YAML, JSON, `.env` | Heuristic rules only |
 
@@ -28,7 +29,7 @@ The Dart CLI deliberately **does not** use tree-sitter or taint tracking. It is 
 
 1. **Regex** — fast heuristic pass across all files
 2. **AST** — selective parsing via `web-tree-sitter` WASM grammars
-3. **Taint tracking** — intra-procedural data-flow analysis (JS, TS, Dart)
+3. **Taint tracking** — intra-procedural data-flow analysis (JS, TS, Dart), plus inter-procedural IFDS for Dart (`ifds-taint` rule)
 
 ### Taint Model
 
@@ -42,6 +43,33 @@ The taint tracker performs intra-procedural source-to-sink analysis with the fol
   - Alias chains beyond depth 3 degrade to *weak taint* (reported at MEDIUM confidence)
   - `Object.assign(target, src)` marks `target` as weakly tainted — property accesses like `target.timeout` are not flagged
   - Function summaries: functions with bare `return param` propagate taint through call sites
+
+### Inter-procedural IFDS (Dart, `ifds-taint`)
+
+In addition to the intra-procedural tracker above, Dart projects get a
+second pass backed by a Reps-Horwitz-Sagiv tabulation IFDS solver. It
+runs as stage-3 rule `ifds-taint` and reports `Tainted value flows into
+sink '<name>' (IFDS)` at HIGH severity / HIGH confidence.
+
+- **Inter-procedural and context-sensitive** via procedure summaries
+  (path-edges keyed by entry fact, `pendingCallers` for late-summary
+  propagation).
+- **Branching CFG**: if/else, while, do-while, for-in, try/catch/finally
+  (flattened — sound, occasionally over-approximates).
+- **Strong kills** on clean reassignment; additive (augmented)
+  assignment preserves taint.
+- **Sources** (name-based heuristic): parameters named `userInput`,
+  `input`, `req`, `request`, `payload`, `data`, `body`, `query`,
+  `params`. Real HTTP / storage / SharedPreferences / stdin sources are
+  not yet modeled — expect false negatives.
+- **Sinks** are shared with the intra-procedural tracker (SQL, command,
+  code, HTML).
+- **Sanitizers** are shared too, and are unlabeled: any recognised
+  sanitizer clears taint for any sink (conservative but imprecise).
+
+The existing intra-procedural `InjectionRule` still runs; `ifds-taint`
+complements it. Duplicate findings on the same line are de-duped by the
+scanner.
 
 ### Confidence Levels
 
@@ -118,6 +146,9 @@ const secret = "AKIA...";
 
 // sast-ignore injection-flaw
 db.query("SELECT * FROM users WHERE id = " + id);
+
+// sast-ignore ifds-taint
+db.rawQuery(userInput);
 ```
 
 Supports `//` (JS/TS/Java/Go/Dart) and `#` (Python).
@@ -146,9 +177,17 @@ Activates automatically on project open.
 
 ## Limitations
 
-- Intra-procedural taint only — no cross-function or cross-file tracking
+- JS/TS taint is intra-procedural only — no cross-function or cross-file
+  tracking. Dart has an additional inter-procedural IFDS pass
+  (`ifds-taint`).
+- IFDS sources are a name-based heuristic; real HTTP / storage /
+  SharedPreferences / stdin sources are not modeled yet. No taint
+  labels — any sanitizer clears for any sink. No `await` / cascade /
+  named arguments / field-sensitive / collection / implicit-`this`
+  modeling. Virtual dispatch resolves by last-name only.
 - Python, Go, Java have AST grammars but no taint models
-- No control flow analysis (branches and loops not modeled)
+- Non-Dart languages: no control flow analysis (branches and loops not
+  modeled)
 - Framework coverage limited to Express.js (`req.body/query/params`)
 - Entropy detection is probabilistic — some benign strings flagged at LOW
 

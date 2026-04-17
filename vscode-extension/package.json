@@ -2,7 +2,7 @@
   "name": "flutter-supabase-helper",
   "displayName": "Flutter Supabase Helper",
   "description": "Static security and configuration scanner for Flutter + Supabase projects. Detects hardcoded secrets, missing RLS, env issues, and more.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "flutter-supabase-helper",
   "engines": {
     "vscode": "^1.85.0"
