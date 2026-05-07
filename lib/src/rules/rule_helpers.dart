@@ -180,7 +180,7 @@ List<LogStatement> collectLogStatements(
     final afterParen = lineText.substring(match.end);
 
     // Try to close the statement on a single line first (fast path).
-    final closeIndex = _findMatchingClose(afterParen, 0);
+    final closeIndex = findMatchingClose(afterParen, 0);
     if (closeIndex != -1) {
       result.add(
         LogStatement(
@@ -239,9 +239,9 @@ List<LogStatement> collectLogStatements(
 
 /// Finds the index of the closing `)` in [text] that matches the first `(`
 /// (i.e. depth becomes 0), handling nested parens and ignoring characters
-/// inside string literals (single and double quotes with escapes).
+/// inside string literals (single, double, and triple quotes with escapes).
 /// Returns -1 if not found.
-int _findMatchingClose(String text, int startDepth) {
+int findMatchingClose(String text, int startDepth) {
   var depth = startDepth;
   var inSingleQuote = false;
   var inDoubleQuote = false;

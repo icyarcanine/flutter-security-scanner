@@ -5,8 +5,10 @@ import '../../rule.dart';
 class TableOwnershipRule extends Rule {
   const TableOwnershipRule();
 
-  /// Tables with explicit column mappings (high-confidence ownership detection).
-  static const _knownTables = {
+  /// Curated fallback set of tables with hardcoded column mappings. Used when
+  /// no DDL metadata is available (project ships no SQL migrations) — DDL
+  /// always wins via [_isKnownTable].
+  static const _hardcodedKnownTables = {
     'profiles',
     'users',
     'posts',
@@ -16,6 +18,17 @@ class TableOwnershipRule extends Rule {
     'orders',
     'comments',
   };
+
+  /// Returns true when the table has authoritative ownership knowledge —
+  /// either declared by SQL DDL (FK to `auth.users`) or covered by the
+  /// curated fallback set. DDL is the source of truth; the fallback only
+  /// fires when DDL has nothing for this table.
+  static bool _isKnownTable(ProjectContext ctx, String tableLower) {
+    if (ctx.ddlMetadata.knownTables.contains(tableLower)) {
+      return true;
+    }
+    return _hardcodedKnownTables.contains(tableLower);
+  }
 
   /// Any chained filter method in a Supabase query-builder call. We use this
   /// to tell apart "bare `.select()`" (real risk) from "query scoped by some
@@ -39,12 +52,18 @@ class TableOwnershipRule extends Rule {
         continue;
       }
 
-      final expectedColumns = ownerColumnsForTable(access.table);
+      final expectedColumns = ownerColumnsForTable(
+        access.table,
+        ddl: context.ddlMetadata,
+      );
       if (expectedColumns.isEmpty || access.hasOwnershipFilter) {
         continue;
       }
 
-      final isKnownTable = _knownTables.contains(access.table.toLowerCase());
+      final tableLower = access.table.toLowerCase();
+      final isDdlKnownTable =
+          context.ddlMetadata.knownTables.contains(tableLower);
+      final isKnownTable = _isKnownTable(context, tableLower);
 
       // For unknown tables we fall back on generic column-name heuristics
       // (`user_id`, `owner_id`, etc.). Those heuristics produce noise on
@@ -60,14 +79,15 @@ class TableOwnershipRule extends Rule {
         Finding(
           severity: access.operation == 'update' || access.operation == 'delete'
               ? FindingSeverity.high
-              : FindingSeverity.medium,
-          confidence: isKnownTable
-              ? FindingConfidence.medium
-              : FindingConfidence.low,
+              : isDdlKnownTable
+                  ? FindingSeverity.high
+                  : FindingSeverity.medium,
+          confidence:
+              isKnownTable ? FindingConfidence.medium : FindingConfidence.low,
           category: FindingCategory.supabase,
           code: code,
           message: "Query on '${access.table}' has no obvious ownership filter",
-          fix: _fixFor(access.table),
+          fix: _fixFor(access.table, context),
           risk:
               'Without an ownership filter, this query may allow clients to read or modify data belonging to other users.',
           filePath: access.file.relativePath,
@@ -79,8 +99,8 @@ class TableOwnershipRule extends Rule {
     return findings;
   }
 
-  String _fixFor(String table) {
-    final policy = suggestedPolicyForTable(table);
+  String _fixFor(String table, ProjectContext context) {
+    final policy = suggestedPolicyForTable(table, ddl: context.ddlMetadata);
     if (policy == null) {
       return 'Add an ownership filter that matches the authenticated user, and enforce the same rule with RLS.';
     }

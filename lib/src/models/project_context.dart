@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import '../utils/ddl_parser.dart';
 import '../utils/path_utils.dart';
 import 'scanned_file.dart';
 
@@ -219,6 +220,12 @@ class ProjectContext {
     return entries;
   }
 
+  /// DDL metadata lazily parsed from SQL migration files.
+  DdlMetadata get ddlMetadata =>
+      _ddlMetadata ??= DdlMetadata.fromSqlFiles(sqlFiles);
+  DdlMetadata? _ddlMetadata;
+
+
   List<TableAccess> get tableAccesses =>
       _tableAccesses ??= _computeTableAccesses();
   List<TableAccess>? _tableAccesses;
@@ -247,7 +254,7 @@ class ProjectContext {
 
         final table = match.group(1)!;
         final line = file.lineForOffset(match.start);
-        final expectedColumns = ownerColumnsForTable(table);
+        final expectedColumns = ownerColumnsForTable(table, ddl: ddlMetadata);
         final localContext = file.contextAroundLine(line, before: 40, after: 2);
         accesses.add(
           TableAccess(
@@ -1004,8 +1011,21 @@ class Location {
   final int line;
 }
 
-Set<String> ownerColumnsForTable(String tableName) {
+
+Set<String> ownerColumnsForTable(String tableName, {DdlMetadata? ddl}) {
   final normalized = tableName.toLowerCase();
+
+  // 1. DDL metadata takes priority.
+  //
+  // When the project contains SQL migrations that declare a column referencing
+  // auth.users (e.g. `actor_id uuid references auth.users(id)`), that column
+  // is the authoritative ownership column — not the heuristic fallback.
+  final ddlResolved = ddl?.forTable(normalized);
+  if (ddlResolved != null && ddlResolved.isNotEmpty) {
+    return ddlResolved;
+  }
+
+  // 2. Hardcoded mapping for well-known Supabase table patterns.
   const mapping = <String, Set<String>>{
     'profiles': {'id'},
     'users': {'id'},
@@ -1021,14 +1041,30 @@ Set<String> ownerColumnsForTable(String tableName) {
     return mapping[normalized]!;
   }
 
-  // Heuristic fallback for unknown tables: use common ownership column names.
-  // This enables the scanner to flag unfiltered queries on ANY table, not just
-  // the 8 hardcoded ones.
-  return const {'user_id', 'owner_id', 'created_by', 'author_id'};
+  // 3. Heuristic fallback for truly unknown tables.
+  //
+  // Uses the canonical naming-convention set shared with the DDL parser's
+  // Pass-2 heuristic (DdlMetadata.knownUserFkColumnNames). Two registries
+  // previously diverged (4 entries here, 13 in ddl_parser.dart); they now
+  // share the 13-entry source of truth — `actor_id`, `performed_by`,
+  // `assigned_to`, etc. become Tier-3-recognised on tables where DDL is
+  // unavailable but the column naming follows convention.
+  return DdlMetadata.knownUserFkColumnNames;
 }
 
-String? suggestedPolicyForTable(String tableName) {
+String? suggestedPolicyForTable(String tableName, {DdlMetadata? ddl}) {
   final normalized = tableName.toLowerCase();
+
+  // 1. DDL metadata: dynamically synthesize a policy from discovered FK columns.
+  final ddlResolved = ddl?.forTable(normalized);
+  if (ddlResolved != null && ddlResolved.isNotEmpty) {
+    if (ddlResolved.length == 1) {
+      return 'auth.uid() = ${ddlResolved.first}';
+    }
+    return ddlResolved.map((c) => 'auth.uid() = $c').join(' OR ');
+  }
+
+  // 2. Hardcoded policies for well-known tables.
   switch (normalized) {
     case 'profiles':
     case 'users':

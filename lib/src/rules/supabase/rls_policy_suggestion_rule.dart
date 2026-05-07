@@ -24,14 +24,17 @@ class RlsPolicySuggestionRule extends Rule {
         continue;
       }
 
-      final confidence = _confidenceForTable(normalized);
+      final confidence = _confidenceForTable(context, normalized);
 
       // Only emit for HIGH or MEDIUM confidence tables — skip unknowns.
       if (confidence == null) {
         continue;
       }
 
-      final policy = suggestedPolicyForTable(access.table);
+      final policy = suggestedPolicyForTable(
+        access.table,
+        ddl: context.ddlMetadata,
+      );
       if (policy == null) {
         continue;
       }
@@ -56,7 +59,23 @@ class RlsPolicySuggestionRule extends Rule {
   }
 
   /// Returns confidence level for a table we know about, or null for unknowns.
-  FindingConfidence? _confidenceForTable(String normalized) {
+  ///
+  /// Tier 1 — DDL-resolved (FK to `auth.users`): MEDIUM. Concrete schema
+  /// evidence ties the table to user-owned data, but we still don't know
+  /// the policy semantics match without runtime data.
+  ///
+  /// Tier 2 — hardcoded HIGH/MEDIUM ladder for the canonical Supabase tables.
+  ///
+  /// Returns null for tables that are neither DDL-declared nor in the
+  /// hardcoded list — no suggestion is emitted (a wrong suggestion is worse
+  /// than silence).
+  FindingConfidence? _confidenceForTable(
+    ProjectContext context,
+    String normalized,
+  ) {
+    if (context.ddlMetadata.forTable(normalized) != null) {
+      return FindingConfidence.medium;
+    }
     switch (normalized) {
       // HIGH: canonical Supabase auth tables — column names are prescribed.
       case 'profiles':

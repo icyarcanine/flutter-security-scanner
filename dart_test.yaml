@@ -1,0 +1,8 @@
+# Test runner discovery is restricted to the real top-level entrypoints.
+# `test/fixtures/` contains scanner *input* — Dart files whose names end in
+# `_test.dart` for human readability and for `f.filePath!.contains(...)`
+# assertions in `test/scanner_test.dart`. They have no `main()`. Letting the
+# runner load them produces "Undefined name 'main'" failures and pollutes CI.
+paths:
+  - test/scanner_test.dart
+  - test/sarif_writer_test.dart
