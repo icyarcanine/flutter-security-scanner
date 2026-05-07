@@ -6,6 +6,17 @@ guard-aware data flow and barrier nodes; we have heuristics. Closing this
 gap is mostly about authoring the guard recognizers — the engine work
 that supports them lives in [00-engine.md §EN-4](00-engine.md).
 
+## Status (as of 2026-05-07)
+
+Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
+
+- ✅ §PR-15 (suppression-comment surfacing — §QW-22, sha f2d31ad),
+  §PR-18 (numeric coercion sanitizers — §QW-11, sha e330ed4)
+- ⏳ §PR-1, §PR-2, §PR-3, §PR-4, §PR-5, §PR-6, §PR-7, §PR-8 (and any
+  others below) — guard/barrier/sanitizer-registry precision work is
+  unstarted. The 2026-05 sweep focused on rule breadth and output
+  formats, not on guard reasoning.
+
 ---
 
 ## §PR-1 — Allowlist barrier guards

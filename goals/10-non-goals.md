@@ -6,6 +6,12 @@ agents don't reinvent justifications for skipping them.
 The principle: be honest about where we can't compete, and use the
 saved effort on things where we can.
 
+## Status (as of 2026-05-07)
+
+By design, every §NG-* entry is a deliberate non-goal — they have no
+"DONE" / "REMAINING" status. If the call ever changes, move the entry
+to the relevant goals file (00–09) and assign a new §-anchor.
+
 ---
 
 ## §NG-1 — C / C++ memory safety analysis

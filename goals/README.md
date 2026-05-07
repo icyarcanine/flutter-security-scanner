@@ -104,8 +104,23 @@ When a task lands, mark it in-place:
 ### Task name (§EN-1) ✅ DONE — sha 0f434cf
 ```
 
-Keep the `✅ DONE` line; do not delete the entry. The history is the
+Use 🟡 PARTIAL for landed-but-incomplete:
+
+```
+### Task name (§EN-1) 🟡 PARTIAL — sha 0f434cf — <what's still missing>
+```
+
+Use ⏳ REMAINING when explicitly noting unstarted work (default; a
+heading without any marker is also implicitly remaining).
+
+Keep the marker line; do not delete the entry. The history is the
 artifact.
+
+Each goals file (00–09, 11) starts with a "Status (as of <date>)" block
+listing which §-anchors are DONE / PARTIAL / REMAINING. That block is
+the canonical at-a-glance summary; inline markers on individual headings
+are the detail. As of 2026-05-07, the blocks reflect the post-merge
+state of `feat/production-pass-2026-05`.
 
 ## Compare to where we are today (May 2026)
 

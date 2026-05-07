@@ -5,6 +5,17 @@ Closing that gap is mostly about benchmarks, eval harnesses, and
 opt-in telemetry. **Without these, every claim of "we beat CodeQL on X"
 is unverifiable.**
 
+## Status (as of 2026-05-07)
+
+Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
+
+- 🟡 Local fixture suite under [`test/fixtures/`](../test/fixtures/) covers
+  most rules end-to-end (~50 fixtures), and the in-repo `COMPARISON.md`
+  tracks 15-fixture head-to-head with CodeQL. That's the full extent of
+  evaluation infrastructure.
+- ⏳ Every §QE-* task — OWASP, Juliet, SARD, real-CVE corpus, ML ranking,
+  telemetry — is unstarted.
+
 ---
 
 ## §QE-1 — OWASP Benchmark integration

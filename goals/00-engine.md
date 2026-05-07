@@ -10,7 +10,26 @@ The current intra-procedural tracker lives at
 (1804 LOC). Read it before working in this file. The class to extend is
 `IntraProceduralTaintTracker`.
 
-## §EN-1 — Cross-file taint summaries (JS/TS)
+## Status (as of 2026-05-07)
+
+Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
+
+- ✅ Dart-side IFDS engine landed (sha 9baeca2 + 21c9cbb): `ifdsEngine.ts`,
+  `ifdsBuilder.ts`, `ifdsSolver.ts` wired into the pipeline + `ifds-taint`
+  rule. Out of §EN-* scope (which targets JS/TS) but covers the
+  architectural concerns the §SF-14..19 Dart-IFDS tasks build on.
+- 🟡 §EN-14 (taint through built-ins) — quick-win subtasks landed:
+  `JSON.parse`/`JSON.stringify`/`Buffer.from` propagation (§QW-39),
+  `URLSearchParams.get` source (§QW-40), allowlist-stripping
+  `.replace(..., '')` sanitizer (§QW-38) — sha d0af6b4. Larger
+  built-in registry still pending.
+- ⏳ §EN-1, §EN-2, §EN-3, §EN-4, §EN-5..§EN-13, §EN-15, §EN-16 — the
+  cross-file, async, CFG, type-narrowing, and decorator engine work
+  remains unstarted.
+
+---
+
+## §EN-1 — Cross-file taint summaries (JS/TS) ⏳ REMAINING
 
 - **Why:** Real Node apps split sources and sinks across files. Today, a
   source defined in `helpers.js` and consumed in `routes.js` is downgraded

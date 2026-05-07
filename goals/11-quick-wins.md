@@ -9,6 +9,22 @@ read the deeper files.
 
 ---
 
+## Status (as of 2026-05-07)
+
+Legend: ✅ DONE | ⏸ BLOCKED | ⏳ REMAINING (default). See
+[GOALS_PROGRESS.md](../GOALS_PROGRESS.md) for the canonical task table.
+
+- ✅ §QW-3, §QW-4, §QW-5, §QW-6, §QW-7, §QW-8, §QW-9, §QW-10, §QW-11,
+  §QW-12, §QW-13, §QW-14, §QW-15, §QW-16, §QW-17, §QW-18, §QW-19,
+  §QW-20, §QW-21, §QW-22, §QW-23, §QW-24, §QW-25, §QW-26, §QW-27,
+  §QW-28, §QW-29, §QW-30, §QW-31, §QW-32, §QW-33, §QW-34, §QW-35,
+  §QW-36, §QW-37, §QW-38, §QW-39, §QW-40, §QW-42, §QW-43, §QW-44,
+  §QW-45, §QW-46, §QW-47, §QW-48, §QW-49, §QW-50
+- ⏸ §QW-1 (blocked on §PR-5 sanitizer registry)
+- ⏳ §QW-2 (depends on §EN-4), §QW-41 (depends on §EN-4)
+
+---
+
 ## §QW-1 — Sink-specific sanitizer applicability ([04-precision.md §PR-6](04-precision.md))
 
 - **Effort:** **S** (1 day post §PR-5).

@@ -10,6 +10,14 @@ Each framework needs source/sink/sanitizer entries. Most entries are
 across the languages we care about. **This is the highest-leverage,
 most-tractable area of the catch-up.**
 
+## Status (as of 2026-05-07)
+
+Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
+
+- ⏳ Every §FM-* task in this file is unstarted. The 2026-05 production pass
+  shipped Dart/Supabase rules (see [09-supabase-flutter.md](09-supabase-flutter.md))
+  rather than JS/TS framework models.
+
 ## How to add a framework
 
 1. Create `vscode-extension/src/taint/frameworks/<name>.ts`.

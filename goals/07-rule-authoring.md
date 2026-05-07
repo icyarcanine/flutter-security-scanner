@@ -9,6 +9,12 @@ write their own rules without forking. **This is differentiation
 territory** — Semgrep does this with YAML; CodeQL does this with QL.
 Either is a moat; both are even better.
 
+## Status (as of 2026-05-07)
+
+Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
+
+- ⏳ Every §RA-* task is unstarted. No DSL or external rule format yet.
+
 ---
 
 ## §RA-1 — YAML rule format (Semgrep-style)

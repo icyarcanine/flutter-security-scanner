@@ -11,7 +11,36 @@ For shape and registration steps, mirror existing rules under
 
 ---
 
-## §RC-1 — Prototype pollution (CWE-1321) ✅ HIGH PRIORITY
+## Status (as of 2026-05-07)
+
+Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
+
+After the 2026-05-07 quick-win sweep (sha f2d31ad / e330ed4 / d0af6b4),
+many §RC tasks landed via the §QW-* anchors that pointed back to them.
+See [GOALS_PROGRESS.md](../GOALS_PROGRESS.md) for the canonical mapping.
+
+- ✅ §RC-4 (CRLF header injection — §QW-10), §RC-13 (tabnabbing — §QW-6),
+  §RC-18 (error info disclosure — §QW-43), §RC-19 (cleartext HTTP — §QW-7),
+  §RC-20 (weak crypto JS — §QW-8), §RC-21 (vendor token shapes — §QW-9),
+  §RC-24 (JS path traversal — §QW-27), §RC-25 (symlink-following — §QW-28),
+  §RC-27 (Python format-string — §QW-44), §RC-35 (dependency confusion —
+  §QW-37), §RC-43 (rejectUnauthorized — §QW-5), §RC-44 (createCipher —
+  §QW-32), §RC-45 (broad cookie domain — §QW-31), §RC-48 (deprecated TLS —
+  §QW-29), §RC-50 (dynamic import sink — §QW-3), §RC-55 (web-storage
+  credentials — §QW-30), §RC-56 (clipboard exposure JS — §QW-46),
+  §RC-58 (hardcoded IP — §QW-4), §RC-60 (JWT alg confusion — §QW-23)
+- 🟡 §RC-3 (log injection) — env-secret-logging subcase covered (§QW-24);
+  CRLF log-splitting still pending.
+- ⏳ §RC-1, §RC-2, §RC-5..§RC-12, §RC-14..§RC-17, §RC-22, §RC-23, §RC-26,
+  §RC-28..§RC-34, §RC-36..§RC-42, §RC-46, §RC-47, §RC-49, §RC-51..§RC-54,
+  §RC-57, §RC-59, §RC-61, §RC-62 are unstarted.
+
+The "✅ HIGH PRIORITY" markers in this file pre-date the convention and
+mean "do this first," NOT "done."
+
+---
+
+## §RC-1 — Prototype pollution (CWE-1321) ⏳ REMAINING (HIGH PRIORITY)
 
 - **Why:** Major Node-ecosystem vulnerability class. Misses fixture 07.
 - **Current state:** No rule.
@@ -38,7 +67,7 @@ For shape and registration steps, mirror existing rules under
 - **Risks / gotchas:** FP risk on legitimate `obj[knownLiteral] = val`.
   Restrict to tainted keys.
 
-## §RC-2 — ReDoS / catastrophic backtracking (CWE-1333) ✅ HIGH PRIORITY
+## §RC-2 — ReDoS / catastrophic backtracking (CWE-1333) ⏳ REMAINING (HIGH PRIORITY)
 
 - **Why:** Misses fixture 08. Common in input validators.
 - **Current state:** No rule.

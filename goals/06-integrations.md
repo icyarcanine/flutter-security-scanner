@@ -9,7 +9,21 @@ upside for adoption.
 
 ---
 
-## §IN-1 — SARIF 2.1.0 — already shipped, deepen
+## Status (as of 2026-05-07)
+
+Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
+
+- ✅ §IN-4, §IN-6, §IN-8, §IN-9, §IN-10, §IN-11, §IN-19, §IN-22, §IN-24,
+  §IN-27, §IN-28, §IN-30
+- 🟡 §IN-1 (SARIF 2.1.0 base output landed: codeFlows, partialFingerprints,
+  per-rule CWE, SRCROOT base IDs; deepening tasks — taxonomies,
+  baselineState, kind/rank, automationDetails — still pending)
+- ⏳ §IN-2, §IN-3, §IN-5, §IN-7, §IN-12, §IN-13, §IN-14, §IN-15, §IN-16,
+  §IN-17, §IN-18, §IN-20, §IN-21, §IN-23, §IN-25, §IN-26, §IN-29, §IN-31, §IN-32
+
+---
+
+## §IN-1 — SARIF 2.1.0 — already shipped, deepen 🟡 PARTIAL — sha b060cc8
 
 - **Current state:** ✅ `vscode-extension/src/output/sarif.ts` emits
   `codeFlows`, per-rule CWE aggregation, partialFingerprints, SRCROOT

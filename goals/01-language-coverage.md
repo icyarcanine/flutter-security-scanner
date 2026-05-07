@@ -13,6 +13,16 @@ Read [00-engine.md](00-engine.md) first. Most language-specific work
 adds rows to a registry; the engine itself is what makes those rows
 meaningful.
 
+## Status (as of 2026-05-07)
+
+Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
+
+- ✅ Dart IFDS engine itself (covers §LC-13 architecturally; sha 9baeca2 + 21c9cbb).
+  Source-set extensions and per-construct sensitivity (cascade, named args,
+  field-sensitive, collection-sensitive) are tracked under §SF-14..19 in
+  [09-supabase-flutter.md](09-supabase-flutter.md) and are **still pending**.
+- ⏳ Every §LC-* task below — language-specific source/sink expansions are unstarted.
+
 ## Per-language status table
 
 | Language | Grammar | Sources | Sinks | Sanitizers | Taint depth | Framework models |

@@ -8,7 +8,22 @@ this file alone keeps us best-in-class for Flutter/Supabase teams.
 
 ---
 
-## §SF-1 — Supabase Edge Functions (Deno) coverage
+## Status (as of 2026-05-07)
+
+Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
+
+- ✅ §SF-2, §SF-3, §SF-4, §SF-6, §SF-9, §SF-10, §SF-11, §SF-12, §SF-13,
+  §SF-24, §SF-25
+- 🟡 §SF-1 (verify_jwt + CORS + service-role-in-response landed; dedicated
+  `Deno.env.get`/`kv.set`/`console.log(secrets)` rules still pending),
+  §SF-7 (rich source set landed; deeper `Navigator.pushNamed` sink modeling
+  still pending), §SF-13 (WebView extended in d412b65 + d0af6b4 added the
+  Android `addJavascriptInterface` rule)
+- ⏳ §SF-5, §SF-8, §SF-14–§SF-23, §SF-26–§SF-30
+
+---
+
+## §SF-1 — Supabase Edge Functions (Deno) coverage 🟡 PARTIAL — sha b00eb5d
 
 - **Why:** Edge Functions ship security risks specific to the Deno
   runtime (env access, fetch with attacker URLs, KV stores).
@@ -37,7 +52,7 @@ this file alone keeps us best-in-class for Flutter/Supabase teams.
   - Recognizes `.eq(...)`, Supabase `filter: "user_id=eq..."`, and Dart
     `PostgresChangeFilter(column: ...)` style scoping.
 
-## §SF-3 — Supabase RPC injection
+## §SF-3 — Supabase RPC injection ✅ DONE — sha 79e5ef6
 
 - **Why:** Dynamic RPC names + user-controlled args = privilege
   escalation.
@@ -47,7 +62,7 @@ this file alone keeps us best-in-class for Flutter/Supabase teams.
   attacker-controlled.
 - **Effort:** **M** (3 days).
 
-## §SF-4 — Supabase signed-URL TTL
+## §SF-4 — Supabase signed-URL TTL ✅ DONE — sha fb84ff1
 
 - **Current state:** ✅ rule exists per commit history.
 - **Target state:** Maintenance only.
@@ -73,7 +88,7 @@ this file alone keeps us best-in-class for Flutter/Supabase teams.
   enabled, INSERT policy covering ownership but SELECT policy missing.
   Expected finding: SELECT not covered.
 
-## §SF-6 — Supabase `service_role` key client-side leak
+## §SF-6 — Supabase `service_role` key client-side leak ✅ DONE — sha ca7785a + 8868ef1 (JWT decode)
 
 - **Current state:** ✅ rule exists per commit history (`supabase-service-role-key-in-client`).
 - **Target state:** Maintenance + a related rule: `service_role` JWT
@@ -81,7 +96,7 @@ this file alone keeps us best-in-class for Flutter/Supabase teams.
   `generic-secret`'s JWT decoding work).
 - **Effort:** **S** maintenance.
 
-## §SF-7 — Flutter deep-link sources (extend existing rule)
+## §SF-7 — Flutter deep-link sources (extend existing rule) 🟡 PARTIAL — sha 0ca0d71
 
 - **Why:** `getInitialLink()`, `linkStream`, `app.getIntent()`,
   `MethodChannel('app/route').invokeMethod` all bring user data.
@@ -101,14 +116,14 @@ this file alone keeps us best-in-class for Flutter/Supabase teams.
   the iOS/Android side, this is a "review-required" finding.
 - **Effort:** **M** (3 days).
 
-## §SF-9 — Flutter biometric auth misuse
+## §SF-9 — Flutter biometric auth misuse ✅ DONE — sha 1631d80
 
 - **Current state:** ✅ rule exists per commit history (`biometric-auth`).
 - **Target state:** Maintenance + extend to cover `local_auth`'s
   `authenticate(stickyAuth: false)` pattern (CWE-287).
 - **Effort:** **S** (1 day).
 
-## §SF-10 — Flutter release-hardening checks
+## §SF-10 — Flutter release-hardening checks ✅ DONE — sha 1acead9
 
 - **Current state:** ✅ rule exists per commit history (`release-hardening`).
 - **Target state:** Maintenance + extend:
@@ -117,7 +132,7 @@ this file alone keeps us best-in-class for Flutter/Supabase teams.
   - allowBackup=true in AndroidManifest.xml
 - **Effort:** **M** (3 days).
 
-## §SF-11 — Flutter platform-security plist / manifest
+## §SF-11 — Flutter platform-security plist / manifest ✅ DONE — sha df332b2
 
 - **Current state:** ✅ rule exists per commit history (`platform-security`).
 - **Target state:** Maintenance + extend:

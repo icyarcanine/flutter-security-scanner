@@ -8,6 +8,18 @@ This file covers the work to make us competitive on real-world repos.
 Read [00-engine.md §EN-7 / §EN-8](00-engine.md) first — the DB layer
 is the underpinning for everything here.
 
+## Status (as of 2026-05-07)
+
+Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
+
+- ✅ §SC-4 (bounded file size — §QW-13, sha f2d31ad),
+  §SC-8 (bounded rule runtime — §QW-12, sha f2d31ad),
+  §SC-16 (scan duration telemetry — §QW-42, sha e330ed4)
+- ⏳ §SC-1 (whole-program SQLite DB), §SC-2 (incremental rescan), §SC-3
+  (streaming file walk), §SC-5 (distributed workers), §SC-6 (rule cache),
+  §SC-7 (lazy AST cross-scan), §SC-9, §SC-10, and the rest — the deep
+  scale work (DB layer, incremental, monorepo) remains unstarted.
+
 ---
 
 ## §SC-1 — Whole-program SQLite database
