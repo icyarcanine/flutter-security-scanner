@@ -33,6 +33,8 @@ import { WeakCryptoJsRule } from './security/weakCryptoJsRule';
 import { InsecureWebStorageRule } from './security/insecureWebStorageRule';
 import { ErrorInfoDisclosureRule } from './security/errorInfoDisclosureRule';
 import { ClipboardExposureRule } from './security/clipboardExposureRule';
+import { PathTraversalJsRule } from './security/pathTraversalJsRule';
+import { DependencyConfusionRule } from './security/dependencyConfusionRule';
 
 export function buildDefaultRules(includeSuggestions: boolean): Rule[] {
   const rules: Rule[] = [
@@ -54,6 +56,8 @@ export function buildDefaultRules(includeSuggestions: boolean): Rule[] {
     new InsecureWebStorageRule(),
     new ErrorInfoDisclosureRule(),
     new ClipboardExposureRule(),
+    new PathTraversalJsRule(),
+    new DependencyConfusionRule(),
 
     // Security
     new HardcodedSecretsRule(),

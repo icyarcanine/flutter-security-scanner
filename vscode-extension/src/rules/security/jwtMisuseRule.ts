@@ -1,5 +1,5 @@
 import { Rule, RuleStage } from '../rule';
-import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
+import { Finding, FindingSeverity, FindingCategory, FindingConfidence, DetectionMethod } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 import { isCommentLine } from '../ruleHelpers';
 
@@ -21,6 +21,9 @@ const SUPPORTED_LANGS = /\.(?:js|jsx|ts|tsx)$/i;
 
 const JWT_DECODE_PATTERN = /\b(?:jwt|jsonwebtoken|jwt_decode)\s*\.\s*decode\s*\(/g;
 const JWT_NONE_ALG_PATTERN = /algorithms\s*:\s*\[\s*['"]none['"]/gi;
+const JWT_HS_WITH_PUBLIC_KEY_PATTERN =
+  /\bjwt\s*\.\s*verify\s*\([^,]+,\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*,\s*\{[^}]*algorithms\s*:\s*\[[^\]]*['"]HS(?:256|384|512)['"][^\]]*\]/gis;
+const PUBLIC_KEY_NAME_PATTERN = /(?:public|pub|cert|certificate|rsa|pem).*key|key.*(?:public|pub|cert|certificate|rsa|pem)/i;
 const JWT_HARDCODED_SECRET_PATTERN = /\bjwt\s*\.\s*sign\s*\(\s*[^,]+,\s*['"]([^'"]{4,})['"]/g;
 // Variable form: `jwt.sign(payload, SECRET, …)` where `SECRET` is an
 // identifier — we then look for `const|let|var SECRET = "literal"` in the
@@ -71,6 +74,30 @@ export class JwtMisuseRule implements Rule {
           message: "JWT verifier accepts algorithm 'none' (unsigned tokens)",
           fix: 'Remove "none" from the algorithms list; restrict to a specific algorithm (e.g. ["HS256"] or ["RS256"]).',
           risk: 'Accepting `alg: none` tokens means any attacker can forge a JWT with arbitrary claims and have it accepted as valid.',
+          filePath: file.relativePath,
+          line,
+          cwe: 'CWE-347',
+        }));
+      }
+
+      // 2b. Algorithm confusion: HMAC verifier configured with a public-key
+      // looking variable. This is the RS256→HS256 class where an attacker can
+      // sign with the public key as an HMAC secret if the verifier allows HS*.
+      JWT_HS_WITH_PUBLIC_KEY_PATTERN.lastIndex = 0;
+      while ((m = JWT_HS_WITH_PUBLIC_KEY_PATTERN.exec(file.content)) !== null) {
+        const keyName = m[1];
+        if (!PUBLIC_KEY_NAME_PATTERN.test(keyName)) { continue; }
+        const line = file.lineForOffset(m.index);
+        if (isCommentLine(file.lines[line - 1] ?? '')) { continue; }
+        findings.push(new Finding({
+          severity: FindingSeverity.high,
+          confidence: FindingConfidence.high,
+          detectionMethod: DetectionMethod.regex,
+          category: FindingCategory.security,
+          code: this.code,
+          message: `JWT verifier allows HS* algorithms while using public-key-like value \`${keyName}\``,
+          fix: 'Do not mix symmetric HS* algorithms with RSA/ECDSA public keys. Pin the verifier to RS256/ES256 (or the exact asymmetric algorithm you issue) and keep HS* only for shared-secret deployments.',
+          risk: 'Algorithm-confusion bugs let attackers forge tokens by treating a public key as an HMAC secret.',
           filePath: file.relativePath,
           line,
           cwe: 'CWE-347',

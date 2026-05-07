@@ -222,7 +222,7 @@ const VALIDATION_NAME_PATTERN =
  * to be a number (not Number-like strings) belong here.
  */
 const NUMERIC_COERCION_PATTERN =
-  /(?:^|\.)(parseInt|parseFloat|Number\.parseInt|Number\.parseFloat)$/;
+  /(?:^|\.)(parseInt|parseFloat|Number|Number\.parseInt|Number\.parseFloat)$/;
 
 /**
  * Intra-procedural taint tracker for high-confidence source-to-sink findings.
@@ -1055,9 +1055,7 @@ export class IntraProceduralTaintTracker {
         // checking taint.
         const first = args[0];
         if (!first) { return false; }
-        if (first.type === 'arrow_function' || first.type === 'function' ||
-            first.type === 'function_expression' || first.type === 'function_declaration' ||
-            first.type === 'lambda' || first.type === 'lambda_expression') {
+        if (this._isFunctionLikeExpression(first)) {
           return false;
         }
         return this._expressionTaintStrength(first, state);
@@ -1094,6 +1092,8 @@ export class IntraProceduralTaintTracker {
     const symbol = this._normalizeSymbol(node.text);
     if (symbol && state.sanitized.has(symbol)) { return true; }
 
+    if (this._isNumericCoercionExpression(node)) { return true; }
+
     if (isFunctionCall(node)) {
       const name = getCallName(node);
       if (SANITIZER_NAME_PATTERN.test(name) ||
@@ -1104,6 +1104,33 @@ export class IntraProceduralTaintTracker {
     }
 
     return false;
+  }
+
+  /**
+   * JavaScript numeric coercion idioms. These force a value into a number,
+   * which is safe for string-injection sinks in the same way parseInt is.
+   */
+  private _isNumericCoercionExpression(node: SyntaxNode): boolean {
+    const text = node.text.trim();
+
+    if (node.type === 'unary_expression') {
+      if (/^\+\s*/.test(text)) { return true; }
+      if (/^~\s*~\s*/.test(text)) { return true; }
+    }
+
+    if (node.type === 'binary_expression') {
+      if (/\|\s*0\s*$/.test(text)) { return true; }
+      if (/>>>\s*0\s*$/.test(text)) { return true; }
+    }
+
+    // Parser fallback / cross-language AST type drift: keep a tight textual
+    // fallback so `(req.body.id | 0)` still sanitizes even if the node type
+    // changes under tree-sitter.
+    const stripped = text.replace(/^\(+|\)+$/g, '').trim();
+    return /^\+\s*[^+]/.test(stripped) ||
+      /^~\s*~\s*/.test(stripped) ||
+      /\|\s*0\s*$/.test(stripped) ||
+      />>>\s*0\s*$/.test(stripped);
   }
 
   private _isDirectSourceExpression(node: SyntaxNode): boolean {
@@ -1499,6 +1526,7 @@ export class IntraProceduralTaintTracker {
         return this._isDynamicExpression(args[0], state) &&
           this._hasUntrustedDynamicParts(args[0], state);
       case 'code':
+        if (this._isFunctionLikeExpression(args[0])) { return false; }
         return this._hasUntrustedDynamicParts(args[0], state);
       case 'html':
         return args.some(arg =>
@@ -1529,6 +1557,17 @@ export class IntraProceduralTaintTracker {
         // Detected only via _checkNoSqlInjection structural check.
         return false;
     }
+  }
+
+  private _isFunctionLikeExpression(node: SyntaxNode | null): boolean {
+    return node != null && (
+      node.type === 'arrow_function' ||
+      node.type === 'function' ||
+      node.type === 'function_expression' ||
+      node.type === 'function_declaration' ||
+      node.type === 'lambda' ||
+      node.type === 'lambda_expression'
+    );
   }
 
   /**

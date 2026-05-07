@@ -2,6 +2,8 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
+import * as http from 'http';
+import * as https from 'https';
 import { execSync } from 'child_process';
 import { ProjectScanner, ProjectScanReport } from './scanner/scanner';
 import { Finding } from './models/finding';
@@ -21,6 +23,7 @@ interface CliArgs {
   target: string;
   format: 'json' | 'pretty' | 'summary' | 'sarif' | 'markdown' | 'csv' | 'junit' | 'gitlab' | 'bitbucket';
   failOn?: 'high' | 'medium' | 'low';
+  failConfidence?: 'high' | 'medium' | 'low';
   useBaseline: boolean;
   openInEditor: boolean;
   maxFindings?: number;
@@ -34,6 +37,10 @@ interface CliArgs {
    * the ref). Powers PR-style scanning in CI without needing a baseline.
    */
   changedSince?: string;
+  /** SARIF file to diff against; matching fingerprints are filtered out. */
+  diffAgainst?: string;
+  /** Optional notification target, e.g. slack:https://hooks.slack.com/... */
+  notify?: string;
   /**
    * Per-rule timeout in milliseconds. Rules exceeding this are aborted and
    * surface a `scanner-internal-error` finding. `0` disables the budget.
@@ -64,6 +71,9 @@ function parseArgs(argv: string[]): CliArgs | null {
       flags.format = args[i].includes('=') ? args[i].split('=', 2)[1] : args[++i];
     }
     else if (args[i] === '--fail-on' && args[i + 1]) { flags.failOn = args[++i]; }
+    else if ((args[i] === '--fail-confidence' || args[i].startsWith('--fail-confidence=')) && (args[i].includes('=') || args[i + 1])) {
+      flags.failConfidence = args[i].includes('=') ? args[i].split('=', 2)[1] : args[++i];
+    }
     else if (args[i] === '--baseline') { flags.baseline = 'true'; }
     else if (args[i] === '--open') { flags.open = 'true'; }
     else if (args[i] === '--max-findings' && args[i + 1]) { flags.maxFindings = args[++i]; }
@@ -76,6 +86,12 @@ function parseArgs(argv: string[]): CliArgs | null {
     else if ((args[i] === '--changed-since' || args[i].startsWith('--changed-since=')) && (args[i].includes('=') || args[i + 1])) {
       // Accept both `--changed-since main` and `--changed-since=main`.
       flags.changedSince = args[i].includes('=') ? args[i].split('=', 2)[1] : args[++i];
+    }
+    else if ((args[i] === '--diff-against' || args[i].startsWith('--diff-against=')) && (args[i].includes('=') || args[i + 1])) {
+      flags.diffAgainst = args[i].includes('=') ? args[i].split('=', 2)[1] : args[++i];
+    }
+    else if ((args[i] === '--notify' || args[i].startsWith('--notify=')) && (args[i].includes('=') || args[i + 1])) {
+      flags.notify = args[i].includes('=') ? args[i].split('=', 2)[1] : args[++i];
     }
     else if ((args[i] === '--rule-timeout' || args[i].startsWith('--rule-timeout=')) && (args[i].includes('=') || args[i + 1])) {
       flags.ruleTimeoutMs = args[i].includes('=') ? args[i].split('=', 2)[1] : args[++i];
@@ -93,12 +109,15 @@ function parseArgs(argv: string[]): CliArgs | null {
     target: target || '.',
     format: (flags.format as any) || 'json',
     failOn: ['high', 'medium', 'low'].includes(flags.failOn ?? '') ? flags.failOn as any : undefined,
+    failConfidence: ['high', 'medium', 'low'].includes(flags.failConfidence ?? '') ? flags.failConfidence as any : undefined,
     useBaseline: flags.baseline === 'true',
     openInEditor: flags.open === 'true',
     maxFindings: flags.maxFindings ? parseInt(flags.maxFindings, 10) : undefined,
     outputFile: flags.outputFile,
     disabledRules,
     changedSince: flags.changedSince,
+    diffAgainst: flags.diffAgainst,
+    notify: flags.notify,
     ruleTimeoutMs: flags.ruleTimeoutMs != null ? parseTimeoutMs(flags.ruleTimeoutMs) : undefined,
     maxFileSizeBytes: flags.maxFileSize != null ? parseByteSize(flags.maxFileSize) : undefined,
   };
@@ -261,6 +280,14 @@ async function runScan(args: CliArgs) {
       }
     }
 
+    if (args.diffAgainst) {
+      const baselineSarifPath = path.resolve(rootPath, args.diffAgainst);
+      const oldFingerprints = loadSarifFingerprints(baselineSarifPath);
+      const before = findings.length;
+      findings = findings.filter(f => !oldFingerprints.has(fingerprintForFinding(f, rootPath)));
+      console.error(`[SAST] --diff-against ${args.diffAgainst}: kept ${findings.length}/${before} new findings (${oldFingerprints.size} prior fingerprints)`);
+    }
+
     // Apply baseline if requested. Pass current file contents so v2 baselines
     // can use context-hash matching (line-shift tolerant).
     if (args.useBaseline) {
@@ -331,11 +358,19 @@ async function runScan(args: CliArgs) {
       openHighFindings(findings, rootPath);
     }
 
+    if (args.notify) {
+      await sendNotification(args.notify, rootPath, fullCounts, findings.length);
+    }
+
     // Exit code for CI
-    if (args.failOn) {
-      const shouldFail = checkThreshold(findings, args.failOn);
+    if (args.failOn || args.failConfidence) {
+      const shouldFail = checkThreshold(findings, args.failOn, args.failConfidence);
       if (shouldFail) {
-        console.error(`[SAST] Threshold exceeded: --fail-on ${args.failOn}`);
+        const parts = [
+          args.failOn ? `--fail-on ${args.failOn}` : null,
+          args.failConfidence ? `--fail-confidence ${args.failConfidence}` : null,
+        ].filter(Boolean).join(' ');
+        console.error(`[SAST] Threshold exceeded: ${parts}`);
         process.exit(1);
       }
     }
@@ -423,6 +458,7 @@ function buildJsonReport(report: ProjectScanReport, findings: Finding[], rootPat
       astSuccessRate: report.astSuccessRate,
       astFailuresByLanguage: report.astDiagnostics.failuresByLanguage,
       scanDurationMs: report.scanDurationMs,
+      stageDurationsMs: report.stageDurationsMs,
       skippedFiles: report.skippedFiles.map(s => ({
         relativePath: s.relativePath,
         sizeBytes: s.sizeBytes,
@@ -473,6 +509,9 @@ function outputPretty(report: ProjectScanReport, findings: Finding[], counts: Fu
   console.log(`  ${'─'.repeat(40)}`);
   console.log(`  Files scanned:  ${report.totalFiles}`);
   console.log(`  Scan duration:  ${report.scanDurationMs}ms`);
+  if (Object.keys(report.stageDurationsMs).length > 0) {
+    console.log(`  Stage timings:  ${formatStageDurations(report.stageDurationsMs)}`);
+  }
   console.log(`  AST success:    ${report.astSuccessRate}%`);
   console.log(`  Total findings: ${counts.total}`);
   if (report.skippedFiles.length > 0) {
@@ -526,6 +565,9 @@ function outputSummary(report: ProjectScanReport, counts: FullCounts) {
   console.log(`  ${'─'.repeat(30)}`);
   console.log(`  Files:    ${report.totalFiles}`);
   console.log(`  Duration: ${report.scanDurationMs}ms`);
+  if (Object.keys(report.stageDurationsMs).length > 0) {
+    console.log(`  Stages:   ${formatStageDurations(report.stageDurationsMs)}`);
+  }
   console.log(`  AST:      ${report.astSuccessRate}%`);
   console.log(`  HIGH:     ${counts.high}`);
   console.log(`  MEDIUM:   ${counts.medium}`);
@@ -537,16 +579,138 @@ function outputSummary(report: ProjectScanReport, counts: FullCounts) {
   console.log('');
 }
 
+function formatStageDurations(stageDurationsMs: Readonly<Record<string, number>>): string {
+  return ['loading', 'fast', 'ast', 'taint']
+    .filter(k => stageDurationsMs[k] != null)
+    .map(k => `${k}=${stageDurationsMs[k]}ms`)
+    .join(', ');
+}
+
+// ── Notifications ───────────────────────────────
+
+async function sendNotification(target: string, rootPath: string, counts: FullCounts, shownFindings: number): Promise<void> {
+  const [kind, ...rest] = target.split(':');
+  const destination = rest.join(':');
+  if (kind !== 'slack' || !destination) {
+    console.error(`[SAST] Warning: unsupported --notify target "${target}" (expected slack:<webhook-url>).`);
+    return;
+  }
+
+  const payload = {
+    text: `SAST scan for ${path.basename(rootPath)}: ${counts.total} finding(s) ` +
+      `(${counts.high} high, ${counts.medium} medium, ${counts.low} low). ` +
+      `${shownFindings} shown after filters.`,
+  };
+
+  try {
+    await postJson(destination, payload);
+    console.error('[SAST] Slack notification sent.');
+  } catch (err) {
+    console.error(`[SAST] Slack notification failed: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+function postJson(url: string, payload: unknown): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch (err) {
+      reject(err);
+      return;
+    }
+
+    const body = JSON.stringify(payload);
+    const client = parsed.protocol === 'http:' ? http : https;
+    const req = client.request(parsed, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'content-length': Buffer.byteLength(body).toString(),
+      },
+      timeout: 10_000,
+    }, res => {
+      res.resume();
+      res.on('end', () => {
+        if (res.statusCode != null && res.statusCode >= 200 && res.statusCode < 300) {
+          resolve();
+        } else {
+          reject(new Error(`HTTP ${res.statusCode ?? 'unknown'}`));
+        }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy(new Error('request timed out'));
+    });
+    req.write(body);
+    req.end();
+  });
+}
+
+// ── SARIF diffing ───────────────────────────────
+
+function loadSarifFingerprints(sarifFile: string): Set<string> {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(sarifFile, 'utf8'));
+    const fingerprints = new Set<string>();
+    for (const run of parsed?.runs ?? []) {
+      for (const result of run?.results ?? []) {
+        const partials = result?.partialFingerprints;
+        if (partials && typeof partials === 'object') {
+          for (const value of Object.values(partials)) {
+            if (typeof value === 'string' && value) { fingerprints.add(value); }
+          }
+        }
+
+        // Fallback for SARIF logs produced by other tools: approximate the
+        // same stable key from ruleId + primary location + start line.
+        const loc = result?.locations?.[0]?.physicalLocation;
+        const uri = loc?.artifactLocation?.uri;
+        const line = loc?.region?.startLine;
+        if (result?.ruleId && uri && line) {
+          fingerprints.add(`${result.ruleId}:${uri}:${line}`);
+        }
+      }
+    }
+    return fingerprints;
+  } catch (err) {
+    console.error(`[SAST] --diff-against failed to read SARIF: ${err instanceof Error ? err.message : err}`);
+    process.exit(1);
+  }
+}
+
+function fingerprintForFinding(finding: Finding, rootPath: string): string {
+  const filePath = finding.filePath ?? '';
+  const uri = path.isAbsolute(filePath)
+    ? path.relative(rootPath, filePath).split(path.sep).join('/')
+    : filePath.split(path.sep).join('/');
+  return `${finding.code}:${uri}:${finding.line ?? 1}`;
+}
+
 // ── CI threshold ────────────────────────────────
 
-function checkThreshold(findings: Finding[], level: string): boolean {
-  const thresholds: Record<string, string[]> = {
+function checkThreshold(
+  findings: Finding[],
+  severityLevel?: 'high' | 'medium' | 'low',
+  confidenceLevel?: 'high' | 'medium' | 'low',
+): boolean {
+  const severityThresholds: Record<string, string[]> = {
     high: ['high'],
     medium: ['high', 'medium'],
     low: ['high', 'medium', 'low'],
   };
-  const levels = thresholds[level] || [];
-  return findings.some(f => levels.includes(f.severity ?? ''));
+  const confidenceThresholds: Record<string, string[]> = {
+    high: ['high'],
+    medium: ['high', 'medium'],
+    low: ['high', 'medium', 'low'],
+  };
+  const severities = severityLevel ? severityThresholds[severityLevel] : ['high', 'medium', 'low'];
+  const confidences = confidenceLevel ? confidenceThresholds[confidenceLevel] : ['high', 'medium', 'low'];
+  return findings.some(f =>
+    severities.includes(f.severity ?? '') &&
+    confidences.includes(f.confidence ?? ''),
+  );
 }
 
 // ── Telemetry (local-only) ──────────────────────
@@ -613,6 +777,8 @@ function saveTelemetry(_rootPath: string, report: ProjectScanReport, counts: Ful
       medium: counts.medium,
       low: counts.low,
       durationMs: report.scanDurationMs,
+      stageDurationsMs: report.stageDurationsMs,
+      durationPerFileMs: report.totalFiles > 0 ? report.scanDurationMs / report.totalFiles : report.scanDurationMs,
       astSuccessRate: report.astSuccessRate,
     };
 
@@ -627,10 +793,33 @@ function saveTelemetry(_rootPath: string, report: ProjectScanReport, counts: Ful
     history.push(entry);
     if (history.length > 50) history = history.slice(-50);
 
-    fs.writeFileSync(telemetryFile, JSON.stringify(history, null, 2), 'utf8');
+    const withDistribution = history.map(item => ({
+      ...item,
+      durationDistributionMs: percentileSummary(history.map(h => Number(h.durationMs)).filter(Number.isFinite)),
+      durationPerFileDistributionMs: percentileSummary(history
+        .map(h => Number(h.durationPerFileMs ?? (h.files > 0 ? h.durationMs / h.files : h.durationMs)))
+        .filter(Number.isFinite)),
+    }));
+
+    fs.writeFileSync(telemetryFile, JSON.stringify(withDistribution, null, 2), 'utf8');
   } catch {
     // Non-critical — never crash for telemetry
   }
+}
+
+function percentileSummary(values: number[]): { p50: number; p95: number; p99: number } {
+  if (values.length === 0) { return { p50: 0, p95: 0, p99: 0 }; }
+  const sorted = [...values].sort((a, b) => a - b);
+  return {
+    p50: percentile(sorted, 0.50),
+    p95: percentile(sorted, 0.95),
+    p99: percentile(sorted, 0.99),
+  };
+}
+
+function percentile(sorted: number[], p: number): number {
+  const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * p) - 1));
+  return Math.round(sorted[idx]);
 }
 
 // ── Baseline ────────────────────────────────────
@@ -823,7 +1012,10 @@ Options:
   --format <name>         Same as the per-format flags above
   -o, --output <path>     Write output to a file instead of stdout
   --fail-on <level>       Exit 1 if findings >= level (high|medium|low)
+  --fail-confidence <lvl> Exit 1 only for findings at/above confidence (high|medium|low)
   --baseline              Compare against baseline, show only new findings
+  --diff-against <sarif>  Show only findings not present in an older SARIF file
+  --notify slack:<url>    POST a Slack-compatible JSON summary after scan
   --open                  Open HIGH findings in editor (vscode:// URI)
   --max-findings <n>      Limit output to top N findings (by severity)
   --disable <a,b>         Skip these rule codes (comma-separated, repeatable)
@@ -835,6 +1027,8 @@ Examples:
   npx flutter-supabase-helper scan ./my-project --pretty
   npx flutter-supabase-helper scan . --fail-on high --json
   npx flutter-supabase-helper scan . --sarif -o sast.sarif
+  npx flutter-supabase-helper scan . --json --diff-against old.sarif
+  npx flutter-supabase-helper scan . --summary --notify slack:$SLACK_WEBHOOK_URL
   npx flutter-supabase-helper scan . --pretty --max-findings 10
   npx flutter-supabase-helper scan . --open
   npx flutter-supabase-helper baseline .

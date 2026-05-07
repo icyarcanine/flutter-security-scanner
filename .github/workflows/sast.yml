@@ -1,0 +1,52 @@
+name: SAST
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "vscode-extension/**"
+      - "lib/**"
+      - "bin/**"
+      - "tool/**"
+      - "test/fixtures/**"
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  flutter-supabase-helper:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: vscode-extension/package-lock.json
+
+      - name: Install extension dependencies
+        working-directory: vscode-extension
+        run: npm ci
+
+      - name: Compile scanner
+        working-directory: vscode-extension
+        run: npm run compile
+
+      - name: Run SAST
+        run: |
+          node vscode-extension/out/cli.js scan . \
+            --changed-since origin/main \
+            --sarif \
+            --output sast.sarif \
+            --fail-on high \
+            --fail-confidence high
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: sast.sarif

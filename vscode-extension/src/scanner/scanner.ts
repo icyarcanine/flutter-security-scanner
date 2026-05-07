@@ -16,6 +16,7 @@ export class ProjectScanReport {
   readonly findings: Finding[];
   readonly astDiagnostics: AstDiagnostics;
   readonly scanDurationMs: number;
+  readonly stageDurationsMs: Readonly<Record<string, number>>;
   /**
    * Per-rule count of findings filtered out by a suppression directive.
    * Lets users notice rules with disproportionate FP rates (§QW-22 / §PR-15).
@@ -29,12 +30,14 @@ export class ProjectScanReport {
     astDiagnostics: AstDiagnostics,
     scanDurationMs: number,
     suppressionsByRule: ReadonlyMap<string, number> = new Map(),
+    stageDurationsMs: Readonly<Record<string, number>> = {},
   ) {
     this.context = context;
     this.findings = findings;
     this.astDiagnostics = astDiagnostics;
     this.scanDurationMs = scanDurationMs;
     this.suppressionsByRule = suppressionsByRule;
+    this.stageDurationsMs = stageDurationsMs;
   }
 
   /**
@@ -139,11 +142,14 @@ export class ProjectScanner {
 
     const loadOpts: ProjectContextLoadOptions = {};
     if (this.maxFileSizeBytes != null) { loadOpts.maxFileSizeBytes = this.maxFileSizeBytes; }
+    const stageDurationsMs: Record<string, number> = {};
+    const loadStart = Date.now();
     const context = await ProjectContext.load(
       rootPath,
       onProgress ? n => onProgress('loading', `Loading files: ${n}`) : undefined,
       loadOpts,
     );
+    stageDurationsMs.loading = Date.now() - loadStart;
     if (context.skippedFiles.length > 0) {
       const cap = this.maxFileSizeBytes ?? 1024 * 1024;
       const human = ProjectScanner._humanBytes(cap);
@@ -180,6 +186,7 @@ export class ProjectScanner {
     // stage 2's AST cache pre-warmed.
     const ruleTimeoutMs = this.ruleTimeoutMs;
     const runStage = async (stage: RuleStage) => {
+      const stageStart = Date.now();
       const stageRules = allRules.filter(r => r.stage === stage);
       const results = await Promise.all(
         stageRules.map(async rule => {
@@ -201,6 +208,7 @@ export class ProjectScanner {
         }),
       );
       for (const r of results) { findings.push(...r); }
+      stageDurationsMs[ProjectScanner._stageLabel(stage)] = Date.now() - stageStart;
     };
 
     await runStage(RuleStage.fast);  // regex / heuristics
@@ -223,8 +231,9 @@ export class ProjectScanner {
     }
 
     const elapsed = Date.now() - startTime;
+    stageDurationsMs.total = elapsed;
     return new ProjectScanReport(
-      context, deduped, { ...ParserContext.diagnostics }, elapsed, suppressedByRule,
+      context, deduped, { ...ParserContext.diagnostics }, elapsed, suppressedByRule, stageDurationsMs,
     );
   }
 
@@ -233,6 +242,14 @@ export class ProjectScanner {
     if (n < 1024) { return `${n} B`; }
     if (n < 1024 * 1024) { return `${(n / 1024).toFixed(1)} KB`; }
     return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  private static _stageLabel(stage: RuleStage): string {
+    switch (stage) {
+      case RuleStage.fast: return 'fast';
+      case RuleStage.ast: return 'ast';
+      case RuleStage.taint: return 'taint';
+    }
   }
 
   /**

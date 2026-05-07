@@ -18,9 +18,10 @@ extension engine**, not the CLI.
 
 **Production features:** SARIF 2.1.0 output, CWE taxonomy, data-flow paths
 in findings, AST-aware inline suppressions, content-hash baselines, git diff
-mode for PR-style scans, parallel rule execution, multi-root workspaces,
-on-save scanning, per-rule disable, statement-aware suppression boundary,
-inter-procedural IFDS for Dart, and 26 unit-tested taint engine invariants.
+mode for PR-style scans, SARIF diff mode, confidence-based CI failure,
+parallel rule execution, multi-root workspaces, on-save scanning, per-rule
+disable, statement-aware suppression boundary, inter-procedural IFDS for
+Dart, and 80+ unit-tested taint engine invariants.
 
 ## What It Detects
 
@@ -30,12 +31,16 @@ inter-procedural IFDS for Dart, and 26 unit-tested taint engine invariants.
 - **Hardcoded secrets** — AWS keys, private keys, JWT tokens, hardcoded
   Supabase anon keys, high-entropy strings
 - **JWT misuse** — `jwt.decode` without verify, `algorithms: ['none']`,
-  hardcoded HMAC secrets (incl. file-local variable tracking)
+  hardcoded HMAC secrets (incl. file-local variable tracking), HS* verifier
+  configuration with public-key-looking values
 - **Insecure cookies** — `httpOnly: false`, `secure: false`,
   `sameSite: 'none'` without secure
 - **CORS misconfiguration** — wildcard origin + credentials, `cors({ origin: true, credentials: true })`,
   origin reflection
 - **Insecure randomness** — `Math.random()` for security-sensitive values
+- **JavaScript platform risks** — cleartext HTTP clients, tabnabbing,
+  broad cookie domains, sensitive web storage, clipboard exposure,
+  deprecated TLS protocol pinning, weak crypto APIs, typosquatted packages
 - **Supabase misconfigurations** — missing RLS, insecure storage rules,
   committed `.env` files, public buckets, multiple clients, improper init
 - **Unsafe patterns** — sensitive logging, debug artifacts, client-side
@@ -101,8 +106,9 @@ following properties:
   - Name-pattern: `sanitize/escape*/encodeURI*/dompurify.sanitize/encodeHTML/clean/normalize/validator.escape`.
   - Validators: `validate/assertValid/ensureSafe/schema.parse/safeParse/...`.
   - Numeric coercion: `parseInt`, `parseFloat`, `Number.parseInt`,
-    `Number.parseFloat` — separated into a documented bucket because the
-    return type (number) cannot carry SQL/shell/template payloads.
+    `Number.parseFloat`, `Number`, unary `+`, `~~`, `| 0`, `>>> 0` —
+    separated into a documented bucket because the return type (number)
+    cannot carry SQL/shell/template payloads.
   - Parameterized queries — recognized at the call level (second arg is
     `[…]`/`{…}`/`(…)` or matches `params/values/bindings/parameters`).
 - **Precision controls**:
@@ -208,6 +214,11 @@ npx flutter-supabase-helper scan . --sarif -o sast.sarif    # SARIF 2.1.0
 | `--pretty` | Grouped human report with severity icons | Terminal |
 | `--summary` | Counts only | Quick CI sanity check |
 | `--sarif` | [SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html) with `codeFlows`, per-rule CWE taxonomy, partialFingerprints | GitHub Code Scanning, GitLab, Azure DevOps |
+| `--markdown` | Markdown table | PR comments and issues |
+| `--csv` | RFC 4180 CSV | Spreadsheets and BI tools |
+| `--junit` | JUnit XML | Jenkins, CircleCI, Buildkite |
+| `--gitlab` | GitLab Code Quality JSON | GitLab merge request widgets |
+| `--bitbucket` | Bitbucket Code Insights annotations | Bitbucket pull requests |
 
 ### CI Integration
 
@@ -223,6 +234,10 @@ npx flutter-supabase-helper scan . --sarif -o sast.sarif    # SARIF 2.1.0
 `--fail-on <level>` exits with code `1` when findings at or above the level
 exist (`high|medium|low`).
 
+`--fail-confidence <level>` adds a confidence gate. For example,
+`--fail-on high --fail-confidence high` fails only on HIGH-severity,
+HIGH-confidence findings, while still reporting lower-confidence results.
+
 ### PR-style scans (`--changed-since`)
 
 ```bash
@@ -232,6 +247,35 @@ npx flutter-supabase-helper scan . --changed-since main --sarif -o pr.sarif
 Restricts findings to files modified since the given git ref (uses `git diff
 --name-only <ref>...HEAD` plus `git status --porcelain` for uncommitted
 work). Combine with `--fail-on high` for low-friction PR gating.
+
+### SARIF diff mode (`--diff-against`)
+
+```bash
+npx flutter-supabase-helper scan . --sarif -o current.sarif
+npx flutter-supabase-helper scan . --json --diff-against previous.sarif
+```
+
+Filters out findings whose SARIF partial fingerprint already appeared in an
+older scan. This is useful for PR comments that should show only newly
+introduced findings, while a full SARIF upload remains available for code
+scanning dashboards.
+
+### pre-commit
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: local
+    hooks:
+      - id: flutter-supabase-helper-sast
+        name: Flutter Supabase Helper SAST
+        entry: npx flutter-supabase-helper scan . --changed-since HEAD --fail-on high --fail-confidence high --summary
+        language: system
+        pass_filenames: false
+```
+
+`pass_filenames: false` is intentional: the scanner already computes changed
+files via git, which keeps path handling consistent with CI.
 
 ### Baseline (suppress known issues)
 

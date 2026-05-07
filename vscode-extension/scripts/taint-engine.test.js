@@ -83,6 +83,26 @@ async function main() {
       `parseInt should sanitize: ${JSON.stringify(findings)}`);
   });
 
+  await test('numeric coercion idioms clear taint for injection sinks (QW-11 / PR-18)', async () => {
+    const findings = await scanWith({
+      'a.js': `
+        function h(req, db) {
+          const a = Number(req.body.a);
+          const b = +req.body.b;
+          const c = ~~req.body.c;
+          const d = req.body.d | 0;
+          const e = req.body.e >>> 0;
+          db.query("WHERE a=" + a);
+          db.query("WHERE b=" + b);
+          db.query("WHERE c=" + c);
+          db.query("WHERE d=" + d);
+          db.query("WHERE e=" + e);
+        }`,
+    });
+    assert(!findings.some(f => f.severity === 'high'),
+      `numeric coercion should sanitize: ${JSON.stringify(findings)}`);
+  });
+
   await test('escape()-named function clears taint', async () => {
     const findings = await scanWith({
       'a.js': `function h(req, db) { const safe = sqlstring.escape(req.body.id); return db.query("WHERE id = " + safe); }`,
@@ -133,6 +153,23 @@ async function main() {
     });
     assert(findings.some(f => f.severity === 'high' && f.cwe === 'CWE-95'),
       `eval sink should flag CWE-95: ${JSON.stringify(findings)}`);
+  });
+
+  await test('setTimeout string-form code execution flags (QW-45)', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req) { setTimeout(req.body.code, 10); }`,
+    });
+    assert(findings.some(f => f.severity === 'high' && f.cwe === 'CWE-95' &&
+      /setTimeout/i.test(f.message)),
+      `setTimeout(taint) should flag CWE-95: ${JSON.stringify(findings)}`);
+  });
+
+  await test('setTimeout callback form is fine (QW-45)', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req) { setTimeout(() => console.log(req.body.code), 10); }`,
+    });
+    assert(!findings.some(f => /setTimeout/i.test(f.message)),
+      `setTimeout(callback) should not flag code execution: ${JSON.stringify(findings)}`);
   });
 
   await test('dynamic import(taint) flags as code sink (QW-3 / RC-50)', async () => {
@@ -231,6 +268,22 @@ async function main() {
     }, 'jwt-misuse');
     assert(f.some(x => x.message.includes("'SECRET'")),
       `expected variable-secret detection: ${JSON.stringify(f)}`);
+  });
+
+  await test('jwt-misuse: HS algorithm with public key variable flagged (QW-23 / RC-60)', async () => {
+    const f = await scanWith({
+      'a.js': `const publicKey = fs.readFileSync('public.pem');\njwt.verify(token, publicKey, { algorithms: ['HS256'] });`,
+    }, 'jwt-misuse');
+    assert(f.some(x => /public-key-like/.test(x.message) && x.cwe === 'CWE-347'),
+      `expected JWT algorithm-confusion detection: ${JSON.stringify(f)}`);
+  });
+
+  await test('jwt-misuse: RS256 with public key is fine', async () => {
+    const f = await scanWith({
+      'a.js': `const publicKey = fs.readFileSync('public.pem');\njwt.verify(token, publicKey, { algorithms: ['RS256'] });`,
+    }, 'jwt-misuse');
+    assert(!f.some(x => /public-key-like/.test(x.message)),
+      `RS256 public-key verifier should not flag alg confusion: ${JSON.stringify(f)}`);
   });
 
   await test('insecure-cookie: nested options object still flagged', async () => {
@@ -632,6 +685,57 @@ async function main() {
     }, 'clipboard-exposure');
     assert.strictEqual(findings.length, 0,
       `non-sensitive copy should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  // ── §QW-24 / §RC-3 — process.env secret logging ────────────────────────
+  await test('sensitive-logging: console.log(process.env.JWT_SECRET) flagged (QW-24 / RC-3)', async () => {
+    const findings = await scanWith({
+      'a.js': `console.log('jwt', process.env.JWT_SECRET);`,
+    }, 'sensitive-logging');
+    assert(findings.some(f => f.cwe === 'CWE-532' && /JWT_SECRET/.test(f.message)),
+      `process.env secret logging should flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('sensitive-logging: console.log(process.env.NODE_ENV) is fine', async () => {
+    const findings = await scanWith({
+      'a.js': `console.log('mode', process.env.NODE_ENV);`,
+    }, 'sensitive-logging');
+    assert.strictEqual(findings.length, 0,
+      `public env logging should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  // ── §QW-27 / §RC-24 — path.join(__dirname, taint) ──────────────────────
+  await test('path-traversal-js: path.join(__dirname, req.query.file) flagged (QW-27 / RC-24)', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req) { return path.join(__dirname, req.query.file); }`,
+    }, 'path-traversal-js');
+    assert(findings.some(f => f.cwe === 'CWE-22'),
+      `path.join(__dirname, taint) should flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('path-traversal-js: static asset path is fine', async () => {
+    const findings = await scanWith({
+      'a.js': `const p = path.join(__dirname, 'public', 'index.html');`,
+    }, 'path-traversal-js');
+    assert.strictEqual(findings.length, 0,
+      `static path.join should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  // ── §QW-37 / §RC-35 — package typosquats ───────────────────────────────
+  await test('dependency-confusion: package.json typosquat flagged (QW-37 / RC-35)', async () => {
+    const findings = await scanWith({
+      'package.json': JSON.stringify({ dependencies: { expres: '^4.0.0' } }, null, 2),
+    }, 'dependency-confusion');
+    assert(findings.some(f => /express/.test(f.message) && f.cwe === 'CWE-1357'),
+      `expres should flag as express typosquat: ${JSON.stringify(findings)}`);
+  });
+
+  await test('dependency-confusion: normal package names are fine', async () => {
+    const findings = await scanWith({
+      'package.json': JSON.stringify({ dependencies: { express: '^4.0.0' } }, null, 2),
+    }, 'dependency-confusion');
+    assert.strictEqual(findings.length, 0,
+      `normal dependency should not flag: ${JSON.stringify(findings)}`);
   });
 
   await test('improper-cert-validation: comment lines are ignored', async () => {

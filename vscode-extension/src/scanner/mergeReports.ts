@@ -25,6 +25,7 @@ export function mergeReports(reports: ProjectScanReport[]): ProjectScanReport {
   const failuresByLanguage: Record<string, number> = {};
   const failureReasons: string[] = [];
   const allSuppressions = new Map<string, number>();
+  const stageDurationsMs: Record<string, number> = {};
   let attempted = 0;
   let succeeded = 0;
   let failed = 0;
@@ -32,6 +33,9 @@ export function mergeReports(reports: ProjectScanReport[]): ProjectScanReport {
 
   for (const r of reports) {
     totalDuration += r.scanDurationMs;
+    for (const [stage, duration] of Object.entries(r.stageDurationsMs)) {
+      stageDurationsMs[stage] = (stageDurationsMs[stage] ?? 0) + duration;
+    }
     for (const file of r.context.files) { allFiles.push(file); }
     // Promote skipped paths to absolute so the merged report's "5 files
     // skipped" line points at unambiguous locations across folders.
@@ -88,5 +92,6 @@ export function mergeReports(reports: ProjectScanReport[]): ProjectScanReport {
     attempted, succeeded, failed, failuresByLanguage, failureReasons,
   };
 
-  return new ProjectScanReport(mergedContext, allFindings, mergedDiagnostics, totalDuration, allSuppressions);
+  stageDurationsMs.total = totalDuration;
+  return new ProjectScanReport(mergedContext, allFindings, mergedDiagnostics, totalDuration, allSuppressions, stageDurationsMs);
 }
