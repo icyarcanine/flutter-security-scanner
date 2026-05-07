@@ -19,7 +19,7 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
 ---
 
-## §PR-1 — Allowlist barrier guards (negate variant ✅ DONE — sha pending (2026-05-07) via §QW-41)
+## §PR-1 — Allowlist barrier guards (negate variant ✅ DONE — sha 5c27117 (2026-05-07) via §QW-41)
 
 - **Why:** Misses fixture 11 (SSRF allowlist). The single biggest FP
   source on real apps.
@@ -46,7 +46,7 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
     *after* the if-block.
   - Mutated allowlists (`allow.add(taint)`) — barrier doesn't apply.
   - `.includes()` on attacker-controlled arrays — still tainted.
-- **Progress:** §QW-41 landed at sha pending (2026-05-07). Top-level
+- **Progress:** §QW-41 landed at sha 5c27117 (2026-05-07). Top-level
   `if (!ALLOW.has(x)) return/throw/continue/break;` (and the `.includes`,
   `.test`, `.indexOf(...) === -1`, `!ALLOW[x]` shapes) are recognized as a
   pre-pass during scope seeding. Symbols pass into a per-scope
@@ -154,7 +154,7 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 - **Dependencies:** §PR-5.
 - **Effort:** **S** (1 day post §PR-5).
 - **Tests:** Sink-kind-specific sanitizer fixtures.
-- **Progress:** §QW-1 landed at sha pending (2026-05-07). The TS engine
+- **Progress:** §QW-1 landed at sha 5c27117 (2026-05-07). The TS engine
   now ships a built-in `SINK_SPECIFIC_SANITIZERS` registry mapping
   `escapeHtml`/`encodeURIComponent`/`sqlstring.escape`/`escapeShell` and
   similar to per-kind coverage; numeric coercion + generic validators stay

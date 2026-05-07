@@ -31,7 +31,7 @@ Legend: ✅ DONE | ⏸ BLOCKED | ⏳ REMAINING (default). See
 - **Direct fix to a benchmark FN/FP.** Document `sanitizesFor`
   per sink kind in the sanitizer registry. Easy now.
 
-## §QW-2 — `instanceof T` narrows receiver type ([00-engine.md §EN-12](00-engine.md)) ✅ DONE — sha pending (2026-05-07)
+## §QW-2 — `instanceof T` narrows receiver type ([00-engine.md §EN-12](00-engine.md)) ✅ DONE — sha 5c27117 (2026-05-07)
 
 - **Effort:** **S** (1 day post §EN-4).
 - Once §EN-4 lands, this is one method.
@@ -204,7 +204,7 @@ Legend: ✅ DONE | ⏸ BLOCKED | ⏳ REMAINING (default). See
 
 - **Effort:** **S** (1 day, part of §EN-14).
 
-## §QW-41 — Negate-guard recognition (`if (!allow.has(x)) return;`) ([04-precision.md §PR-1](04-precision.md)) ✅ DONE — sha pending (2026-05-07)
+## §QW-41 — Negate-guard recognition (`if (!allow.has(x)) return;`) ([04-precision.md §PR-1](04-precision.md)) ✅ DONE — sha 5c27117 (2026-05-07)
 
 - **Effort:** **S** (1 day post §EN-4).
 - A simple inversion of §PR-1's logic.

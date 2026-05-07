@@ -425,7 +425,7 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 - **Effort:** **S** (1 day on top of §EN-4).
 - **Tests:** `instanceof-narrows-receiver-type.ts`.
 - **Risks / gotchas:** None significant.
-- **Progress:** §QW-2 landed at sha pending (2026-05-07). Without the
+- **Progress:** §QW-2 landed at sha 5c27117 (2026-05-07). Without the
   full §EN-4 CFG/lattice we approximate the dominated region by walking
   parents from the call site looking for an enclosing `if_statement` whose
   consequence contains the call and whose test is a (possibly &&-conjoined)
