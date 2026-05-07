@@ -1,9 +1,10 @@
-import { Rule } from '../rule';
+import { Rule, RuleStage } from '../rule';
 import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 
 export class ClientSideTrustRule implements Rule {
   readonly code = 'client-side-trust';
+  readonly stage = RuleStage.fast;
 
   evaluate(context: ProjectContext): Finding[] {
     const findings: Finding[] = [];

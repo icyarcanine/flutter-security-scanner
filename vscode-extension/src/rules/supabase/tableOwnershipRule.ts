@@ -1,9 +1,10 @@
-import { Rule } from '../rule';
+import { Rule, RuleStage } from '../rule';
 import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
 import { ProjectContext, ownerColumnsForTable, suggestedPolicyForTable } from '../../scanner/projectContext';
 
 export class TableOwnershipRule implements Rule {
   readonly code = 'table-ownership-filter';
+  readonly stage = RuleStage.fast;
 
   evaluate(context: ProjectContext): Finding[] {
     const findings: Finding[] = [];

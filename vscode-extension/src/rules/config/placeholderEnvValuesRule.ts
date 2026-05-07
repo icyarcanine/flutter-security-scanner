@@ -1,4 +1,4 @@
-import { Rule } from '../rule';
+import { Rule, RuleStage } from '../rule';
 import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 
@@ -6,6 +6,7 @@ const SENSITIVE_KEYS = new Set(['SUPABASE_URL', 'SUPABASE_ANON_KEY']);
 
 export class PlaceholderEnvValuesRule implements Rule {
   readonly code = 'placeholder-env-value';
+  readonly stage = RuleStage.fast;
 
   evaluate(context: ProjectContext): Finding[] {
     if (!context.usesSupabase) { return []; }

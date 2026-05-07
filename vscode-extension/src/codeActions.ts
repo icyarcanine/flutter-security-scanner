@@ -9,7 +9,7 @@ export class SastCodeActionProvider implements vscode.CodeActionProvider {
 
   provideCodeActions(
     document: vscode.TextDocument,
-    range: vscode.Range,
+    _range: vscode.Range,
     context: vscode.CodeActionContext,
   ): vscode.CodeAction[] {
     const actions: vscode.CodeAction[] = [];
@@ -27,15 +27,131 @@ export class SastCodeActionProvider implements vscode.CodeActionProvider {
         case 'injection-flaw':
           actions.push(...this._injectionFixes(document, diag));
           break;
-        case 'unsafe-eval':
-          actions.push(...this._evalFixes(document, diag));
-          break;
         case 'xss-flaw':
           actions.push(...this._xssFixes(document, diag));
           break;
+        case 'insecure-random':
+          actions.push(...this._insecureRandomFixes(document, diag));
+          break;
+        case 'insecure-cookie':
+          actions.push(...this._insecureCookieFixes(document, diag));
+          break;
+        case 'jwt-misuse':
+          actions.push(...this._jwtMisuseFixes(document, diag));
+          break;
+        // Note: `unsafe-eval` has no rule-specific quick-fix because no safe
+        // automatic rewrite of eval() exists. Users still get the
+        // suppression action above.
       }
     }
 
+    return actions;
+  }
+
+  // ── Insecure-random autofix ─────────────────────
+  // `Math.random()` → `crypto.randomUUID()` for clear identifier-shaped use,
+  // else `crypto.randomBytes(16).toString('hex')`. Browsers should use
+  // `crypto.getRandomValues`; the rule's heuristic targets server-side code
+  // primarily, so the Node-style fix is the default.
+
+  private _insecureRandomFixes(document: vscode.TextDocument, diag: vscode.Diagnostic): vscode.CodeAction[] {
+    const actions: vscode.CodeAction[] = [];
+    const lineNum = diag.range.start.line;
+    const lineText = document.lineAt(lineNum).text;
+
+    if (!/Math\.random\s*\(\s*\)/.test(lineText)) { return actions; }
+
+    // If they're chaining .toString(36).slice(...) it's clearly an ID — use randomUUID.
+    const looksLikeId = /\.toString\s*\(\s*36\s*\)|\.slice\s*\(/.test(lineText);
+    const replacement = looksLikeId
+      ? 'crypto.randomUUID()'
+      : `crypto.randomBytes(16).toString('hex')`;
+
+    const action = new vscode.CodeAction(
+      `Replace Math.random() with ${replacement}`,
+      vscode.CodeActionKind.QuickFix,
+    );
+    action.diagnostics = [diag];
+    action.isPreferred = true;
+
+    // Replace ONLY the Math.random() call; rest of the line untouched.
+    const matchIdx = lineText.search(/Math\.random\s*\(\s*\)/);
+    const matchEnd = lineText.indexOf(')', matchIdx) + 1;
+    const edit = new vscode.WorkspaceEdit();
+    edit.replace(
+      document.uri,
+      new vscode.Range(lineNum, matchIdx, lineNum, matchEnd),
+      replacement,
+    );
+    action.edit = edit;
+    actions.push(action);
+
+    return actions;
+  }
+
+  // ── Insecure-cookie autofix ─────────────────────
+  // Toggle the bad value to its secure counterpart.
+
+  private _insecureCookieFixes(document: vscode.TextDocument, diag: vscode.Diagnostic): vscode.CodeAction[] {
+    const actions: vscode.CodeAction[] = [];
+    const lineNum = diag.range.start.line;
+    const lineText = document.lineAt(lineNum).text;
+
+    const flips: Array<{ from: RegExp; to: string; label: string }> = [
+      { from: /\bhttpOnly\s*:\s*false\b/, to: 'httpOnly: true', label: 'Set httpOnly: true' },
+      { from: /\bsecure\s*:\s*false\b/,   to: 'secure: true',   label: 'Set secure: true' },
+    ];
+    for (const { from, to, label } of flips) {
+      const idx = lineText.search(from);
+      if (idx === -1) { continue; }
+      const matchText = lineText.match(from)![0];
+      const action = new vscode.CodeAction(label, vscode.CodeActionKind.QuickFix);
+      action.diagnostics = [diag];
+      action.isPreferred = true;
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(
+        document.uri,
+        new vscode.Range(lineNum, idx, lineNum, idx + matchText.length),
+        to,
+      );
+      action.edit = edit;
+      actions.push(action);
+    }
+    return actions;
+  }
+
+  // ── JWT misuse autofix ──────────────────────────
+
+  private _jwtMisuseFixes(document: vscode.TextDocument, diag: vscode.Diagnostic): vscode.CodeAction[] {
+    const actions: vscode.CodeAction[] = [];
+    const lineNum = diag.range.start.line;
+    const lineText = document.lineAt(lineNum).text;
+
+    // jwt.decode has no safe automatic rewrite — verify(token, secret, {...})
+    // requires a secret the user must supply, and we can't synthesize one.
+    // The rule's `fix` field (shown in the diagnostic and webview) already
+    // explains the recommended replacement; we don't offer a placeholder
+    // quick-fix here.
+
+    // algorithms: ['none'] → ['HS256'] (HS256 is the safer default).
+    const noneMatch = lineText.match(/algorithms\s*:\s*\[\s*['"]none['"]\s*\]/);
+    if (noneMatch) {
+      const idx = lineText.indexOf(noneMatch[0]);
+      const action = new vscode.CodeAction(
+        `Replace algorithms: ['none'] with algorithms: ['HS256']`,
+        vscode.CodeActionKind.QuickFix,
+      );
+      action.diagnostics = [diag];
+      action.isPreferred = true;
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(
+        document.uri,
+        new vscode.Range(lineNum, idx, lineNum, idx + noneMatch[0].length),
+        `algorithms: ['HS256']`,
+      );
+      action.edit = edit;
+      actions.push(action);
+    }
     return actions;
   }
 
@@ -71,56 +187,38 @@ export class SastCodeActionProvider implements vscode.CodeActionProvider {
     const lineNum = diag.range.start.line;
     const lineText = document.lineAt(lineNum).text;
 
-    // Suggest parameterized query
-    if (/\.query\s*\(/.test(lineText) && /\+/.test(lineText)) {
+    // Real autofix for the simple shape:
+    //   xxx.query("…" + ident)  →  xxx.query("…?", [ident])
+    // Only matches when there's exactly one concat slot — anything more
+    // complex bails out and the rule's `fix` text guides the user manually.
+    const simpleConcat = lineText.match(
+      /(\.\s*(?:query|execute|rawQuery)\s*\(\s*)(['"])([^'"]*?)\2\s*\+\s*([A-Za-z_$][A-Za-z0-9_$.]*)\s*\)/,
+    );
+    if (simpleConcat) {
+      const [whole, openCall, quote, sqlText, ident] = simpleConcat;
+      const idx = lineText.indexOf(whole);
       const action = new vscode.CodeAction(
-        'Use parameterized query instead of string concatenation',
+        'Convert to parameterized query',
         vscode.CodeActionKind.QuickFix,
       );
       action.diagnostics = [diag];
       action.isPreferred = true;
-
-      // We can't reliably auto-edit arbitrary SQL, so add a helpful comment
-      const indent = lineText.match(/^(\s*)/)?.[1] ?? '';
+      const replacement = `${openCall}${quote}${sqlText}?${quote}, [${ident}])`;
       const edit = new vscode.WorkspaceEdit();
-      edit.insert(
+      edit.replace(
         document.uri,
-        new vscode.Position(lineNum, 0),
-        `${indent}// TODO: Replace string concatenation with parameterized query:\n${indent}// db.query("SELECT * FROM table WHERE id = $1", [id])\n`,
+        new vscode.Range(lineNum, idx, lineNum, idx + whole.length),
+        replacement,
       );
       action.edit = edit;
       actions.push(action);
+      return actions;
     }
 
-    return actions;
-  }
-
-  // ── Eval Fixes ──────────────────────────────────
-
-  private _evalFixes(document: vscode.TextDocument, diag: vscode.Diagnostic): vscode.CodeAction[] {
-    const actions: vscode.CodeAction[] = [];
-    const lineNum = diag.range.start.line;
-    const lineText = document.lineAt(lineNum).text;
-
-    if (/\beval\s*\(/.test(lineText)) {
-      const action = new vscode.CodeAction(
-        'Replace eval() with JSON.parse() or safer alternative',
-        vscode.CodeActionKind.QuickFix,
-      );
-      action.diagnostics = [diag];
-      action.isPreferred = true;
-
-      const indent = lineText.match(/^(\s*)/)?.[1] ?? '';
-      const edit = new vscode.WorkspaceEdit();
-      edit.insert(
-        document.uri,
-        new vscode.Position(lineNum, 0),
-        `${indent}// TODO: Replace eval() with JSON.parse() or a safe expression parser\n`,
-      );
-      action.edit = edit;
-      actions.push(action);
-    }
-
+    // Complex SQL concatenation (multiple operands, function calls, etc.)
+    // is not auto-rewriteable without changing semantics. The rule's `fix`
+    // text already explains the parameterized-query pattern; no quick-fix
+    // is offered here.
     return actions;
   }
 

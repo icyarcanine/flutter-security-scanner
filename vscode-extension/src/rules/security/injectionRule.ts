@@ -2,6 +2,7 @@ import { Rule, RuleStage } from '../rule';
 import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 import { IntraProceduralTaintTracker } from '../../taint/dataFlow';
+import { findingRangeFromNode } from '../ruleHelpers';
 
 export class InjectionRule implements Rule {
   readonly code = 'injection-flaw';
@@ -62,8 +63,10 @@ export class InjectionRule implements Rule {
             fix: 'Sanitize input thoroughly before passing it to this function or use parameterized abstractions.',
             risk: 'Unsanitized input reaching SQL, command, code execution, or HTML sinks can let attackers execute code, steal data, or run scripts in user sessions.',
             filePath: file.relativePath,
-            line: finding.node.startPosition.row + 1,
+            ...findingRangeFromNode(finding.node),
             astUsed: true,
+            cwe: this._cweForSink(finding.sinkKind),
+            pathSteps: finding.pathSteps?.map(s => ({ ...s, filePath: file.relativePath })),
           }));
         }
 
@@ -87,8 +90,9 @@ export class InjectionRule implements Rule {
             fix: 'Use parameterized APIs, strict validation, or sanitizer/escaping helpers before this sink.',
             risk: 'Dynamic values in security-sensitive sinks are risky unless all inputs are validated or parameterized.',
             filePath: file.relativePath,
-            line,
+            ...findingRangeFromNode(finding.node),
             astUsed: true,
+            cwe: this._cweForSink(finding.sinkKind),
           }));
         }
         continue;
@@ -137,8 +141,32 @@ export class InjectionRule implements Rule {
           filePath: file.relativePath,
           line: i + 1,
           astUsed: false,
+          // No specific sink kind in regex fallback — pick the most common
+          // injection class for the taxonomy. Consumers can refine by message.
+          cwe: 'CWE-74',
         }));
       }
+    }
+  }
+
+  /**
+   * Map taint-engine sink kinds to CWE identifiers used by SARIF / compliance
+   * dashboards. CWE-74 ("Improper Neutralization of Special Elements") is the
+   * generic injection bucket; we use it as a fallback when nothing specific
+   * applies.
+   */
+  private _cweForSink(kind: string): string {
+    switch (kind) {
+      case 'sql': return 'CWE-89';
+      case 'command': return 'CWE-78';
+      case 'code': return 'CWE-95';
+      case 'html': return 'CWE-79';
+      case 'template': return 'CWE-1336';
+      case 'url': return 'CWE-918';      // SSRF
+      case 'redirect': return 'CWE-601'; // Open redirect
+      case 'path': return 'CWE-22';      // Path traversal
+      case 'nosql': return 'CWE-943';
+      default: return 'CWE-74';
     }
   }
 }

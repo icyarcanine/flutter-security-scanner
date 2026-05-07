@@ -20,6 +20,10 @@ import { GenericSecretRule } from './secrets/genericSecretRule';
 import { InjectionRule } from './security/injectionRule';
 import { XssRule } from './security/xssRule';
 import { UnsafeEvalRule } from './bugs/unsafeEvalRule';
+import { InsecureRandomRule } from './security/insecureRandomRule';
+import { JwtMisuseRule } from './security/jwtMisuseRule';
+import { InsecureCookieRule } from './security/insecureCookieRule';
+import { CorsMisconfigRule } from './security/corsMisconfigRule';
 
 export function buildDefaultRules(includeSuggestions: boolean): Rule[] {
   const rules: Rule[] = [
@@ -28,6 +32,10 @@ export function buildDefaultRules(includeSuggestions: boolean): Rule[] {
     new InjectionRule(),
     new XssRule(),
     new UnsafeEvalRule(),
+    new InsecureRandomRule(),
+    new JwtMisuseRule(),
+    new InsecureCookieRule(),
+    new CorsMisconfigRule(),
 
     // Security
     new HardcodedSecretsRule(),

@@ -1,10 +1,11 @@
-import { Rule } from '../rule';
+import { Rule, RuleStage } from '../rule';
 import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 import { firstReferenceFor } from '../ruleHelpers';
 
 export class ImproperInitializationRule implements Rule {
   readonly code = 'improper-initialization';
+  readonly stage = RuleStage.fast;
 
   evaluate(context: ProjectContext): Finding[] {
     if (!context.usesSupabaseFlutter || context.hasSupabaseInitialize) { return []; }

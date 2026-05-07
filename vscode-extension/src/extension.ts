@@ -75,16 +75,38 @@ export function activate(context: vscode.ExtensionContext) {
       }
     }
 
-    // Show status bar when switching to any supported language
+    // Show status bar when switching to any supported language. Must mirror
+    // the language list registered for code actions (`supportedLanguages`
+    // above) so React TSX/JSX files don't silently lose the entry point.
+    const STATUS_BAR_LANGUAGES = new Set([
+      'dart', 'javascript', 'javascriptreact', 'typescript', 'typescriptreact',
+      'python', 'go', 'java',
+    ]);
     context.subscriptions.push(
       vscode.window.onDidChangeActiveTextEditor(editor => {
-        if (editor) {
-          const lang = editor.document.languageId;
-          if (['dart', 'javascript', 'typescript', 'python', 'go', 'java'].includes(lang)) {
-            statusBar.show();
-          }
+        if (editor && STATUS_BAR_LANGUAGES.has(editor.document.languageId)) {
+          statusBar.show();
         }
       })
+    );
+
+    // ── On-save incremental scan ───────────────────────────────────────────
+    // Re-scan the workspace whenever a supported file is saved. Debounced so
+    // a flurry of saves coalesces into one scan. Disabled by default to
+    // avoid surprising users; opt in via setting.
+    let pendingTimeout: NodeJS.Timeout | undefined;
+    context.subscriptions.push(
+      vscode.workspace.onDidSaveTextDocument(doc => {
+        if (!STATUS_BAR_LANGUAGES.has(doc.languageId)) { return; }
+        const cfg = vscode.workspace.getConfiguration('flutterSupabaseHelper');
+        if (!cfg.get<boolean>('scanOnSave', false)) { return; }
+        if (pendingTimeout) { clearTimeout(pendingTimeout); }
+        // 750 ms debounce: batches rapid sequential saves; small enough to
+        // feel live for a single edit-save cycle.
+        pendingTimeout = setTimeout(() => {
+          vscode.commands.executeCommand('flutter-supabase-helper.scanWorkspace');
+        }, 750);
+      }),
     );
 
   } catch (err) {

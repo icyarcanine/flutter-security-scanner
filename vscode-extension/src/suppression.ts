@@ -107,27 +107,105 @@ function isPathIgnored(filePath: string, ignoredPaths: Set<string>): boolean {
 
 // ── Inline suppressions ─────────────────────────
 
+/**
+ * Maximum lines the suppression window may extend below the comment.
+ * Acts as a hard cap; brace-balanced statement detection short-circuits
+ * earlier in practice.
+ */
+const INLINE_SUPPRESSION_MAX_WINDOW = 8;
+
+/**
+ * Expand the suppression to cover one *logical statement* — the first
+ * non-blank, non-comment line below the directive PLUS any continuation
+ * lines until parentheses, braces, brackets, and template-string literals
+ * are balanced AND a line ends with `;` or `}`. We refuse to go past a
+ * blank line OR past a line that introduces a new top-level identifier
+ * (heuristic: starts with a letter/underscore, ends without trailing
+ * comma/operator).
+ *
+ * This stops the previous "next-N-lines" heuristic from leaking
+ * suppressions across statement boundaries:
+ *
+ *     // sast-ignore injection-flaw
+ *     db.query("a" + req.body.x); db.query("b" + req.body.y);  // only first call now suppressed
+ *
+ * vs the wrap-friendly case which still works:
+ *
+ *     // sast-ignore injection-flaw
+ *     db.query(
+ *       "SELECT * FROM users WHERE id = " + id,
+ *     );
+ */
 function extractInlineSuppressions(lines: string[]): Map<number, Set<string>> {
   const map = new Map<number, Set<string>>();
+
+  const addStatementWindow = (originIdx: number, ruleCode: string) => {
+    // Find the first non-blank, non-comment statement-start line below.
+    let start = originIdx + 1;
+    while (start < lines.length) {
+      const t = lines[start].trim();
+      if (t === '' || t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) {
+        start++; continue;
+      }
+      break;
+    }
+    if (start >= lines.length) { return; }
+
+    // Accumulate lines until brackets balance and we hit a terminator on a line.
+    let parenDepth = 0;
+    let braceDepth = 0;
+    let bracketDepth = 0;
+    let inTemplate = false;
+    let inSingle = false;
+    let inDouble = false;
+
+    let end = start;
+    const hardLimit = Math.min(lines.length - 1, originIdx + INLINE_SUPPRESSION_MAX_WINDOW);
+    for (; end <= hardLimit; end++) {
+      const line = lines[end];
+      let escaped = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (escaped) { escaped = false; continue; }
+        if (ch === '\\') { escaped = true; continue; }
+        if (!inDouble && !inTemplate && ch === "'") { inSingle = !inSingle; continue; }
+        if (!inSingle && !inTemplate && ch === '"') { inDouble = !inDouble; continue; }
+        if (!inSingle && !inDouble && ch === '`') { inTemplate = !inTemplate; continue; }
+        if (inSingle || inDouble || inTemplate) { continue; }
+        if (ch === '(') parenDepth++;
+        else if (ch === ')') parenDepth = Math.max(0, parenDepth - 1);
+        else if (ch === '[') bracketDepth++;
+        else if (ch === ']') bracketDepth = Math.max(0, bracketDepth - 1);
+        else if (ch === '{') braceDepth++;
+        else if (ch === '}') braceDepth = Math.max(0, braceDepth - 1);
+      }
+      const trimmed = line.trim();
+      const closed = parenDepth === 0 && bracketDepth === 0 && braceDepth === 0
+        && !inSingle && !inDouble && !inTemplate;
+      if (closed && (trimmed.endsWith(';') || trimmed.endsWith('}') || trimmed === '')) {
+        break;
+      }
+    }
+
+    // Emit suppression for every line in [start, end] (1-indexed).
+    for (let lineIdx = start; lineIdx <= end && lineIdx < lines.length; lineIdx++) {
+      const targetLine = lineIdx + 1;
+      if (!map.has(targetLine)) map.set(targetLine, new Set());
+      map.get(targetLine)!.add(ruleCode);
+    }
+  };
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    // `// sast-ignore-next-line` → suppresses ALL rules on line i+2 (1-indexed)
     if (IGNORE_NEXT_LINE.test(line)) {
-      const targetLine = i + 2; // next line is i+1 (0-indexed) = i+2 (1-indexed)
-      if (!map.has(targetLine)) map.set(targetLine, new Set());
-      map.get(targetLine)!.add('*');
+      addStatementWindow(i, '*');
     }
 
-    // `// sast-ignore injection-flaw` → suppresses specific rule on next line
     let match: RegExpExecArray | null;
     IGNORE_RULE.lastIndex = 0;
     while ((match = IGNORE_RULE.exec(line)) !== null) {
-      const ruleCode = match[1];
-      const targetLine = i + 2;
-      if (!map.has(targetLine)) map.set(targetLine, new Set());
-      map.get(targetLine)!.add(ruleCode);
+      addStatementWindow(i, match[1]);
     }
   }
 

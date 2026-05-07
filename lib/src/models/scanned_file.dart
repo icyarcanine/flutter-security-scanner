@@ -1,3 +1,7 @@
+import 'package:analyzer/dart/analysis/features.dart';
+import 'package:analyzer/dart/analysis/utilities.dart';
+import 'package:analyzer/dart/ast/ast.dart';
+
 import '../utils/path_utils.dart';
 
 class ScannedFile {
@@ -13,6 +17,23 @@ class ScannedFile {
   final String content;
   final List<String> lines;
   final List<int> _lineOffsets;
+
+  CompilationUnit? _astUnit;
+  CompilationUnit? get ast {
+    if (!isDart) return null;
+    if (_astUnit != null) return _astUnit;
+    try {
+      final result = parseString(
+        content: content,
+        featureSet: FeatureSet.latestLanguageVersion(),
+        throwIfDiagnostics: false,
+      );
+      _astUnit = result.unit;
+    } catch (_) {
+      // Ignore parse errors for broken files.
+    }
+    return _astUnit;
+  }
 
   String get name => basename(relativePath);
   String get extension {

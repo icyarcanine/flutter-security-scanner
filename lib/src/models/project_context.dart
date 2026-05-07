@@ -542,7 +542,7 @@ class ProjectContext {
       }
 
       final fallbackPattern = RegExp(
-        "\\.(eq|match|filter)\\([^\\n;]{0,160}\\?\\?\\s*(?:$suspiciousValuePattern|userId|profileId|ownerId)\\b",
+        '\\.(eq|match|filter)\\([^\\n;]{0,160}\\?\\?\\s*(?:$suspiciousValuePattern|userId|profileId|ownerId)\\b',
         caseSensitive: false,
       );
       if (fallbackPattern.hasMatch(snippet)) {
@@ -567,7 +567,7 @@ class ProjectContext {
         }
 
         final assignments = RegExp(
-          "\\b$variableName\\b\\s*=\\s*([^\\n;]+)",
+          '\\b$variableName\\b\\s*=\\s*([^\\n;]+)',
           caseSensitive: false,
         ).allMatches(localContext).toList();
         if (assignments.isEmpty) {

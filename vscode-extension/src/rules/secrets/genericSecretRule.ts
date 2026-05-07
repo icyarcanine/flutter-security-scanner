@@ -49,7 +49,7 @@ export class GenericSecretRule implements Rule {
     const literalPattern = /(["'])((?:(?!\1).)*?)\1/g;
 
     for (const file of context.files) {
-      const isBinary = this._isBinaryOrSkipped(file.name, file.extension);
+      const isBinary = this._isBinaryOrSkipped(file.extension);
 
       // Targeted patterns run on all text files (they're specific enough)
       if (!isBinary) {
@@ -69,7 +69,8 @@ export class GenericSecretRule implements Rule {
               fix: `Move this ${p.type} to Environment Variables or a secure vault.`,
               risk: 'Hardcoded secrets can be extracted from source code and binaries, leading to complete system compromise.',
               filePath: file.relativePath,
-              line: file.lineForOffset(match.index)
+              line: file.lineForOffset(match.index),
+              cwe: 'CWE-798',
             }));
           }
         }
@@ -96,7 +97,8 @@ export class GenericSecretRule implements Rule {
             fix: `Verify if this string is a secret. If so, move it to env variables.`,
             risk: 'High entropy strings often indicate hardcoded cryptographic keys or secrets.',
             filePath: file.relativePath,
-            line: file.lineForOffset(litMatch.index)
+            line: file.lineForOffset(litMatch.index),
+            cwe: 'CWE-798',
           }));
         }
       }
@@ -105,7 +107,7 @@ export class GenericSecretRule implements Rule {
     return findings;
   }
 
-  private _isBinaryOrSkipped(name: string, ext: string): boolean {
+  private _isBinaryOrSkipped(ext: string): boolean {
     return ENTROPY_SKIP_EXTENSIONS.has(ext);
   }
 

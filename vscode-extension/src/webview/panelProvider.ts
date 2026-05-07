@@ -65,7 +65,7 @@ export class PanelProvider {
   }
 
   private static _getHtml(
-    webview: vscode.Webview,
+    _webview: vscode.Webview,
     ctx: vscode.ExtensionContext,
     report: ProjectScanReport,
   ): string {
@@ -136,6 +136,8 @@ ${jsContent}
       line: finding.line,
       isSuggestion: finding.isSuggestion,
       astUsed: finding.astUsed ?? null,
+      cwe: finding.cwe ?? null,
+      pathSteps: finding.pathSteps ?? null,
     };
   }
 

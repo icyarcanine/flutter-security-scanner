@@ -1,9 +1,10 @@
-import { Rule } from '../rule';
+import { Rule, RuleStage } from '../rule';
 import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 
 export class CommittedEnvRule implements Rule {
   readonly code = 'committed-env';
+  readonly stage = RuleStage.fast;
 
   evaluate(context: ProjectContext): Finding[] {
     const findings: Finding[] = [];
@@ -21,6 +22,7 @@ export class CommittedEnvRule implements Rule {
         risk: 'Checking in `.env` files exposes production secrets or keys to source control history.',
         filePath: envFile.relativePath,
         line: 1,
+        cwe: 'CWE-538',
       }));
     }
     return findings;

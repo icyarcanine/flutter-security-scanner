@@ -122,9 +122,31 @@ export class ProjectContext {
 
   // ── Async Static loader ────────────────────────
 
-  static async load(rootPath: string): Promise<ProjectContext> {
+  static async load(
+    rootPath: string,
+    onProgress?: (filesLoaded: number) => void,
+  ): Promise<ProjectContext> {
     const rootDir = normalizePath(path.resolve(rootPath));
     const files: ScannedFile[] = [];
+
+    // Throttle progress reports — calling vscode's progress.report() on every
+    // single file is expensive on big monorepos. Every 50 files is plenty.
+    const reportEvery = 50;
+    const tickProgress = () => {
+      if (onProgress && files.length % reportEvery === 0) {
+        onProgress(files.length);
+      }
+    };
+
+    // Read the root-level `.gitignore` (if any) once and turn it into a
+    // matcher used during the walk. This honors patterns like `vendor/`,
+    // `generated/**`, or `third_party/` so the scanner doesn't accidentally
+    // analyze artifacts the user has explicitly told git to skip.
+    //
+    // We deliberately read only the *root* .gitignore. Per-directory
+    // .gitignore stacking is a more involved feature that we can layer on
+    // later — handling the common case is more impactful in less code.
+    const rootGitignorePatterns = await ProjectContext._readGitignorePatterns(rootDir);
 
     async function walk(dir: string): Promise<void> {
       let entries: any[];
@@ -135,30 +157,91 @@ export class ProjectContext {
       }
       for (const entry of entries) {
         const fullPath = path.join(dir, entry.name);
+        const relForCheck = makeRelative(rootDir, normalizePath(fullPath));
         if (entry.isDirectory()) {
-          if (!IGNORED_DIRECTORIES.has(entry.name)) {
-            await walk(fullPath);
+          if (IGNORED_DIRECTORIES.has(entry.name)) { continue; }
+          // Skip directories that the root gitignore covers.
+          if (ProjectContext._gitignoreMatchesAnyPattern(relForCheck + '/', rootGitignorePatterns) ||
+              ProjectContext._gitignoreMatchesAnyPattern(relForCheck, rootGitignorePatterns)) {
+            continue;
           }
+          await walk(fullPath);
         } else if (entry.isFile()) {
           const rel = makeRelative(rootDir, normalizePath(fullPath));
-          if (ProjectContext._shouldScan(rel)) {
-            try {
-              const stat = await fs.stat(fullPath);
-              if (stat.size <= 1024 * 1024) { // 1MB limit
-                const content = await ProjectContext._readTextFile(fullPath);
-                files.push(new ScannedFile(normalizePath(fullPath), rel, content));
-              }
-            } catch (e) {
-              // Ignore unreadable files
+          if (!ProjectContext._shouldScan(rel)) { continue; }
+          // Always keep .gitignore files in the scan (other rules need them);
+          // we filter only non-gitignore artifacts from gitignore patterns.
+          if (basename(rel) !== '.gitignore' &&
+              ProjectContext._gitignoreMatchesAnyPattern(rel, rootGitignorePatterns)) {
+            continue;
+          }
+          try {
+            const stat = await fs.stat(fullPath);
+            if (stat.size <= 1024 * 1024) { // 1MB limit
+              const content = await ProjectContext._readTextFile(fullPath);
+              files.push(new ScannedFile(normalizePath(fullPath), rel, content));
+              tickProgress();
             }
+          } catch (e) {
+            // Ignore unreadable files
           }
         }
       }
     }
 
     await walk(rootDir);
+    if (onProgress) { onProgress(files.length); }   // final tick
     files.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
     return new ProjectContext(rootDir, files);
+  }
+
+  /**
+   * Read the root `.gitignore` and split it into pattern entries. Comments
+   * and blank lines are stripped. Negations (`!pattern`) are preserved so
+   * negation-resolution mirrors git's last-match-wins behavior in
+   * `_gitignoreMatchesAnyPattern`.
+   */
+  private static async _readGitignorePatterns(rootDir: string): Promise<string[]> {
+    try {
+      const content = await fs.readFile(path.join(rootDir, '.gitignore'), 'utf8');
+      return content.split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0 && !line.startsWith('#'));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Apply gitignore patterns with last-match-wins semantics. Returns true if
+   * the path should be EXCLUDED. Re-uses the project context's existing glob
+   * matcher (`_globMatches`) — no third-party gitignore lib required.
+   */
+  private static _gitignoreMatchesAnyPattern(relPath: string, patterns: string[]): boolean {
+    if (patterns.length === 0) { return false; }
+    const target = normalizePath(relPath);
+    let ignored = false;
+    for (const raw of patterns) {
+      const isNegated = raw.startsWith('!');
+      let pattern = isNegated ? raw.substring(1) : raw;
+      // Trailing slash means "directory only" — strip for matching purposes.
+      const dirOnly = pattern.endsWith('/');
+      if (dirOnly) { pattern = pattern.slice(0, -1); }
+      const anchored = pattern.startsWith('/');
+      if (anchored) { pattern = pattern.substring(1); }
+
+      let matched = false;
+      if (!pattern.includes('/')) {
+        // Bare pattern (e.g. `*.log`, `vendor`) matches anywhere by basename.
+        const candidate = anchored ? target : basename(target);
+        matched = ProjectContext._globMatches(candidate, pattern);
+      } else {
+        // Path pattern — match the full relative path (anchored at root).
+        matched = ProjectContext._globMatches(target, pattern);
+      }
+      if (matched) { ignored = !isNegated; }
+    }
+    return ignored;
   }
 
   // ── AST Resolution ────────────────────────────
@@ -167,38 +250,52 @@ export class ProjectContext {
     if (file.astNode) return file.astNode;
     if (file.astStatus === 'failed') return undefined; // already attempted and failed
 
+    // De-dupe concurrent first-time parses of the same file. Without this,
+    // N rules running under Promise.all hit the slow path N times — they
+    // all see `astNode === undefined`, all call parser.parse(), and the
+    // last writer wins (waste, not corruption, but real perf cost).
+    if (file.astPromise) { return file.astPromise; }
+
     const ext = file.extension;
     if (!ParserContext.isAstSupported(ext)) {
       file.astStatus = 'skipped';
       return undefined;
     }
 
-    const parser = await ParserContext.getParserForFile(file.absolutePath);
-    if (!parser) {
-      file.astStatus = 'failed';
-      file.astError = `No parser available for ${ext}`;
-      ParserContext.recordAttempt(false, ext, file.astError);
-      return undefined;
-    }
-
-    try {
-      const tree = parser.parse(file.content);
-      if (!tree || !tree.rootNode) {
+    const promise = (async () => {
+      const parser = await ParserContext.getParserForFile(file.absolutePath);
+      if (!parser) {
         file.astStatus = 'failed';
-        file.astError = 'Parser returned null tree';
+        file.astError = `No parser available for ${ext}`;
         ParserContext.recordAttempt(false, ext, file.astError);
         return undefined;
       }
-      file.astNode = tree.rootNode;
-      file.astStatus = 'ok';
-      ParserContext.recordAttempt(true, ext);
-      return file.astNode;
-    } catch (e) {
-      file.astStatus = 'failed';
-      file.astError = `Parse error: ${(e as Error).message}`;
-      ParserContext.recordAttempt(false, ext, file.astError);
-      return undefined;
-    }
+
+      try {
+        const tree = parser.parse(file.content);
+        if (!tree || !tree.rootNode) {
+          file.astStatus = 'failed';
+          file.astError = 'Parser returned null tree';
+          ParserContext.recordAttempt(false, ext, file.astError);
+          return undefined;
+        }
+        file.astNode = tree.rootNode;
+        file.astStatus = 'ok';
+        ParserContext.recordAttempt(true, ext);
+        return file.astNode;
+      } catch (e) {
+        file.astStatus = 'failed';
+        file.astError = `Parse error: ${(e as Error).message}`;
+        ParserContext.recordAttempt(false, ext, file.astError);
+        return undefined;
+      } finally {
+        // Clear the in-flight slot once settled so callers after this
+        // point fall through to the cached `astNode` / failed status.
+        file.astPromise = undefined;
+      }
+    })();
+    file.astPromise = promise;
+    return promise;
   }
 
   // ── File category getters ──────────────────────

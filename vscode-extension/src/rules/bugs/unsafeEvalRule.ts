@@ -2,6 +2,7 @@ import { Rule, RuleStage } from '../rule';
 import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 import { findNodesByType, getCallName, isFunctionCall } from '../../ast/traversal';
+import { findingRangeFromNode } from '../ruleHelpers';
 
 export class UnsafeEvalRule implements Rule {
   readonly code = 'unsafe-eval';
@@ -34,8 +35,9 @@ export class UnsafeEvalRule implements Rule {
               fix: `Remove ${callName}() and use safer alternatives like JSON.parse or safe expression parsers.`,
               risk: 'Using dynamic code execution paths is highly dangerous and can allow arbitrary code execution.',
               filePath: file.relativePath,
-              line: node.startPosition.row + 1,
+              ...findingRangeFromNode(node),
               astUsed: true,
+              cwe: 'CWE-95',
             }));
           }
         }
@@ -63,6 +65,7 @@ export class UnsafeEvalRule implements Rule {
               filePath: file.relativePath,
               line: i + 1,
               astUsed: false,
+              cwe: 'CWE-95',
             }));
           }
         }

@@ -45,8 +45,19 @@ export class DiagnosticsProvider {
   }
 
   private _findingToDiagnostic(finding: Finding, absolutePath: string): vscode.Diagnostic {
-    const lineNum = Math.max(0, (finding.line ?? 1) - 1);
-    const range = new vscode.Range(lineNum, 0, lineNum, Number.MAX_SAFE_INTEGER);
+    const startLine = Math.max(0, (finding.line ?? 1) - 1);
+    const startCol = Math.max(0, (finding.column ?? 1) - 1);
+    // When AST gave us precise endLine/endColumn, use them so the squiggle
+    // covers exactly the offending node rather than the whole line.
+    const hasPreciseRange =
+      finding.endLine != null && finding.endColumn != null;
+    const endLine = hasPreciseRange
+      ? Math.max(startLine, (finding.endLine as number) - 1)
+      : startLine;
+    const endCol = hasPreciseRange
+      ? Math.max(0, (finding.endColumn as number) - 1)
+      : Number.MAX_SAFE_INTEGER;
+    const range = new vscode.Range(startLine, startCol, endLine, endCol);
     const severity = this._mapSeverity(finding.severity);
 
     const message = finding.risk
@@ -62,7 +73,7 @@ export class DiagnosticsProvider {
         new vscode.DiagnosticRelatedInformation(
           new vscode.Location(
             vscode.Uri.file(absolutePath),
-            new vscode.Position(lineNum, 0),
+            new vscode.Position(startLine, startCol),
           ),
           `Fix: ${finding.fix}`,
         ),

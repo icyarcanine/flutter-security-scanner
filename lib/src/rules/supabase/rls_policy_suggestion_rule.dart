@@ -43,7 +43,7 @@ class RlsPolicySuggestionRule extends Rule {
           code: code,
           message:
               "Heuristic RLS suggestion for table '${access.table}' "
-              "(${confidence.label} confidence — verify against your schema)",
+              '(${confidence.label} confidence — verify against your schema)',
           fix:
               'Consider: `$policy`  — this is a heuristic; confirm column names match your actual schema before applying.',
           filePath: access.file.relativePath,

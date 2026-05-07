@@ -1,6 +1,7 @@
 import { Finding, FindingConfidence, FindingSeverity, severitySortOrder } from '../models/finding';
 import { ProjectContext } from './projectContext';
 import { buildDefaultRules } from '../rules/index';
+import { RuleStage } from '../rules/rule';
 import { ParserContext, AstDiagnostics } from '../ast/parser';
 import { buildSuppressionContext, applySuppression } from '../suppression';
 import { applyNonProductionNoiseReduction } from '../noise';
@@ -39,7 +40,14 @@ export class ProjectScanReport {
   }
 
   get astSuccessRate(): number {
-    return ParserContext.astSuccessRate;
+    // Compute from this report's own astDiagnostics — never from the
+    // global ParserContext singleton. The singleton reflects whichever
+    // scan ran most recently, which is wrong for multi-root scans where
+    // each folder mutates and resets it; the merged report needs the
+    // *aggregated* diagnostics that mergeReports built up.
+    const total = this.astDiagnostics.attempted;
+    if (total === 0) { return 100; }
+    return Math.round((this.astDiagnostics.succeeded / total) * 100);
   }
 
   get totalFiles(): number {
@@ -47,56 +55,78 @@ export class ProjectScanReport {
   }
 }
 
+export interface ProjectScannerOptions {
+  includeSuggestions?: boolean;
+  /**
+   * Rule codes (e.g. `"injection-flaw"`, `"high-entropy-secret"`) that should
+   * not run during this scan. Disabled rules emit no findings, save no time
+   * on the scheduler, and are not present in dedupe / suppression input.
+   */
+  disabledRules?: string[];
+}
+
 export class ProjectScanner {
   readonly includeSuggestions: boolean;
+  readonly disabledRules: ReadonlySet<string>;
 
-  constructor(includeSuggestions = true) {
-    this.includeSuggestions = includeSuggestions;
+  constructor(includeSuggestionsOrOpts: boolean | ProjectScannerOptions = true) {
+    if (typeof includeSuggestionsOrOpts === 'boolean') {
+      this.includeSuggestions = includeSuggestionsOrOpts;
+      this.disabledRules = new Set();
+    } else {
+      this.includeSuggestions = includeSuggestionsOrOpts.includeSuggestions ?? true;
+      this.disabledRules = new Set(includeSuggestionsOrOpts.disabledRules ?? []);
+    }
   }
 
-  async scan(rootPath: string): Promise<ProjectScanReport> {
+  async scan(
+    rootPath: string,
+    onProgress?: (phase: 'loading' | 'rules', detail: string) => void,
+  ): Promise<ProjectScanReport> {
     const startTime = Date.now();
 
     // Reset AST diagnostics for this scan session
     ParserContext.resetDiagnostics();
 
-    const context = await ProjectContext.load(rootPath);
+    const context = await ProjectContext.load(rootPath,
+      onProgress ? n => onProgress('loading', `Loading files: ${n}`) : undefined,
+    );
+    if (onProgress) { onProgress('rules', `Running rules on ${context.files.length} files`); }
 
     // Build suppression context from .sastignore + inline comments
     const suppressionCtx = buildSuppressionContext(rootPath, context.files);
 
     const findings: Finding[] = [];
-    const allRules = buildDefaultRules(this.includeSuggestions);
-    const getStage = (r: any) => r.stage ?? 1;
+    const allRules = buildDefaultRules(this.includeSuggestions)
+      .filter(r => !this.disabledRules.has(r.code));
 
-    // Stage 1: Fast Scan (Regex / Heuristics)
-    const fastRules = allRules.filter(r => getStage(r) === 1);
-    for (const rule of fastRules) {
-      try {
-        findings.push(...(await Promise.resolve(rule.evaluate(context))));
-      } catch (e) {
-        console.error(`[SAST] Rule ${(rule as any).code} failed:`, (e as Error).message);
-      }
-    }
+    // Run rules concurrently within a stage. Rules are pure functions of
+    // ProjectContext + Finding[]; they don't share writable state with one
+    // another. The AST cache on `ScannedFile` is mutate-on-first-touch and
+    // the underlying parse is idempotent, so concurrent first-touchers
+    // converge on the same tree.
+    //
+    // Stages still run sequentially: stage 2 needs stage 1's heuristics
+    // (none today, but the contract is documented). Stage 3 (taint) needs
+    // stage 2's AST cache pre-warmed.
+    const runStage = async (stage: RuleStage) => {
+      const stageRules = allRules.filter(r => r.stage === stage);
+      const results = await Promise.all(
+        stageRules.map(async rule => {
+          try {
+            return await Promise.resolve(rule.evaluate(context));
+          } catch (e) {
+            console.error(`[SAST] Rule ${rule.code} failed:`, (e as Error).message);
+            return [] as Finding[];
+          }
+        }),
+      );
+      for (const r of results) { findings.push(...r); }
+    };
 
-    // Stage 2 & 3: AST & Taint Scans (Selective)
-    const astRules = allRules.filter(r => getStage(r) === 2);
-    for (const rule of astRules) {
-      try {
-        findings.push(...(await Promise.resolve(rule.evaluate(context))));
-      } catch (e) {
-        console.error(`[SAST] Rule ${(rule as any).code} failed:`, (e as Error).message);
-      }
-    }
-
-    const taintRules = allRules.filter(r => getStage(r) === 3);
-    for (const rule of taintRules) {
-      try {
-        findings.push(...(await Promise.resolve(rule.evaluate(context))));
-      } catch (e) {
-        console.error(`[SAST] Rule ${(rule as any).code} failed:`, (e as Error).message);
-      }
-    }
+    await runStage(RuleStage.fast);  // regex / heuristics
+    await runStage(RuleStage.ast);   // structural AST patterns
+    await runStage(RuleStage.taint); // source-to-sink data flow
 
     // Apply suppression (inline + .sastignore)
     const unsuppressed = applySuppression(findings, suppressionCtx);
@@ -129,7 +159,18 @@ export class ProjectScanner {
   private static _dedupe(findings: Finding[]): Finding[] {
     const seen = new Map<string, Finding>();
     for (const f of findings) {
-      const key = [f.code, f.filePath ?? '', f.line?.toString() ?? ''].join('|');
+      // Key = code + path + line + column + message.
+      //   * `message` distinguishes different sink kinds on the same line
+      //     (e.g., `db.query(req.body.q); res.redirect(req.body.u)` — both
+      //     emitted as `injection-flaw` with different sink names).
+      //   * `column` distinguishes two calls of the SAME shape on the same
+      //     line (`db.query(a + req.body.x); db.query(b + req.body.y);`).
+      //     Same-stage duplicates from regex+AST still collide because they
+      //     report the same column for a given AST node.
+      const key = [
+        f.code, f.filePath ?? '', f.line?.toString() ?? '',
+        f.column?.toString() ?? '', f.message,
+      ].join('|');
 
       if (!seen.has(key)) {
         seen.set(key, f);

@@ -1,4 +1,4 @@
-import { Rule } from '../rule';
+import { Rule, RuleStage } from '../rule';
 import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 import { ScannedFile } from '../../scanner/scannedFile';
@@ -6,6 +6,7 @@ import { isCommentLine } from '../ruleHelpers';
 
 export class HardcodedSecretsRule implements Rule {
   readonly code = 'hardcoded-secrets';
+  readonly stage = RuleStage.fast;
 
   evaluate(context: ProjectContext): Finding[] {
     const findings: Finding[] = [];
@@ -54,6 +55,7 @@ export class HardcodedSecretsRule implements Rule {
           risk: 'Hardcoded credentials cannot be rotated easily and expose your Supabase project to unintended access.',
           filePath: file.relativePath,
           line,
+          cwe: 'CWE-798',
         }));
       }
     }
@@ -82,6 +84,7 @@ export class HardcodedSecretsRule implements Rule {
         risk: 'Hardcoded URLs make it difficult to switch between development and production environments without modifying code.',
         filePath: file.relativePath,
         line,
+        cwe: 'CWE-798',
       }));
     }
     return findings;
@@ -108,6 +111,7 @@ export class HardcodedSecretsRule implements Rule {
         risk: 'Hardcoded URLs make it difficult to switch between development and production environments.',
         filePath: file.relativePath,
         line,
+        cwe: 'CWE-798',
       }));
     }
     return findings;

@@ -46,7 +46,7 @@ class PlaceholderEnvValuesRule extends Rule {
           message:
               '${entry.key} appears to be a placeholder value in ${entry.file.name}',
           fix:
-              "Replace the placeholder with the real value from your Supabase project settings before running the app.",
+              'Replace the placeholder with the real value from your Supabase project settings before running the app.',
           risk:
               'Using placeholder configuration values will cause network requests or authentication to fail.',
           filePath: entry.file.relativePath,

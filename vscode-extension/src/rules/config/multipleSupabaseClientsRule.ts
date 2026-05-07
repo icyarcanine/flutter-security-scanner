@@ -1,9 +1,10 @@
-import { Rule } from '../rule';
+import { Rule, RuleStage } from '../rule';
 import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 
 export class MultipleSupabaseClientsRule implements Rule {
   readonly code = 'multiple-supabase-clients';
+  readonly stage = RuleStage.fast;
 
   evaluate(context: ProjectContext): Finding[] {
     const locations = context.supabaseClientLocations;

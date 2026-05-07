@@ -1,23 +1,39 @@
 {
   "name": "flutter-supabase-helper",
-  "displayName": "Flutter Supabase Helper",
-  "description": "Static security and configuration scanner for Flutter + Supabase projects. Detects hardcoded secrets, missing RLS, env issues, and more.",
+  "displayName": "Flutter Supabase Helper — Hybrid SAST",
+  "description": "Multi-language SAST scanner with source-to-sink taint tracking, SARIF output, and 23 rules covering injection, JWT misuse, CORS, insecure cookies, hardcoded secrets, and Supabase RLS gaps.",
   "version": "1.0.0",
   "publisher": "flutter-supabase-helper",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/flutter-supabase-helper/sast.git"
+  },
+  "bugs": {
+    "url": "https://github.com/flutter-supabase-helper/sast/issues"
+  },
+  "homepage": "https://github.com/flutter-supabase-helper/sast#readme",
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.85.0",
+    "node": ">=18.0.0"
   },
   "categories": [
     "Linters",
     "Other"
   ],
   "keywords": [
+    "sast",
+    "security",
+    "vulnerability",
+    "taint-tracking",
+    "sarif",
+    "cwe",
     "flutter",
     "supabase",
-    "security",
-    "linter",
     "dart",
-    "RLS"
+    "javascript",
+    "typescript",
+    "rls"
   ],
   "activationEvents": [
     "workspaceContains:**/pubspec.yaml",
@@ -30,6 +46,13 @@
   "bin": {
     "flutter-supabase-helper": "./out/cli.js"
   },
+  "files": [
+    "out/**/*.js",
+    "out/**/*.d.ts",
+    "media/**/*",
+    "README.md",
+    "LICENSE"
+  ],
   "contributes": {
     "commands": [
       {
@@ -54,6 +77,17 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically scan the workspace when a Flutter+Supabase project is detected."
+        },
+        "flutterSupabaseHelper.disabledRules": {
+          "type": "array",
+          "default": [],
+          "items": { "type": "string" },
+          "description": "Rule codes to skip (e.g. \"high-entropy-secret\", \"file-upload-validation\"). Disabled rules emit no findings."
+        },
+        "flutterSupabaseHelper.scanOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Re-scan the workspace 750ms after any supported file is saved. Off by default to avoid surprises on large projects."
         }
       }
     },
@@ -68,9 +102,12 @@
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "test": "npm run compile && node scripts/precision-self-test.js && node scripts/test-ast.js",
+    "test": "npm run compile && node scripts/precision-self-test.js && node scripts/taint-engine.test.js && node scripts/test-ast.js",
+    "test:taint": "npm run compile && node scripts/taint-engine.test.js",
     "watch": "tsc -watch -p ./",
-    "vscode:prepublish": "npm run compile",
+    "stage-docs": "node -e \"const fs=require('fs');for(const f of ['README.md','LICENSE'])fs.copyFileSync('../'+f,f)\"",
+    "vscode:prepublish": "npm run stage-docs && npm run compile",
+    "prepublishOnly": "npm run stage-docs && npm run compile && npm test",
     "lint": "eslint src --ext ts"
   },
   "devDependencies": {
@@ -79,7 +116,6 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
-    "fast-xml-parser": "^5.5.11",
     "tree-sitter-dart": "^1.0.0",
     "tree-sitter-wasms": "^0.1.13",
     "web-tree-sitter": "^0.21.0"

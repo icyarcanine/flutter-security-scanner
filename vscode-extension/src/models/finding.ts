@@ -66,8 +66,37 @@ export interface FindingOptions {
   confidence?: FindingConfidence;
   filePath?: string;
   line?: number;
+  /**
+   * Optional precise range info from AST analysis. When all four are present,
+   * the diagnostics provider uses them to underline the exact node instead of
+   * the entire line. 1-indexed, mirroring `line`.
+   */
+  endLine?: number;
+  column?: number;
+  endColumn?: number;
   /** Whether this finding was produced via AST analysis (true) or regex fallback (false) */
   astUsed?: boolean;
+  /** CWE identifier(s) (e.g. "CWE-89") for taxonomy / SARIF integration. */
+  cwe?: string | string[];
+  /**
+   * Optional ordered list of provenance steps explaining how data reached
+   * the sink. Currently emitted by the taint engine as `[source, sink]`.
+   * SARIF maps these to `codeFlows`; the webview renders them as a
+   * "Source → Sink" chain under the finding.
+   */
+  pathSteps?: PathStep[];
+}
+
+/**
+ * One node in a data-flow path. Minimal shape — line, optional column, and a
+ * human-readable label like "tainted source: req.body.id" or
+ * "sink: db.query".
+ */
+export interface PathStep {
+  filePath?: string;
+  line: number;
+  column?: number;
+  label: string;
 }
 
 export class Finding {
@@ -80,7 +109,12 @@ export class Finding {
   readonly risk?: string;
   readonly filePath?: string;
   readonly line?: number;
+  readonly endLine?: number;
+  readonly column?: number;
+  readonly endColumn?: number;
   readonly astUsed?: boolean;
+  readonly cwe?: string | string[];
+  readonly pathSteps?: PathStep[];
 
   constructor(opts: FindingOptions) {
     this.severity = opts.severity;
@@ -92,7 +126,12 @@ export class Finding {
     this.risk = opts.risk;
     this.filePath = opts.filePath;
     this.line = opts.line;
+    this.endLine = opts.endLine;
+    this.column = opts.column;
+    this.endColumn = opts.endColumn;
     this.astUsed = opts.astUsed;
+    this.cwe = opts.cwe;
+    this.pathSteps = opts.pathSteps;
   }
 
   get isSuggestion(): boolean {

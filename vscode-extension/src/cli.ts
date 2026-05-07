@@ -4,35 +4,59 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { execSync } from 'child_process';
 import { ProjectScanner, ProjectScanReport } from './scanner/scanner';
-import { Finding, confidenceReason } from './models/finding';
+import { Finding } from './models/finding';
 import { generateBaseline, saveBaseline, loadBaseline, applyBaseline, BASELINE_FILENAME } from './baseline';
+import { toSarif } from './output/sarif';
+import { buildDefaultRules } from './rules/index';
 
 // ── Argument Parsing ────────────────────────────
 
 interface CliArgs {
   command: string;
   target: string;
-  format: 'json' | 'pretty' | 'summary';
+  format: 'json' | 'pretty' | 'summary' | 'sarif';
   failOn?: 'high' | 'medium' | 'low';
   useBaseline: boolean;
   openInEditor: boolean;
   maxFindings?: number;
+  /** When set, write SARIF (or any chosen format) here instead of stdout. */
+  outputFile?: string;
+  /** Rule codes (comma-separated on the CLI) to skip during this scan. */
+  disabledRules: string[];
+  /**
+   * When set, only emit findings whose file path is listed in
+   * `git diff --name-only <ref>...HEAD` (i.e., files modified relative to
+   * the ref). Powers PR-style scanning in CI without needing a baseline.
+   */
+  changedSince?: string;
 }
 
 function parseArgs(argv: string[]): CliArgs | null {
   const args = argv.slice(2);
   const command = args[0];
   const flags: Record<string, string> = {};
+  const disabledRules: string[] = [];
   let target = '';
 
   for (let i = 1; i < args.length; i++) {
     if (args[i] === '--json') { flags.format = 'json'; }
     else if (args[i] === '--pretty') { flags.format = 'pretty'; }
     else if (args[i] === '--summary') { flags.format = 'summary'; }
+    else if (args[i] === '--sarif') { flags.format = 'sarif'; }
     else if (args[i] === '--fail-on' && args[i + 1]) { flags.failOn = args[++i]; }
     else if (args[i] === '--baseline') { flags.baseline = 'true'; }
     else if (args[i] === '--open') { flags.open = 'true'; }
     else if (args[i] === '--max-findings' && args[i + 1]) { flags.maxFindings = args[++i]; }
+    else if ((args[i] === '--output' || args[i] === '-o') && args[i + 1]) { flags.outputFile = args[++i]; }
+    else if (args[i] === '--disable' && args[i + 1]) {
+      // Comma-separated list of rule codes (e.g. `--disable high-entropy-secret,file-upload-validation`).
+      // Repeatable: `--disable a --disable b` accumulates.
+      disabledRules.push(...args[++i].split(',').map(s => s.trim()).filter(Boolean));
+    }
+    else if ((args[i] === '--changed-since' || args[i].startsWith('--changed-since=')) && (args[i].includes('=') || args[i + 1])) {
+      // Accept both `--changed-since main` and `--changed-since=main`.
+      flags.changedSince = args[i].includes('=') ? args[i].split('=', 2)[1] : args[++i];
+    }
     else if (!args[i].startsWith('-')) { target = args[i]; }
   }
 
@@ -46,7 +70,51 @@ function parseArgs(argv: string[]): CliArgs | null {
     useBaseline: flags.baseline === 'true',
     openInEditor: flags.open === 'true',
     maxFindings: flags.maxFindings ? parseInt(flags.maxFindings, 10) : undefined,
+    outputFile: flags.outputFile,
+    disabledRules,
+    changedSince: flags.changedSince,
   };
+}
+
+/**
+ * Resolve the set of file paths (relative to `rootPath`) modified since
+ * `gitRef`. Returns null on git failure (no repo, bad ref, etc.) so the
+ * scanner can either fall back to a full scan or fail loudly.
+ */
+function changedFilesSince(rootPath: string, gitRef: string): Set<string> | null {
+  try {
+    const out = execSync(`git -C "${rootPath}" diff --name-only ${gitRef}...HEAD`, {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 10000,
+    });
+    const set = new Set<string>();
+    for (const line of out.split('\n')) {
+      const t = line.trim();
+      if (t) { set.add(t); }
+    }
+    // Also include uncommitted changes so PR drafts and dirty trees scan
+    // their work-in-progress.
+    try {
+      const dirty = execSync(`git -C "${rootPath}" status --porcelain`, {
+        encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 5000,
+      });
+      for (const line of dirty.split('\n')) {
+        // git status --porcelain format: "XY path" with a SPACE separator
+        // at byte index 2. We slice from index 3 on the raw line — trimming
+        // first would eat that space and corrupt the filename.
+        if (line.length < 4) { continue; }
+        // Renames are " R old -> new" — keep the new path.
+        const arrow = line.indexOf(' -> ');
+        const raw = arrow !== -1 ? line.substring(arrow + 4) : line.substring(3);
+        // Strip surrounding quotes for paths git escaped (e.g. names with spaces).
+        const filePath = raw.replace(/^"|"$/g, '').trim();
+        if (filePath) { set.add(filePath); }
+      }
+    } catch { /* dirty check is best-effort */ }
+    return set;
+  } catch (e) {
+    console.error(`[SAST] --changed-since failed: ${e instanceof Error ? e.message : e}`);
+    return null;
+  }
 }
 
 // ── Main ────────────────────────────────────────
@@ -82,19 +150,47 @@ async function main() {
 async function runScan(args: CliArgs) {
   const rootPath = path.resolve(args.target);
   console.error(`[SAST] Starting analysis on: ${rootPath}`);
+  if (args.disabledRules.length > 0) {
+    // Validate against the registry so a typo like `--disable injextion-flaw`
+    // surfaces as a warning instead of silently doing nothing.
+    const known = new Set(buildDefaultRules(true).map(r => r.code));
+    const unknown = args.disabledRules.filter(c => !known.has(c));
+    if (unknown.length > 0) {
+      console.error(`[SAST] Warning: --disable rule code(s) not recognized: ${unknown.join(', ')}`);
+      console.error(`[SAST]   Known rules: ${Array.from(known).sort().join(', ')}`);
+    }
+    console.error(`[SAST] Disabled rules: ${args.disabledRules.join(', ')}`);
+  }
 
-  const scanner = new ProjectScanner(true);
+  const scanner = new ProjectScanner({ includeSuggestions: true, disabledRules: args.disabledRules });
 
   try {
     const report = await scanner.scan(rootPath);
     let findings: Finding[] = report.findings;
 
-    // Apply baseline if requested
+    // Restrict to files changed vs a git ref (PR-style scan).
+    if (args.changedSince) {
+      const changed = changedFilesSince(rootPath, args.changedSince);
+      if (changed != null) {
+        const before = findings.length;
+        findings = findings.filter(f => f.filePath && changed.has(f.filePath));
+        console.error(`[SAST] --changed-since ${args.changedSince}: kept ${findings.length}/${before} findings (${changed.size} changed files)`);
+      } else {
+        console.error(`[SAST] --changed-since fell back to full scan output (git failed).`);
+      }
+    }
+
+    // Apply baseline if requested. Pass current file contents so v2 baselines
+    // can use context-hash matching (line-shift tolerant).
     if (args.useBaseline) {
       const baseline = loadBaseline(rootPath);
       if (baseline) {
-        findings = applyBaseline(findings, baseline);
-        console.error(`[SAST] Baseline applied: ${baseline.entries.length} known findings filtered`);
+        const fileContents = new Map<string, string>();
+        for (const f of report.context.files) {
+          fileContents.set(f.relativePath, f.content);
+        }
+        findings = applyBaseline(findings, baseline, fileContents);
+        console.error(`[SAST] Baseline (v${baseline.version}) applied: ${baseline.entries.length} known findings filtered`);
       } else {
         console.error(`[SAST] No baseline found. Run 'baseline' first.`);
       }
@@ -117,7 +213,7 @@ async function runScan(args: CliArgs) {
     // Output
     switch (args.format) {
       case 'json':
-        outputJson(report, findings, rootPath, fullCounts);
+        emitOrWrite(args.outputFile, JSON.stringify(buildJsonReport(report, findings, rootPath, fullCounts), null, 2));
         break;
       case 'pretty':
         outputPretty(report, findings, fullCounts);
@@ -125,6 +221,13 @@ async function runScan(args: CliArgs) {
       case 'summary':
         outputSummary(report, fullCounts);
         break;
+      case 'sarif': {
+        // SARIF respects all baseline / threshold filtering, just like JSON.
+        const sarifReport = { ...report, findings } as ProjectScanReport;
+        const sarif = toSarif(sarifReport, rootPath);
+        emitOrWrite(args.outputFile, JSON.stringify(sarif, null, 2));
+        break;
+      }
     }
 
     // --open: open HIGH findings in editor
@@ -197,8 +300,8 @@ function openHighFindings(findings: Finding[], rootPath: string) {
 
 interface FullCounts { total: number; high: number; medium: number; low: number }
 
-function outputJson(report: ProjectScanReport, findings: Finding[], rootPath: string, counts: FullCounts) {
-  console.log(JSON.stringify({
+function buildJsonReport(report: ProjectScanReport, findings: Finding[], rootPath: string, counts: FullCounts) {
+  return {
     target: rootPath,
     stats: {
       totalFiles: report.totalFiles,
@@ -219,11 +322,31 @@ function outputJson(report: ProjectScanReport, findings: Finding[], rootPath: st
       message: f.message,
       fix: f.fix,
       risk: f.risk,
+      cwe: f.cwe,
       filePath: f.filePath,
       line: f.line,
+      column: f.column,
+      endLine: f.endLine,
+      endColumn: f.endColumn,
       astUsed: f.astUsed ?? null,
-    }))
-  }, null, 2));
+      pathSteps: f.pathSteps,
+    })),
+  };
+}
+
+/**
+ * Write content to a file when `--output` is set, otherwise emit to stdout.
+ * Writes to disk go through `console.error` for the success message so that
+ * stdout stays empty (CI tools redirecting stdout to a file expect a pristine
+ * payload, even when --output handles the writing already).
+ */
+function emitOrWrite(outputFile: string | undefined, content: string): void {
+  if (outputFile) {
+    fs.writeFileSync(outputFile, content, 'utf8');
+    console.error(`[SAST] Wrote ${content.length} bytes to ${outputFile}`);
+  } else {
+    console.log(content);
+  }
 }
 
 // ── Output: Pretty ──────────────────────────────
@@ -304,9 +427,60 @@ function checkThreshold(findings: Finding[], level: string): boolean {
 
 // ── Telemetry (local-only) ──────────────────────
 
-function saveTelemetry(rootPath: string, report: ProjectScanReport, counts: FullCounts) {
+/**
+ * Resolve the directory we write telemetry into. We prefer (in order):
+ *   1. `$XDG_DATA_HOME/flutter-supabase-helper` (only when path is under HOME)
+ *   2. `~/Library/Application Support/...`      (macOS)
+ *   3. `%LOCALAPPDATA%/flutter-supabase-helper` (Windows; only when under HOME or USERPROFILE)
+ *   4. `~/.local/share/flutter-supabase-helper` (XDG default)
+ *   5. `~/.flutter-supabase-helper`             (last-resort fallback)
+ *
+ * NEVER the project root — that pollutes scanned repos with a file the user
+ * doesn't expect and that ends up committed by accident.
+ *
+ * For each env-driven candidate we VALIDATE that the resolved base lives
+ * under the user's HOME directory. If the env var points at `/etc` or
+ * another sensitive location (e.g., when a malicious shell init has
+ * tampered with `XDG_DATA_HOME`), we ignore it and fall through to a safer
+ * default. Without this guard we'd be one `mkdir` call from touching
+ * arbitrary paths.
+ */
+function _telemetryFilePath(): string {
+  const home = process.env.HOME || process.env.USERPROFILE || '';
+  const isUnderHome = (candidate: string): boolean => {
+    if (!home) { return false; }
+    const normCandidate = path.resolve(candidate);
+    const normHome = path.resolve(home);
+    // path.relative returns "" for same dir, "../*" if outside, otherwise
+    // a relative path inside. Reject "" (would write *to* HOME directly)
+    // and any "../" prefix.
+    const rel = path.relative(normHome, normCandidate);
+    return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+  };
+
+  let base = '';
+  if (process.env.XDG_DATA_HOME && isUnderHome(process.env.XDG_DATA_HOME)) {
+    base = process.env.XDG_DATA_HOME;
+  } else if (process.platform === 'darwin' && home) {
+    base = path.join(home, 'Library', 'Application Support');
+  } else if (process.platform === 'win32' && process.env.LOCALAPPDATA &&
+             isUnderHome(process.env.LOCALAPPDATA)) {
+    base = process.env.LOCALAPPDATA;
+  } else if (home) {
+    base = path.join(home, '.local', 'share');
+  } else {
+    // No HOME at all (containers, restricted shells). Use cwd-relative
+    // hidden dir; saveTelemetry's try/catch will swallow failures.
+    base = path.join('.', '.flutter-supabase-helper-data');
+  }
+  const dir = path.join(base, 'flutter-supabase-helper');
+  fs.mkdirSync(dir, { recursive: true });
+  return path.join(dir, 'telemetry.json');
+}
+
+function saveTelemetry(_rootPath: string, report: ProjectScanReport, counts: FullCounts) {
   try {
-    const telemetryFile = path.join(rootPath, '.sast-telemetry.json');
+    const telemetryFile = _telemetryFilePath();
     const entry = {
       timestamp: new Date().toISOString(),
       files: report.totalFiles,
@@ -344,10 +518,16 @@ async function runBaseline(target: string) {
   try {
     const scanner = new ProjectScanner(true);
     const report = await scanner.scan(rootPath);
-    const baseline = generateBaseline(report.findings);
+    // Pass file contents so the baseline carries context hashes — future
+    // scans use them to match findings even when line numbers shift.
+    const fileContents = new Map<string, string>();
+    for (const f of report.context.files) {
+      fileContents.set(f.relativePath, f.content);
+    }
+    const baseline = generateBaseline(report.findings, fileContents);
 
     saveBaseline(rootPath, baseline);
-    console.error(`[SAST] Baseline saved: ${baseline.entries.length} findings in ${BASELINE_FILENAME}`);
+    console.error(`[SAST] Baseline (v${baseline.version}) saved: ${baseline.entries.length} findings in ${BASELINE_FILENAME}`);
     console.error(`[SAST] Future scans with --baseline will only show NEW findings.`);
   } catch (err) {
     console.error(`[SAST] Baseline generation failed:`, err instanceof Error ? err.message : err);
@@ -510,14 +690,19 @@ Options:
   --json                  Output as JSON (default)
   --pretty                Human-readable grouped output
   --summary               Compact summary only
+  --sarif                 Output SARIF 2.1.0 (for GitHub Code Scanning, etc.)
+  -o, --output <path>     Write output to a file instead of stdout
   --fail-on <level>       Exit 1 if findings >= level (high|medium|low)
   --baseline              Compare against baseline, show only new findings
   --open                  Open HIGH findings in editor (vscode:// URI)
   --max-findings <n>      Limit output to top N findings (by severity)
+  --disable <a,b>         Skip these rule codes (comma-separated, repeatable)
+  --changed-since <ref>   Only show findings in files changed vs git <ref>
 
 Examples:
   npx flutter-supabase-helper scan ./my-project --pretty
   npx flutter-supabase-helper scan . --fail-on high --json
+  npx flutter-supabase-helper scan . --sarif -o sast.sarif
   npx flutter-supabase-helper scan . --pretty --max-findings 10
   npx flutter-supabase-helper scan . --open
   npx flutter-supabase-helper baseline .

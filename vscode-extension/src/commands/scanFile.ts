@@ -27,6 +27,7 @@ export async function scanFile(diagnostics: DiagnosticsProvider): Promise<void> 
 
   const config = vscode.workspace.getConfiguration('flutterSupabaseHelper');
   const includeSuggestions = config.get<boolean>('includeSuggestions', true);
+  const disabledRules = config.get<string[]>('disabledRules', []) ?? [];
 
   try {
     const report = await vscode.window.withProgress(
@@ -36,7 +37,7 @@ export async function scanFile(diagnostics: DiagnosticsProvider): Promise<void> 
         cancellable: false,
       },
       async () => {
-        const scanner = new ProjectScanner(includeSuggestions);
+        const scanner = new ProjectScanner({ includeSuggestions, disabledRules });
         return scanner.scan(rootPath);
       },
     );

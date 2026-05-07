@@ -1,4 +1,4 @@
-import { Rule } from '../rule';
+import { Rule, RuleStage } from '../rule';
 import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 import { ScannedFile } from '../../scanner/scannedFile';
@@ -6,6 +6,7 @@ import { firstReferenceFor } from '../ruleHelpers';
 
 export class EnvironmentVariablesRule implements Rule {
   readonly code = 'missing-env-vars';
+  readonly stage = RuleStage.fast;
 
   evaluate(context: ProjectContext): Finding[] {
     if (!context.usesSupabase) { return []; }

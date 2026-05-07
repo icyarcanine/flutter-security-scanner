@@ -1,0 +1,34 @@
+# Source — only the compiled `out/` ships
+src/**
+**/*.ts
+**/*.ts.map
+
+# Tooling / build config
+tsconfig.json
+.eslintrc*
+.editorconfig
+
+# Test scripts (only `out/` is needed at runtime)
+scripts/**
+
+# Dev artifacts
+.vscode-test/**
+.vscode/**
+*.vsix
+.gitignore
+.gitattributes
+
+# Node
+node_modules/.cache/**
+**/*.log
+**/.DS_Store
+
+# Repo-level docs (use the bundled README/LICENSE instead)
+../AGENTS.md
+../FIXES_PROGRESS.md
+../LOOPHOLES.md
+../REMAINING_FIXES.md
+../PROGRESS.md
+../IMPLEMENTATION.md
+../CONTRIBUTING.md
+../SECURITY.md

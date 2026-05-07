@@ -1,5 +1,24 @@
 import { ScannedFile } from '../scanner/scannedFile';
 import { ProjectContext, Location } from '../scanner/projectContext';
+import type { SyntaxNode } from 'web-tree-sitter';
+
+/**
+ * Convert a tree-sitter `SyntaxNode` to the 1-indexed `line/column/endLine/endColumn`
+ * fields that Finding accepts. Tree-sitter is 0-indexed; Finding is 1-indexed.
+ *
+ * Use this in any AST-based rule so the diagnostics provider can underline the
+ * exact node instead of the entire line.
+ */
+export function findingRangeFromNode(node: SyntaxNode): {
+  line: number; endLine: number; column: number; endColumn: number;
+} {
+  return {
+    line: node.startPosition.row + 1,
+    endLine: node.endPosition.row + 1,
+    column: node.startPosition.column + 1,
+    endColumn: node.endPosition.column + 1,
+  };
+}
 
 export function isTestLikePath(p: string): boolean {
   return p.startsWith('test/') ||

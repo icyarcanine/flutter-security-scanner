@@ -12,6 +12,14 @@ export class ScannedFile {
   public astStatus: 'ok' | 'failed' | 'skipped' = 'skipped';
   /** If astStatus === 'failed', the reason string */
   public astError?: string;
+  /**
+   * In-flight AST parse promise. Multiple rules running concurrently
+   * (under the F34 Promise.all scheduler) may all hit `getAst(file)` for
+   * the same file at the same time. Without de-duping, the file would be
+   * parsed N times. The first caller installs the promise; subsequent
+   * callers await the same one. Cleared once parsing settles.
+   */
+  public astPromise?: Promise<SyntaxNode | undefined>;
 
   constructor(absolutePath: string, relativePath: string, content: string) {
     this.absolutePath = absolutePath;

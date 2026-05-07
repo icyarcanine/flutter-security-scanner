@@ -208,6 +208,12 @@ body {
 .stats-bar {
   margin-top: 4px;
 }
+.stats-text {
+  font-size: 12px;
+  opacity: 0.7;
+}
+.ast-tag { background: #2d7d46; color: #fff; }
+.regex-tag { background: #8b6914; color: #fff; }
 
 /* Finding Groups */
 .finding-group {
@@ -293,4 +299,27 @@ body {
   border: 1px solid var(--vscode-panel-border);
   font-size: 0.9em;
   opacity: 0.9;
+}
+
+/* Data-flow path */
+.path-steps {
+  margin: 4px 0 0;
+  padding-left: 20px;
+  font-size: 0.9em;
+  color: var(--vscode-editor-foreground);
+  opacity: 0.9;
+}
+.path-steps li {
+  margin-bottom: 2px;
+}
+.path-line {
+  font-family: var(--vscode-editor-font-family);
+  color: var(--vscode-textLink-foreground);
+}
+.cwe-link {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: none;
+}
+.cwe-link:hover {
+  text-decoration: underline;
 }

@@ -13,7 +13,16 @@ export interface AstDiagnostics {
 
 export class ParserContext {
   private static readonly parserCache: Map<string, any> = new Map();
+  /**
+   * In-flight Language.load() promises keyed by grammar cacheKey. When two
+   * concurrent rules ask for the same language at the same time (which
+   * happens routinely under the F34 `Promise.all` rule scheduler) we
+   * de-dupe to a single WASM load. Without this, identical work happens
+   * N times where N = concurrent rules touching that file extension.
+   */
+  private static readonly inFlightLoads: Map<string, Promise<any | null>> = new Map();
   private static isInitialized = false;
+  private static initPromise: Promise<void> | null = null;
   private static initFailed = false;
   private static readonly warnedLanguages = new Set<string>();
 
@@ -49,46 +58,67 @@ export class ParserContext {
       return null; // not an AST-supported extension, silently skip (not a failure)
     }
 
-    // Critical global init — crash hard if this fails since nothing else can work
+    // Critical global init — crash hard if this fails since nothing else can work.
+    // Concurrent callers must share the SAME init promise (otherwise
+    // WebTreeSitter.init() runs N times, which the underlying WASM module
+    // handles inconsistently across versions).
     if (!ParserContext.isInitialized && !ParserContext.initFailed) {
+      if (!ParserContext.initPromise) {
+        ParserContext.initPromise = WebTreeSitter.init().then(
+          () => { ParserContext.isInitialized = true; },
+          (e: unknown) => {
+            ParserContext.initFailed = true;
+            throw new Error(`[SAST] CRITICAL: Parser.init() failed globally: ${(e as Error).message}`);
+          },
+        );
+      }
       try {
-        await WebTreeSitter.init();
-        ParserContext.isInitialized = true;
+        await ParserContext.initPromise;
       } catch (e) {
-        ParserContext.initFailed = true;
-        throw new Error(`[SAST] CRITICAL: Parser.init() failed globally: ${(e as Error).message}`);
+        // initPromise has already set initFailed; rethrow so the first
+        // caller sees the failure.
+        throw e;
       }
     }
     if (ParserContext.initFailed) {
       return null;
     }
 
-    // Return from cache (including cached null = previously failed language)
+    // Cached result (including cached null = previously failed language).
     if (ParserContext.parserCache.has(grammar.cacheKey)) {
       return ParserContext.parserCache.get(grammar.cacheKey) ?? null;
     }
 
-    try {
-      const language = await WebTreeSitter.Language.load(grammar.wasmPath);
-      const parser = new WebTreeSitter();
-      parser.setLanguage(language);
-
-      ParserContext.parserCache.set(grammar.cacheKey, parser);
-      return parser;
-    } catch (e) {
-      const lang = grammar.language;
-      const reason = `Failed to load WASM grammar ${grammar.cacheKey}: ${(e as Error).message}`;
-
-      // Log once per language, avoid spam
-      if (!ParserContext.warnedLanguages.has(lang)) {
-        console.error(`[SAST] AST unavailable for ${lang} – using regex fallback. (${reason})`);
-        ParserContext.warnedLanguages.add(lang);
-      }
-
-      // Cache the failure so we don't retry on every file
-      ParserContext.parserCache.set(grammar.cacheKey, null);
-      return null;
+    // De-dupe concurrent first-time loads of the same grammar.
+    const existingLoad = ParserContext.inFlightLoads.get(grammar.cacheKey);
+    if (existingLoad) {
+      return existingLoad;
     }
+
+    const loadPromise: Promise<any | null> = (async () => {
+      try {
+        const language = await WebTreeSitter.Language.load(grammar.wasmPath);
+        const parser = new WebTreeSitter();
+        parser.setLanguage(language);
+        ParserContext.parserCache.set(grammar.cacheKey, parser);
+        return parser;
+      } catch (e) {
+        const lang = grammar.language;
+        const reason = `Failed to load WASM grammar ${grammar.cacheKey}: ${(e as Error).message}`;
+        // Log once per language to avoid spam.
+        if (!ParserContext.warnedLanguages.has(lang)) {
+          console.error(`[SAST] AST unavailable for ${lang} – using regex fallback. (${reason})`);
+          ParserContext.warnedLanguages.add(lang);
+        }
+        // Cache the failure so we don't retry on every file.
+        ParserContext.parserCache.set(grammar.cacheKey, null);
+        return null;
+      } finally {
+        ParserContext.inFlightLoads.delete(grammar.cacheKey);
+      }
+    })();
+    ParserContext.inFlightLoads.set(grammar.cacheKey, loadPromise);
+    return loadPromise;
   }
 
   /**

@@ -2,6 +2,7 @@ import { Rule, RuleStage } from '../rule';
 import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 import { childForFieldName, findNodesByType, getCallName, isAssignment, isFunctionCall, namedChild } from '../../ast/traversal';
+import { findingRangeFromNode } from '../ruleHelpers';
 
 export class XssRule implements Rule {
   readonly code = 'xss-flaw';
@@ -48,8 +49,9 @@ export class XssRule implements Rule {
               fix: 'Avoid direct HTML injection. Rely on safer framework mechanisms (e.g., textContent or standard React binding) or strictly sanitize the input using DOMPurify.',
               risk: 'Cross-Site Scripting (XSS) allows attackers to execute arbitrary scripts in other users\' browsers.',
               filePath: file.relativePath,
-              line: node.startPosition.row + 1,
+              ...findingRangeFromNode(node),
               astUsed: true,
+              cwe: 'CWE-79',
             }));
           }
         }
@@ -75,6 +77,7 @@ export class XssRule implements Rule {
               filePath: file.relativePath,
               line: i + 1,
               astUsed: false,
+              cwe: 'CWE-79',
             }));
           }
         }

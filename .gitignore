@@ -6,6 +6,11 @@ validation_runs/
 vscode-extension/node_modules/
 vscode-extension/out/
 vscode-extension/*.vsix
+vscode-extension/src/**/*.js
+vscode-extension/src/**/*.js.map
+# Staged-on-publish copies of root-level README/LICENSE — see stage-docs script
+vscode-extension/README.md
+vscode-extension/LICENSE
 
 .DS_Store
 .env*

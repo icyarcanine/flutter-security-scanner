@@ -1,4 +1,4 @@
-import { Rule } from '../rule';
+import { Rule, RuleStage } from '../rule';
 import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 import { isProductionDartFile, collectLogStatements, isCommentLine } from '../ruleHelpers';
@@ -7,6 +7,7 @@ const PLAIN_PRINT_PATTERN = /\bprint\s*\(/;
 
 export class DebugCodeRule implements Rule {
   readonly code = 'debug-print';
+  readonly stage = RuleStage.fast;
 
   evaluate(context: ProjectContext): Finding[] {
     const findings: Finding[] = [];

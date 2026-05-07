@@ -1,9 +1,10 @@
-import { Rule } from '../rule';
+import { Rule, RuleStage } from '../rule';
 import { Finding, FindingCategory, FindingConfidence } from '../../models/finding';
 import { ProjectContext, suggestedPolicyForTable } from '../../scanner/projectContext';
 
 export class RlsPolicySuggestionRule implements Rule {
   readonly code = 'rls-policy-suggestion';
+  readonly stage = RuleStage.fast;
 
   evaluate(context: ProjectContext): Finding[] {
     const findings: Finding[] = [];

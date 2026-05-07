@@ -1,4 +1,4 @@
-import { Rule } from '../rule';
+import { Rule, RuleStage } from '../rule';
 import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 
@@ -7,6 +7,7 @@ const REVIEW_BUCKETS = new Set(['avatar', 'avatars', 'public-files']);
 
 export class PublicStorageRule implements Rule {
   readonly code = 'public-storage';
+  readonly stage = RuleStage.fast;
 
   evaluate(context: ProjectContext): Finding[] {
     const findings: Finding[] = [];

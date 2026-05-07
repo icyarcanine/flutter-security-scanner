@@ -1,10 +1,11 @@
-import { Rule } from '../rule';
+import { Rule, RuleStage } from '../rule';
 import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 import { collectLogStatements } from '../ruleHelpers';
 
 export class SensitiveLoggingRule implements Rule {
   readonly code = 'sensitive-logging';
+  readonly stage = RuleStage.fast;
 
   evaluate(context: ProjectContext): Finding[] {
     const findings: Finding[] = [];
@@ -21,6 +22,7 @@ export class SensitiveLoggingRule implements Rule {
           risk: 'Auth tokens and session objects in logs can be harvested from log files, crash reporters, or device storage.',
           filePath: file.relativePath,
           line: stmt.startLine,
+          cwe: 'CWE-532',
         }));
       }
     }

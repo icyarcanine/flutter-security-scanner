@@ -2,14 +2,38 @@ import type { SyntaxNode } from 'web-tree-sitter';
 
 type AstNode = SyntaxNode | any;
 
+/**
+ * Maximum AST depth we'll walk before bailing. Tree-sitter ASTs of heavily
+ * minified single-line JS can reach tens of thousands of nested nodes, which
+ * blows Node's default call stack (~10k frames). The iterative walker below
+ * also enforces this as a safety net against pathological input.
+ */
+const MAX_AST_WALK_DEPTH = 8000;
+
+/**
+ * Iterative pre-order AST walk. Calls `callback(node)` on every node.
+ * If the callback returns `false`, that subtree is skipped (matches the
+ * recursive variant's contract).
+ *
+ * Iterative rather than recursive to avoid stack overflow on deeply-nested
+ * minified files. Hard-capped at MAX_AST_WALK_DEPTH for the same reason —
+ * if a tree somehow exceeds that depth we just stop descending; the rules
+ * that drove the walk can still report on what they've already seen.
+ */
 export function walkAst(node: AstNode, callback: (node: AstNode) => void | false) {
-  if (callback(node) === false) {
-    return;
-  }
-  for (let i = 0; i < namedChildCount(node); i++) {
-    const child = namedChild(node, i);
-    if (child) {
-      walkAst(child, callback);
+  // Stack carries [node, depth] pairs. We push children in reverse so the
+  // pre-order traversal yields children left-to-right.
+  const stack: Array<[AstNode, number]> = [[node, 0]];
+  while (stack.length > 0) {
+    const top = stack.pop();
+    if (!top) { break; }
+    const [current, depth] = top;
+    if (callback(current) === false) { continue; }
+    if (depth >= MAX_AST_WALK_DEPTH) { continue; }
+    const count = namedChildCount(current);
+    for (let i = count - 1; i >= 0; i--) {
+      const child = namedChild(current, i);
+      if (child) { stack.push([child, depth + 1]); }
     }
   }
 }
@@ -84,7 +108,9 @@ export function isFunctionScope(node: AstNode): boolean {
   ].includes(node.type);
 }
 
-export function getAssignmentNames(node: AstNode, lang: string): string[] {
+// Note: `_lang` is part of the public signature for future per-language
+// extraction differences but is currently unused.
+export function getAssignmentNames(node: AstNode, _lang: string): string[] {
   // This extracts LHS of assignments to track what gets tainted
   const names: string[] = [];
   if (['assignment_expression', 'assignment',

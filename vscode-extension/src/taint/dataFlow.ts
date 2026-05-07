@@ -35,6 +35,8 @@ export interface TaintFinding {
   sinkKind: SinkKind;
   isSanitized: boolean;
   chainStrength: ChainStrength;
+  /** Source → sink provenance steps; empty when the chain is just the sink itself. */
+  pathSteps?: TaintProvenanceStep[];
 }
 
 export interface AstSinkFinding {
@@ -53,6 +55,17 @@ interface SinkDefinition {
 interface FunctionSummary {
   /** True when the function body directly returns a known source expression. */
   returnsDirectSource: boolean;
+}
+
+/**
+ * One step in the source → sink chain we surface to users. Same shape as
+ * `PathStep` in models/finding.ts; redeclared locally to avoid the engine
+ * importing into the core models layer.
+ */
+export interface TaintProvenanceStep {
+  line: number;
+  column?: number;
+  label: string;
 }
 
 interface ScopeState {
@@ -81,12 +94,54 @@ interface ScopeState {
    * promoted to sanitized.
    */
   conditionallyAssigned: Set<string>;
+  /**
+   * Per-symbol provenance: the chain of `[line, label]` pairs explaining how
+   * a symbol became tainted. Populated when:
+   *   - A parameter is seeded (first step: "tainted via <param-name> parameter").
+   *   - An assignment propagates taint from a tainted RHS to an LHS symbol
+   *     (next step: "<lhs> = <rhs-text>" with the assignment's line).
+   * On a sink hit, we copy the source argument's chain into the finding.
+   */
+  provenance: Map<string, TaintProvenanceStep[]>;
 }
 
 /** Maximum direct alias depth before taint downgrades to indirect. */
 const MAX_TAINT_DEPTH = 3;
 
-const SOURCE_PARAMETER_NAMES = new Set(['input', 'userInput', 'data', 'payload', 'req', 'request']);
+/**
+ * Parameter names that are *always* treated as attacker-controlled when
+ * present. `req`/`request` are unambiguous Express/Koa/Fastify handler
+ * conventions; `userInput` is verbose-and-explicit ("this comes from the
+ * user"). Together: names that almost no helper function would adopt by
+ * accident.
+ */
+const STRONG_SOURCE_PARAMETER_NAMES = new Set(['req', 'request', 'userInput']);
+/**
+ * Parameter names that *might* be attacker-controlled but are also common in
+ * pure helper functions (`function processData(data: number[])`,
+ * `function transform(input: string)`). We only treat these as tainted when
+ * corroborating evidence is present in the same function signature — e.g.,
+ * a sibling `res`/`response`/`next` parameter that strongly implies an
+ * Express-style request handler. Without that evidence they're left
+ * untainted to avoid massive false-positive blasts.
+ */
+const HEURISTIC_SOURCE_PARAMETER_NAMES = new Set(['input', 'data', 'payload']);
+const HANDLER_SHAPE_SIBLING_NAMES = new Set(['res', 'response', 'next', 'reply', 'ctx']);
+
+/**
+ * Token-level keyword set used by `_receiverLooksLikeDb` for the SQL-sink
+ * receiver heuristic. Match is per-token (after camelCase splitting) so
+ * `myDb`, `dbClient`, `pgPool` all hit, while unrelated names whose names
+ * happen to embed these letters mid-token (`description`, `dbus`, `debit`)
+ * do not. Add new ORM receivers here as the ecosystem grows.
+ */
+const DB_RECEIVER_KEYWORDS = new Set([
+  'db', 'database', 'sqlite', 'sqlite3', 'conn', 'connection', 'client',
+  'pool', 'cursor', 'tx', 'txn', 'batch', 'knex', 'pg', 'postgres',
+  'postgresql', 'mysql', 'mssql', 'oracle', 'sequelize', 'prisma',
+  'drizzle', 'orm', 'stmt', 'statement', 'mariadb', 'sqlserver',
+  'redshift', 'cockroach', 'planetscale', 'neon', 'libsql', 'turso',
+]);
 /**
  * Field names commonly destructured from a request handler's first parameter.
  * When seen as bindings inside a destructuring pattern in a function parameter
@@ -156,7 +211,18 @@ const NOSQL_DANGEROUS_OPERATORS = new Set([
 const SANITIZER_NAME_PATTERN =
   /(?:^|\.)(sanitize|escape|escapeHtml|escapeSql|escapeShell|shellEscape|sqlstring\.escape|dompurify\.sanitize|encodeURI|encodeURIComponent|encodeHTML|clean|normalize|validator\.escape)$/i;
 const VALIDATION_NAME_PATTERN =
-  /(?:^|\.)(validate|validated|assertValid|assertSafe|ensureValid|ensureSafe|checkValid|checkSafe|isAllowed|schema\.parse|safeParse|parseInt|parseFloat)$/i;
+  /(?:^|\.)(validate|validated|assertValid|assertSafe|ensureValid|ensureSafe|checkValid|checkSafe|isAllowed|schema\.parse|safeParse)$/i;
+/**
+ * Numeric coercion sanitizers. Their output is a JS number, which cannot
+ * carry SQL/shell/path/template payloads. We treat them as full sanitizers
+ * for every sink kind currently modeled — separated from the generic
+ * validator list to make the rationale explicit and to make future
+ * sink-specific gating (if precision data motivates it) a one-line change.
+ * Keep this list tight: only functions whose return value is *guaranteed*
+ * to be a number (not Number-like strings) belong here.
+ */
+const NUMERIC_COERCION_PATTERN =
+  /(?:^|\.)(parseInt|parseFloat|Number\.parseInt|Number\.parseFloat)$/;
 
 /**
  * Intra-procedural taint tracker for high-confidence source-to-sink findings.
@@ -204,7 +270,11 @@ export class IntraProceduralTaintTracker {
             const isSanitized = this._isSanitizedSinkCall(node, sink, state);
             const strength = this._callReceivesTaint(node, sink, state);
             if (strength !== false) {
-              findings.push({ node, sinkName: sink.name, sinkKind: sink.kind, isSanitized, chainStrength: strength });
+              const pathSteps = this.buildPathSteps(node, sink.name, state);
+              findings.push({
+                node, sinkName: sink.name, sinkKind: sink.kind,
+                isSanitized, chainStrength: strength, pathSteps,
+              });
             }
           }
 
@@ -480,6 +550,9 @@ export class IntraProceduralTaintTracker {
           this._mergePropertyMap(state.literalProperties, parentState.literalProperties);
           this._mergePropertyMap(state.taintedProperties, parentState.taintedProperties);
           for (const sym of parentState.objectAssignTainted) { state.objectAssignTainted.add(sym); }
+          for (const [sym, steps] of parentState.provenance) {
+            if (!state.provenance.has(sym)) { state.provenance.set(sym, [...steps]); }
+          }
         }
         return;
       }
@@ -495,12 +568,25 @@ export class IntraProceduralTaintTracker {
   private _seedScope(scope: SyntaxNode): ScopeState {
     const tainted = new Set<string>();
     const taintDepth = new Map<string, number>();
+    const provenance = new Map<string, TaintProvenanceStep[]>();
 
-    // Direct identifier params: req, request, input, userInput, data, payload
-    for (const name of getFunctionParameterNames(scope)) {
-      if (SOURCE_PARAMETER_NAMES.has(name)) {
+    const scopeLine = scope.startPosition.row + 1;
+
+    // Direct identifier params. `req`/`request` are seeded unconditionally;
+    // ambiguous names (`data`, `payload`, `input`, `userInput`) require
+    // corroborating evidence that the function is a request handler — namely
+    // a sibling parameter named `res`/`response`/`next`/`reply`/`ctx`.
+    const paramNames = getFunctionParameterNames(scope);
+    const hasHandlerSibling = paramNames.some(n => HANDLER_SHAPE_SIBLING_NAMES.has(n));
+    for (const name of paramNames) {
+      if (STRONG_SOURCE_PARAMETER_NAMES.has(name) ||
+          (hasHandlerSibling && HEURISTIC_SOURCE_PARAMETER_NAMES.has(name))) {
         tainted.add(name);
         taintDepth.set(name, 0);
+        provenance.set(name, [{
+          line: scopeLine,
+          label: `tainted source: '${name}' parameter (assumed user-controlled)`,
+        }]);
       }
     }
 
@@ -518,6 +604,10 @@ export class IntraProceduralTaintTracker {
         if (REQUEST_FIELD_NAMES.has(name)) {
           tainted.add(name);
           taintDepth.set(name, 0);
+          provenance.set(name, [{
+            line: scopeLine,
+            label: `tainted source: '${name}' destructured from request`,
+          }]);
         }
       }
     }
@@ -533,6 +623,7 @@ export class IntraProceduralTaintTracker {
       taintedProperties: new Map<string, Set<string>>(),
       objectAssignTainted: new Set<string>(),
       conditionallyAssigned,
+      provenance,
     };
   }
 
@@ -629,6 +720,19 @@ export class IntraProceduralTaintTracker {
           // Leave state.tainted alone — if target was already directly tainted, keep it.
         }
         state.sanitized.delete(target);
+        // Append a propagation step to the target's provenance. We seed the
+        // chain from whichever RHS symbol contributes (first-found wins —
+        // good enough for an explanatory trail).
+        if (value) {
+          const rhsProvenance = this._collectRhsProvenance(value, state);
+          const assignLine = node.startPosition.row + 1;
+          const assignText = node.text.length > 80 ? node.text.slice(0, 77) + '…' : node.text;
+          const newSteps: TaintProvenanceStep[] = [
+            ...rhsProvenance,
+            { line: assignLine, label: `propagated: ${assignText}` },
+          ];
+          state.provenance.set(target, newSteps);
+        }
       } else if (isSanitized) {
         if (isConditional || augmented) {
           // Conditional sanitization: refuse to mark as sanitized because the
@@ -644,6 +748,7 @@ export class IntraProceduralTaintTracker {
           state.taintedProperties.delete(target);
           state.objectAssignTainted.delete(target);
           state.sanitized.add(target);
+          state.provenance.delete(target);
         }
       } else {
         // Unknown value (e.g. another function call). Conditional rebinding
@@ -657,6 +762,7 @@ export class IntraProceduralTaintTracker {
           state.taintedProperties.delete(target);
           state.objectAssignTainted.delete(target);
           state.sanitized.delete(target);
+          state.provenance.delete(target);
         }
       }
 
@@ -751,7 +857,7 @@ export class IntraProceduralTaintTracker {
 
   private _recordValidationCall(node: SyntaxNode, state: ScopeState): void {
     const name = getCallName(node);
-    if (!VALIDATION_NAME_PATTERN.test(name)) { return; }
+    if (!VALIDATION_NAME_PATTERN.test(name) && !NUMERIC_COERCION_PATTERN.test(name)) { return; }
 
     for (const arg of getCallArguments(node)) {
       if (!this._isExpressionTainted(arg, state)) { continue; }
@@ -990,7 +1096,9 @@ export class IntraProceduralTaintTracker {
 
     if (isFunctionCall(node)) {
       const name = getCallName(node);
-      if (SANITIZER_NAME_PATTERN.test(name) || VALIDATION_NAME_PATTERN.test(name)) {
+      if (SANITIZER_NAME_PATTERN.test(name) ||
+          VALIDATION_NAME_PATTERN.test(name) ||
+          NUMERIC_COERCION_PATTERN.test(name)) {
         return true;
       }
     }
@@ -1068,8 +1176,31 @@ export class IntraProceduralTaintTracker {
     const lowerFull = fullName.toLowerCase();
     const lowerBare = bareName.toLowerCase();
 
+    // SQL sinks. The set of method names is broad (`query`, `execute`,
+    // `raw`, etc.) and overlaps with non-SQL APIs (e.g. analytics clients,
+    // map-like containers, HTTP query builders). To keep precision high
+    // we additionally require ONE of:
+    //   (a) the bare name is unambiguous (`rawQuery`, `executescript`,
+    //       `executemany`, `raw` — almost always SQL)
+    //   (b) the receiver name looks DB-shaped (`db`, `database`, `sqlite`,
+    //       `conn`, `connection`, `client`, `pool`, `txn`, `tx`, `batch`,
+    //       `knex`, `pg`, `mysql`, `mongo` — but mongo is NoSQL handled
+    //       separately, and we whitelist it for `find`/`update`)
+    //   (c) the first argument is a string literal containing a SQL keyword
+    //       (`SELECT`, `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `DROP`,
+    //       `ALTER`).
+    // This mirrors the Dart-side heuristic in lib/src/taint/taint_engine.dart.
     if (['query', 'execute', 'executequery', 'raw', 'rawquery', 'executemany', 'executescript'].includes(lowerBare)) {
-      return { name: fullName, kind: 'sql' };
+      const isUnambiguous = ['rawquery', 'executescript', 'executemany', 'raw'].includes(lowerBare);
+      if (isUnambiguous) {
+        return { name: fullName, kind: 'sql' };
+      }
+      if (this._receiverLooksLikeDb(fullName) || this._firstArgIsSqlLiteral(node)) {
+        return { name: fullName, kind: 'sql' };
+      }
+      // Bare `query(x)` / `execute(x)` with no DB-shaped receiver and no
+      // SQL literal: too ambiguous, skip.
+      return null;
     }
 
     if (['exec', 'execsync', 'execfile', 'spawn', 'system', 'popen'].includes(lowerBare) ||
@@ -1345,7 +1476,9 @@ export class IntraProceduralTaintTracker {
     // Known sanitizer/validator calls produce trusted values
     if (isFunctionCall(node)) {
       const name = getCallName(node);
-      if (SANITIZER_NAME_PATTERN.test(name) || VALIDATION_NAME_PATTERN.test(name)) {
+      if (SANITIZER_NAME_PATTERN.test(name) ||
+          VALIDATION_NAME_PATTERN.test(name) ||
+          NUMERIC_COERCION_PATTERN.test(name)) {
         return false;
       }
       // Other function calls — return value is unknown, treat as untrusted
@@ -1426,6 +1559,48 @@ export class IntraProceduralTaintTracker {
     return true;
   }
 
+  /**
+   * Find the first symbol on the RHS that has provenance and return a copy
+   * of its chain. Stops at the first match — good enough to produce a
+   * useful "Source → Sink" trace without exploding into a graph.
+   */
+  private _collectRhsProvenance(node: SyntaxNode, state: ScopeState): TaintProvenanceStep[] {
+    let result: TaintProvenanceStep[] | null = null;
+    walkAst(node, (child) => {
+      if (result) { return false; }
+      const sym = this._normalizeSymbol(child.text);
+      if (sym && state.provenance.has(sym)) {
+        result = [...state.provenance.get(sym)!];
+        return false;
+      }
+    });
+    return result ?? [];
+  }
+
+  /**
+   * For a sink-receiving node, find a tainted argument and return its
+   * provenance chain (with the sink itself appended as the final step).
+   * Returns undefined when no tainted symbol is involved in the call.
+   */
+  public buildPathSteps(node: SyntaxNode, sinkName: string, state: ScopeState): TaintProvenanceStep[] | undefined {
+    const args = getCallArguments(node);
+    for (const arg of args) {
+      if (!arg) { continue; }
+      const provenance = this._collectRhsProvenance(arg, state);
+      if (provenance.length > 0) {
+        return [
+          ...provenance,
+          {
+            line: node.startPosition.row + 1,
+            column: node.startPosition.column + 1,
+            label: `sink: ${sinkName}`,
+          },
+        ];
+      }
+    }
+    return undefined;
+  }
+
   private _normalizeSymbol(raw: string): string | null {
     const trimmed = raw.trim();
     if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(trimmed)) {
@@ -1435,5 +1610,67 @@ export class IntraProceduralTaintTracker {
       return trimmed.replace(/\s+/g, '');
     }
     return null;
+  }
+
+  /**
+   * Heuristic: returns true when the receiver name looks DB-shaped, i.e. the
+   * call is plausibly a SQL query. Used to filter out unambiguous-method-name
+   * collisions like a HTTP client's `query()` builder or a map's `execute`.
+   *
+   * `fullName` is something like `db.query`, `userClient.query`,
+   * `getDb().query`, `myDb.query`, or just `query`. We:
+   *   1. Strip the trailing method name.
+   *   2. Tokenize the receiver on dot, bracket, underscore boundaries AND
+   *      camelCase boundaries (so `myDbClient` → ['my', 'Db', 'Client']).
+   *   3. Strip a single trailing `()` from method-chain receivers
+   *      (`getDb()` → `getDb` → ['get', 'Db']).
+   *   4. Match any token (case-insensitively) against the DB-keyword set.
+   *
+   * This catches `myDb`, `dbClient`, `pgPool`, `prismaClient`, `getDb()`,
+   * `this._db`, `userDatabase`, etc. without flagging unrelated names like
+   * `description`, `dbus`, `debit` (those embed `db` mid-token).
+   */
+  private _receiverLooksLikeDb(fullName: string): boolean {
+    const lastDot = fullName.lastIndexOf('.');
+    if (lastDot === -1) { return false; }
+    let receiver = fullName.slice(0, lastDot);
+    // Strip any trailing `()` so `getDb()` is treated as `getDb`.
+    receiver = receiver.replace(/\s*\(\s*\)\s*$/, '');
+    // Split on non-alphanumeric AND camelCase boundaries.
+    const tokens = receiver
+      .split(/[^A-Za-z0-9]+|(?<=[a-z0-9])(?=[A-Z])/)
+      .map(t => t.toLowerCase())
+      .filter(Boolean);
+    for (const t of tokens) {
+      if (DB_RECEIVER_KEYWORDS.has(t)) { return true; }
+    }
+    return false;
+  }
+
+  /**
+   * Heuristic: returns true if the first argument *contains* a string literal
+   * (or template string) whose text starts with a SQL keyword. Handles bare
+   * literals AND concatenations like `"SELECT … " + id` or `\`SELECT … ${id}\``.
+   *
+   * Conservative: requires a leading keyword on a word boundary so prose
+   * containing the word "select" doesn't match.
+   */
+  private _firstArgIsSqlLiteral(node: SyntaxNode): boolean {
+    const args = getCallArguments(node);
+    if (args.length === 0) { return false; }
+    const first = args[0];
+    if (!first) { return false; }
+
+    const SQL_KW = /\b(?:SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM|CREATE\s+TABLE|DROP\s+TABLE|ALTER\s+TABLE|MERGE|TRUNCATE)\b/i;
+
+    let matched = false;
+    walkAst(first, (child) => {
+      if (matched) { return false; }
+      if (child.type === 'string' || child.type === 'string_literal' ||
+          child.type === 'template_string' || child.type === 'string_fragment') {
+        if (SQL_KW.test(child.text)) { matched = true; return false; }
+      }
+    });
+    return matched;
   }
 }

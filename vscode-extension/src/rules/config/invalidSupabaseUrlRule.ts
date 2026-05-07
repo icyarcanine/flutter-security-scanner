@@ -1,10 +1,11 @@
-import { Rule } from '../rule';
+import { Rule, RuleStage } from '../rule';
 import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 import { isCommentLine } from '../ruleHelpers';
 
 export class InvalidSupabaseUrlRule implements Rule {
   readonly code = 'invalid-supabase-url';
+  readonly stage = RuleStage.fast;
 
   evaluate(context: ProjectContext): Finding[] {
     const findings: Finding[] = [];

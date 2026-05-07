@@ -1,9 +1,10 @@
-import { Rule } from '../rule';
+import { Rule, RuleStage } from '../rule';
 import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
 import { ProjectContext, RlsEvidenceLevel } from '../../scanner/projectContext';
 
 export class MissingRlsAwarenessRule implements Rule {
   readonly code = 'missing-rls-awareness';
+  readonly stage = RuleStage.fast;
 
   evaluate(context: ProjectContext): Finding[] {
     if (context.tableAccesses.length === 0) { return []; }

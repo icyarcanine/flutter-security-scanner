@@ -69,8 +69,8 @@ class PathTraversalRule extends Rule {
 
       findings.add(
         Finding(
-          severity: FindingSeverity.high,
-          confidence: FindingConfidence.medium,
+          severity: FindingSeverity.medium,
+          confidence: FindingConfidence.low,
           category: FindingCategory.security,
           code: code,
           message: 'Potential path traversal: user input in file path',
