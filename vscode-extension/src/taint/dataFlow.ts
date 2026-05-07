@@ -77,7 +77,22 @@ interface ScopeState {
    * Findings from weakTainted get chainStrength 'indirect' → MEDIUM confidence.
    */
   weakTainted: Set<string>;
+  /** Symbols sanitized for every modeled sink kind (numeric coercion, validators, sanitizing replace). */
   sanitized: Set<string>;
+  /**
+   * §QW-1 — symbols sanitized only for a specific subset of sink kinds.
+   * `escapeHtml(x)` flowing into HTML is safe; the same value into SQL is not.
+   * Entries here are NEVER short-circuited in `_expressionTaintStrength`; sink
+   * checks consult this map to decide per-kind safety.
+   */
+  sanitizedFor: Map<string, Set<SinkKind>>;
+  /**
+   * §QW-41 — symbols proven to be in an allowlist past a `if (!barrier(x)) return;`
+   * (or throw/continue/break). Maps symbol → first line on or after which the
+   * guard's clearance applies. Populated as a pre-pass over the scope's
+   * top-level statements; consulted by sink checks via the symbol's node line.
+   */
+  negateGuardedAfter: Map<string, number>;
   dynamicSql: Set<string>;
   /** Alias depth for directly tainted symbols. Direct sources start at 0. */
   taintDepth: Map<string, number>;
@@ -226,6 +241,32 @@ const VALIDATION_NAME_PATTERN =
 const NUMERIC_COERCION_PATTERN =
   /(?:^|\.)(parseInt|parseFloat|Number|Number\.parseInt|Number\.parseFloat)$/;
 
+const ALL_SINK_KINDS_LIST: SinkKind[] = [
+  'sql', 'command', 'code', 'html', 'template', 'url', 'path', 'redirect', 'nosql', 'header',
+];
+const ALL_SINK_KINDS: ReadonlySet<SinkKind> = new Set<SinkKind>(ALL_SINK_KINDS_LIST);
+
+/**
+ * §QW-1 / §PR-6 — sink-specific sanitizer applicability. Each entry maps a
+ * call-name pattern to the sink kinds the call's output is safe for.
+ * Order matters: more-specific patterns first so generic catch-alls don't
+ * shadow them. The numeric coercion / validator / sanitizing-replace paths
+ * remain full-spectrum sanitizers and are handled outside this list.
+ */
+const SINK_SPECIFIC_SANITIZERS: ReadonlyArray<{
+  readonly pattern: RegExp;
+  readonly kinds: ReadonlySet<SinkKind>;
+}> = [
+  { pattern: /(?:^|\.)(escapeHtml|encodeHTML|sanitizeHtml)$/i, kinds: new Set<SinkKind>(['html']) },
+  { pattern: /(?:^|\.)(?:dompurify)\.sanitize$/i, kinds: new Set<SinkKind>(['html']) },
+  { pattern: /(?:^|\.)(?:validator)\.escape$/i, kinds: new Set<SinkKind>(['html']) },
+  { pattern: /(?:^|\.)(encodeURI|encodeURIComponent)$/i, kinds: new Set<SinkKind>(['url', 'redirect', 'header']) },
+  { pattern: /(?:^|\.)escapeSql$/i, kinds: new Set<SinkKind>(['sql']) },
+  { pattern: /(?:^|\.)(?:sqlstring|mysql|pg)\.escape$/i, kinds: new Set<SinkKind>(['sql']) },
+  { pattern: /(?:^|\.)(escapeShell|shellEscape)$/i, kinds: new Set<SinkKind>(['command']) },
+];
+
+
 /**
  * Intra-procedural taint tracker for high-confidence source-to-sink findings.
  * It deliberately avoids inter-file and inter-procedural guesses to keep noise low.
@@ -267,7 +308,7 @@ export class IntraProceduralTaintTracker {
           // Detect Object.assign(target, tainted) side-effect mutations.
           this._detectObjectAssignMutation(node, state);
 
-          const sink = this._sinkForCall(node);
+          const sink = this._sinkForCall(node, scope);
           if (sink) {
             const isSanitized = this._isSanitizedSinkCall(node, sink, state);
             const strength = this._callReceivesTaint(node, sink, state);
@@ -333,7 +374,7 @@ export class IntraProceduralTaintTracker {
 
         if (isFunctionCall(node)) {
           this._recordValidationCall(node, state);
-          const sink = this._sinkForCall(node);
+          const sink = this._sinkForCall(node, scope);
           if (sink && this._isDynamicSinkCall(node, sink, state)) {
             findings.push({
               node,
@@ -547,6 +588,20 @@ export class IntraProceduralTaintTracker {
           for (const t of parentState.tainted) { state.tainted.add(t); }
           for (const t of parentState.weakTainted) { state.weakTainted.add(t); }
           for (const s of parentState.sanitized) { state.sanitized.add(s); }
+          for (const [sym, kinds] of parentState.sanitizedFor) {
+            const merged = state.sanitizedFor.get(sym);
+            if (merged) {
+              for (const k of kinds) { merged.add(k); }
+            } else {
+              state.sanitizedFor.set(sym, new Set(kinds));
+            }
+          }
+          for (const [sym, line] of parentState.negateGuardedAfter) {
+            const existing = state.negateGuardedAfter.get(sym);
+            if (existing === undefined || line < existing) {
+              state.negateGuardedAfter.set(sym, line);
+            }
+          }
           for (const d of parentState.dynamicSql) { state.dynamicSql.add(d); }
           for (const [sym, depth] of parentState.taintDepth) { state.taintDepth.set(sym, depth); }
           this._mergePropertyMap(state.literalProperties, parentState.literalProperties);
@@ -615,10 +670,13 @@ export class IntraProceduralTaintTracker {
     }
 
     const conditionallyAssigned = this._collectConditionallyAssigned(scope);
+    const negateGuardedAfter = this._collectNegateGuards(scope);
     return {
       tainted,
       weakTainted: new Set<string>(),
       sanitized: new Set<string>(),
+      sanitizedFor: new Map<string, Set<SinkKind>>(),
+      negateGuardedAfter,
       dynamicSql: new Set<string>(),
       taintDepth,
       literalProperties: new Map<string, Set<string>>(),
@@ -670,6 +728,222 @@ export class IntraProceduralTaintTracker {
     return false;
   }
 
+  /**
+   * §QW-41 — pre-pass: walks the scope's top-level statements looking for
+   * `if (!barrier(x)) earlyExit;` patterns. After such a guard, `x` has been
+   * proven to be in the allowlist and is sanitized for all sink kinds in the
+   * dominated region. We track only top-level guards (siblings of the body
+   * block); guards inside nested blocks are deferred to §EN-4's CFG, when it
+   * lands. Returns `Map<symbol, firstGuaranteedLine>`.
+   */
+  private _collectNegateGuards(scope: SyntaxNode): Map<string, number> {
+    const result = new Map<string, number>();
+    const body = this._functionBody(scope);
+    if (!body) { return result; }
+
+    for (let i = 0; i < namedChildCount(body); i++) {
+      const stmt = namedChild(body, i);
+      if (!stmt || stmt.type !== 'if_statement') { continue; }
+      if (!this._ifConsequenceIsEarlyExit(stmt)) { continue; }
+
+      const test = this._unwrapParenthesized(this._ifTest(stmt));
+      if (!test) { continue; }
+      const symbols = this._extractNegateBarrierSymbols(test);
+      if (symbols.length === 0) { continue; }
+
+      const lineAfter = stmt.endPosition.row + 2;
+      for (const sym of symbols) {
+        const existing = result.get(sym);
+        if (existing === undefined || lineAfter < existing) {
+          result.set(sym, lineAfter);
+        }
+      }
+    }
+    return result;
+  }
+
+  private _functionBody(scope: SyntaxNode): SyntaxNode | null {
+    const named = childForFieldName(scope, 'body');
+    if (named && (named.type === 'statement_block' || named.type === 'block' || named.type === 'function_body')) {
+      return named;
+    }
+    for (let i = 0; i < namedChildCount(scope); i++) {
+      const child = namedChild(scope, i);
+      if (!child) { continue; }
+      if (child.type === 'statement_block' || child.type === 'block' || child.type === 'function_body') {
+        return child;
+      }
+    }
+    return scope;
+  }
+
+  private _ifTest(ifNode: SyntaxNode): SyntaxNode | null {
+    const named = childForFieldName(ifNode, 'condition') ?? childForFieldName(ifNode, 'test');
+    if (named) { return named; }
+    for (let i = 0; i < namedChildCount(ifNode); i++) {
+      const child = namedChild(ifNode, i);
+      if (!child) { continue; }
+      if (child.type === 'parenthesized_expression') { return child; }
+    }
+    return null;
+  }
+
+  private _ifConsequence(ifNode: SyntaxNode): SyntaxNode | null {
+    const named = childForFieldName(ifNode, 'consequence') ?? childForFieldName(ifNode, 'consequent') ?? childForFieldName(ifNode, 'body');
+    if (named) { return named; }
+    let seenTest = false;
+    for (let i = 0; i < namedChildCount(ifNode); i++) {
+      const child = namedChild(ifNode, i);
+      if (!child) { continue; }
+      if (!seenTest && child.type === 'parenthesized_expression') {
+        seenTest = true;
+        continue;
+      }
+      if (seenTest && child.type !== 'else_clause') { return child; }
+    }
+    return null;
+  }
+
+  private _unwrapParenthesized(node: SyntaxNode | null): SyntaxNode | null {
+    let current = node;
+    while (current && current.type === 'parenthesized_expression') {
+      const inner = namedChild(current, 0);
+      if (!inner) { break; }
+      current = inner;
+    }
+    return current;
+  }
+
+  /**
+   * Returns true when the if-statement's consequence is guaranteed to exit
+   * the surrounding statement (`return`, `throw`, `continue`, `break`). Handles
+   * single-statement bodies (`if (x) return;`) and block bodies whose last
+   * non-trivial statement is the early exit.
+   */
+  private _ifConsequenceIsEarlyExit(ifNode: SyntaxNode): boolean {
+    const consequence = this._ifConsequence(ifNode);
+    if (!consequence) { return false; }
+    return this._statementIsEarlyExit(consequence);
+  }
+
+  private _statementIsEarlyExit(node: SyntaxNode): boolean {
+    if (node.type === 'return_statement' || node.type === 'throw_statement' ||
+        node.type === 'continue_statement' || node.type === 'break_statement') {
+      return true;
+    }
+    if (node.type === 'statement_block' || node.type === 'block') {
+      for (let i = namedChildCount(node) - 1; i >= 0; i--) {
+        const child = namedChild(node, i);
+        if (!child) { continue; }
+        if (child.type === 'comment') { continue; }
+        return this._statementIsEarlyExit(child);
+      }
+      return false;
+    }
+    if (node.type === 'expression_statement') {
+      const inner = namedChild(node, 0);
+      return inner ? this._statementIsEarlyExit(inner) : false;
+    }
+    return false;
+  }
+
+  /**
+   * Recognizes negate-guard barrier patterns and returns the symbol(s) the
+   * guard proves are in the allowlist. Supported shapes:
+   *   - !X.has(sym)          — Set / Map membership negation
+   *   - !X.includes(sym)     — Array membership negation
+   *   - !X.test(sym)         — RegExp negation (treated as allowlist)
+   *   - !X.hasOwnProperty(sym)
+   *   - X.indexOf(sym) === -1 / !== -1 / < 0
+   *   - !ALLOW[sym]          — object-key negation
+   * Combined `&& / ||` clauses are not handled; the caller should pre-unwrap.
+   */
+  private _extractNegateBarrierSymbols(testNode: SyntaxNode | null): string[] {
+    if (!testNode) { return []; }
+    const text = testNode.text.replace(/\s+/g, '');
+    const symbols: string[] = [];
+
+    let m = text.match(/^!\w+(?:\.\w+)*\.(?:has|includes|test|hasOwnProperty)\(([A-Za-z_$][A-Za-z0-9_$.]*)\)$/);
+    if (m && m[1]) { symbols.push(m[1]); return symbols; }
+
+    m = text.match(/^!\w+(?:\.\w+)*\[([A-Za-z_$][A-Za-z0-9_$.]*)\]$/);
+    if (m && m[1]) { symbols.push(m[1]); return symbols; }
+
+    m = text.match(/^\w+(?:\.\w+)*\.indexOf\(([A-Za-z_$][A-Za-z0-9_$.]*)\)(?:===-1|!==-1|<0)$/);
+    if (m && m[1]) { symbols.push(m[1]); return symbols; }
+
+    return symbols;
+  }
+
+  /**
+   * §QW-2 — collects `instanceof T` narrowings from any if-statement whose
+   * consequent dominates `node` (within `scope`). Returns `Map<symbol, T>`.
+   * Without §EN-4's CFG we approximate domination by: the node lives inside
+   * the if's consequence subtree, and the test is a (possibly &&-conjoined)
+   * `x instanceof T` expression. Else-branch and `||`-conjoined cases are
+   * intentionally excluded — they don't establish the narrowing for the
+   * main branch.
+   */
+  private _findEnclosingInstanceofNarrowings(node: SyntaxNode, scope: SyntaxNode): Map<string, string> {
+    const narrowings = new Map<string, string>();
+    let current: SyntaxNode | null = node;
+    while (current && current !== scope) {
+      const parent: SyntaxNode | null = current.parent;
+      if (!parent) { break; }
+      if (parent.type === 'if_statement') {
+        const consequence = this._ifConsequence(parent);
+        if (consequence && this._isAncestorOrSelf(consequence, current)) {
+          const test = this._unwrapParenthesized(this._ifTest(parent));
+          this._collectInstanceofFromTest(test, narrowings);
+        }
+      }
+      current = parent;
+    }
+    return narrowings;
+  }
+
+  private _isAncestorOrSelf(ancestor: SyntaxNode, candidate: SyntaxNode): boolean {
+    let current: SyntaxNode | null = candidate;
+    while (current) {
+      if (current === ancestor) { return true; }
+      current = current.parent;
+    }
+    return false;
+  }
+
+  private _collectInstanceofFromTest(testNode: SyntaxNode | null, out: Map<string, string>): void {
+    if (!testNode) { return; }
+    const inner = this._unwrapParenthesized(testNode);
+    if (!inner) { return; }
+    if (inner.type === 'binary_expression') {
+      const operator = childForFieldName(inner, 'operator');
+      const opText = operator ? operator.text : this._inferBinaryOperator(inner);
+      if (opText === 'instanceof') {
+        const left = childForFieldName(inner, 'left') ?? namedChild(inner, 0);
+        const right = childForFieldName(inner, 'right') ?? namedChild(inner, 1);
+        if (left && right) {
+          const sym = this._normalizeSymbol(left.text);
+          const typeName = right.text.trim();
+          if (sym && typeName && !out.has(sym)) {
+            out.set(sym, typeName);
+          }
+        }
+      } else if (opText === '&&') {
+        const left = childForFieldName(inner, 'left') ?? namedChild(inner, 0);
+        const right = childForFieldName(inner, 'right') ?? namedChild(inner, 1);
+        this._collectInstanceofFromTest(left, out);
+        this._collectInstanceofFromTest(right, out);
+      }
+    }
+  }
+
+  private _inferBinaryOperator(node: SyntaxNode): string {
+    const text = node.text;
+    if (/\binstanceof\b/.test(text)) { return 'instanceof'; }
+    if (/&&/.test(text) && !/\|\|/.test(text)) { return '&&'; }
+    return '';
+  }
+
   private _propagateAssignment(node: SyntaxNode, lang: string, state: ScopeState): void {
     const targets = getAssignmentNames(node, lang)
       .map(name => this._normalizeSymbol(name))
@@ -677,7 +951,9 @@ export class IntraProceduralTaintTracker {
     if (targets.length === 0) { return; }
 
     const value = getAssignmentValue(node);
-    const isSanitized = this._isSanitizedExpression(value, state);
+    const sanitizedKinds = value != null ? this._expressionSanitizedKinds(value, state) : null;
+    const isSanitized = sanitizedKinds !== null && sanitizedKinds.size > 0;
+    const isFullySanitized = isSanitized && sanitizedKinds!.size === ALL_SINK_KINDS_LIST.length;
     const strength = value != null ? this._expressionTaintStrength(value, state) : false;
     const isDynamicSql = value != null && this._isDynamicSqlExpressionWithState(value, state);
     const augmented = isAugmentedAssignment(node);
@@ -709,7 +985,7 @@ export class IntraProceduralTaintTracker {
         }
       }
 
-      if (strength !== false && !isSanitized) {
+      if (strength !== false && !isFullySanitized) {
         if (strength === 'direct') {
           const newDepth = this._getExpressionDepth(value!, state) + 1;
           if (newDepth > MAX_TAINT_DEPTH) {
@@ -730,6 +1006,13 @@ export class IntraProceduralTaintTracker {
           // Leave state.tainted alone — if target was already directly tainted, keep it.
         }
         state.sanitized.delete(target);
+        // §QW-1 — partial sanitization on a tainted RHS still records the
+        // covered sink kinds so a later same-kind sink check trusts the LHS.
+        if (isSanitized && !isConditional && !augmented) {
+          state.sanitizedFor.set(target, new Set(sanitizedKinds!));
+        } else {
+          state.sanitizedFor.delete(target);
+        }
         // Append a propagation step to the target's provenance. We seed the
         // chain from whichever RHS symbol contributes (first-found wins —
         // good enough for an explanatory trail).
@@ -743,7 +1026,7 @@ export class IntraProceduralTaintTracker {
           ];
           state.provenance.set(target, newSteps);
         }
-      } else if (isSanitized) {
+      } else if (isFullySanitized) {
         if (isConditional || augmented) {
           // Conditional sanitization: refuse to mark as sanitized because the
           // sanitizing branch may not execute on every path. Preserve any
@@ -758,7 +1041,15 @@ export class IntraProceduralTaintTracker {
           state.taintedProperties.delete(target);
           state.objectAssignTainted.delete(target);
           state.sanitized.add(target);
+          state.sanitizedFor.delete(target);
           state.provenance.delete(target);
+        }
+      } else if (isSanitized) {
+        // Partial sanitizer (e.g. escapeHtml) on an otherwise-clean value:
+        // record the kinds it covers without disturbing existing taint state.
+        if (!isConditional && !augmented) {
+          state.sanitizedFor.set(target, new Set(sanitizedKinds!));
+          state.sanitized.delete(target);
         }
       } else {
         // Unknown value (e.g. another function call). Conditional rebinding
@@ -772,11 +1063,12 @@ export class IntraProceduralTaintTracker {
           state.taintedProperties.delete(target);
           state.objectAssignTainted.delete(target);
           state.sanitized.delete(target);
+          state.sanitizedFor.delete(target);
           state.provenance.delete(target);
         }
       }
 
-      if (isDynamicSql && !isSanitized) {
+      if (isDynamicSql && !isFullySanitized) {
         state.dynamicSql.add(target);
       } else if (!isConditional && !augmented) {
         state.dynamicSql.delete(target);
@@ -897,8 +1189,18 @@ export class IntraProceduralTaintTracker {
 
     const symbol = this._normalizeSymbol(node.text);
 
-    // Sanitized symbols are never tainted.
+    // Sanitized symbols are never tainted (full sanitization only — partial
+    // sanitization is handled at sink time by `_isSanitizedSinkCall`).
     if (symbol && state.sanitized.has(symbol)) { return false; }
+
+    // §QW-41 — symbols past a `if (!barrier(x)) return;` guard are sanitized
+    // for all sinks in the dominated region.
+    if (symbol) {
+      const guardLine = state.negateGuardedAfter.get(symbol);
+      if (guardLine !== undefined && node.startPosition.row + 1 >= guardLine) {
+        return false;
+      }
+    }
 
     // Direct symbol taint — strongest signal.
     if (symbol && state.tainted.has(symbol)) { return 'direct'; }
@@ -906,10 +1208,16 @@ export class IntraProceduralTaintTracker {
     // Indirect symbol taint.
     if (symbol && state.weakTainted.has(symbol)) { return 'indirect'; }
 
-    // Sanitizer/validator call — trusted output regardless of args. This must
-    // run before direct-source recognition so method sanitizers such as
-    // `req.query.name.replace(/[^a-z0-9_-]/g, '')` can clear taint.
-    if (this._isSanitizedExpression(node, state)) { return false; }
+    // Sanitizer/validator call — trusted output ONLY when the call clears
+    // every modeled sink kind (numeric coercion, generic validators, sanitizing
+    // replace, blanket sanitize/clean/normalize). Partial sanitizers like
+    // `escapeHtml(...)` deliberately do not short-circuit here so the inner
+    // taint flows through to the sink-time per-kind check, which then decides
+    // if the partial coverage matches the actual sink kind.
+    const exprSanitizedKinds = this._expressionSanitizedKinds(node, state);
+    if (exprSanitizedKinds && exprSanitizedKinds.size === ALL_SINK_KINDS_LIST.length) {
+      return false;
+    }
 
     // Recognized direct source expressions (req.body.x, request.args.get(), etc.)
     if (this._isDirectSourceExpression(node)) { return 'direct'; }
@@ -1102,24 +1410,58 @@ export class IntraProceduralTaintTracker {
     return best;
   }
 
-  private _isSanitizedExpression(node: SyntaxNode | null, state: ScopeState): boolean {
-    if (!node) { return false; }
+  private _isSanitizedExpression(node: SyntaxNode | null, state: ScopeState, sinkKind?: SinkKind): boolean {
+    const kinds = this._expressionSanitizedKinds(node, state);
+    if (!kinds || kinds.size === 0) { return false; }
+    if (sinkKind === undefined) { return true; }
+    return kinds.has(sinkKind);
+  }
+
+  /**
+   * §QW-1 — returns the set of sink kinds the given expression is sanitized
+   * for, or null when the expression is not sanitized at all. Symbol-level
+   * full sanitization (numeric coercion, validators, sanitizing replace) maps
+   * to ALL_SINK_KINDS; partial sanitizers (escapeHtml, encodeURIComponent…)
+   * map to a narrower set drawn from `SINK_SPECIFIC_SANITIZERS`.
+   */
+  private _expressionSanitizedKinds(node: SyntaxNode | null, state: ScopeState): ReadonlySet<SinkKind> | null {
+    if (!node) { return null; }
     const symbol = this._normalizeSymbol(node.text);
-    if (symbol && state.sanitized.has(symbol)) { return true; }
-
-    if (this._isNumericCoercionExpression(node)) { return true; }
-
-    if (isFunctionCall(node)) {
-      const name = getCallName(node);
-      if (this._isSanitizingReplaceCall(node, name)) { return true; }
-      if (SANITIZER_NAME_PATTERN.test(name) ||
-          VALIDATION_NAME_PATTERN.test(name) ||
-          NUMERIC_COERCION_PATTERN.test(name)) {
-        return true;
+    if (symbol) {
+      if (state.sanitized.has(symbol)) { return ALL_SINK_KINDS; }
+      const partial = state.sanitizedFor.get(symbol);
+      if (partial && partial.size > 0) { return partial; }
+      const guardLine = state.negateGuardedAfter.get(symbol);
+      if (guardLine !== undefined && node.startPosition.row + 1 >= guardLine) {
+        return ALL_SINK_KINDS;
       }
     }
 
-    return false;
+    if (this._isNumericCoercionExpression(node)) { return ALL_SINK_KINDS; }
+
+    if (isFunctionCall(node)) {
+      const name = getCallName(node);
+      if (this._isSanitizingReplaceCall(node, name)) { return ALL_SINK_KINDS; }
+      const callKinds = this._sanitizerCallKinds(name);
+      if (callKinds) { return callKinds; }
+    }
+
+    return null;
+  }
+
+  /**
+   * §QW-1 — maps a call name to its `sanitizesFor` sink-kind set. Numeric
+   * coercion / generic validators / generic catch-all sanitizers are full
+   * coverage; the entries in `SINK_SPECIFIC_SANITIZERS` are partial.
+   */
+  private _sanitizerCallKinds(name: string): ReadonlySet<SinkKind> | null {
+    if (NUMERIC_COERCION_PATTERN.test(name)) { return ALL_SINK_KINDS; }
+    if (VALIDATION_NAME_PATTERN.test(name)) { return ALL_SINK_KINDS; }
+    for (const entry of SINK_SPECIFIC_SANITIZERS) {
+      if (entry.pattern.test(name)) { return entry.kinds; }
+    }
+    if (SANITIZER_NAME_PATTERN.test(name)) { return ALL_SINK_KINDS; }
+    return null;
   }
 
   /**
@@ -1312,7 +1654,7 @@ export class IntraProceduralTaintTracker {
     return false;
   }
 
-  private _markSanitized(node: SyntaxNode, state: ScopeState): void {
+  private _markSanitized(node: SyntaxNode, state: ScopeState, kinds: ReadonlySet<SinkKind> = ALL_SINK_KINDS): void {
     const symbols = new Set<string>();
     const exact = this._normalizeSymbol(node.text);
     if (exact) { symbols.add(exact); }
@@ -1324,17 +1666,23 @@ export class IntraProceduralTaintTracker {
       if (childSymbol) { symbols.add(childSymbol); }
     }
 
+    const isFull = kinds.size === ALL_SINK_KINDS_LIST.length;
     for (const symbol of symbols) {
       state.tainted.delete(symbol);
       state.weakTainted.delete(symbol);
       state.taintDepth.delete(symbol);
-      state.sanitized.add(symbol);
+      if (isFull) {
+        state.sanitized.add(symbol);
+        state.sanitizedFor.delete(symbol);
+      } else {
+        state.sanitizedFor.set(symbol, new Set(kinds));
+      }
     }
   }
 
   // ─── Sink detection ───────────────────────────────────────────────────────
 
-  private _sinkForCall(node: SyntaxNode): SinkDefinition | null {
+  private _sinkForCall(node: SyntaxNode, scope?: SyntaxNode): SinkDefinition | null {
     const fullName = getCallName(node);
     const bareName = fullName.split('.').pop() ?? fullName;
     const lowerFull = fullName.toLowerCase();
@@ -1353,13 +1701,17 @@ export class IntraProceduralTaintTracker {
     //   (c) the first argument is a string literal containing a SQL keyword
     //       (`SELECT`, `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `DROP`,
     //       `ALTER`).
+    //   (d) §QW-2 — an enclosing `if (receiver instanceof T) { ... }` guard
+    //       narrows the receiver to a DB-shaped type.
     // This mirrors the Dart-side heuristic in lib/src/taint/taint_engine.dart.
     if (['query', 'execute', 'executequery', 'raw', 'rawquery', 'executemany', 'executescript'].includes(lowerBare)) {
       const isUnambiguous = ['rawquery', 'executescript', 'executemany', 'raw'].includes(lowerBare);
       if (isUnambiguous) {
         return { name: fullName, kind: 'sql' };
       }
-      if (this._receiverLooksLikeDb(fullName) || this._firstArgIsSqlLiteral(node)) {
+      if (this._receiverLooksLikeDb(fullName) ||
+          this._firstArgIsSqlLiteral(node) ||
+          (scope && this._receiverInstanceofImpliesDb(node, fullName, scope))) {
         return { name: fullName, kind: 'sql' };
       }
       // Bare `query(x)` / `execute(x)` with no DB-shaped receiver and no
@@ -1569,7 +1921,79 @@ export class IntraProceduralTaintTracker {
       return true;
     }
 
-    return getCallArguments(node).some(arg => this._isSanitizedExpression(arg, state));
+    const args = getCallArguments(node);
+    if (args.length === 0) { return false; }
+
+    // Whole-arg sanitization (`db.query(escapeSql(x))`) trumps everything.
+    for (const arg of args) {
+      if (this._isSanitizedExpression(arg, state, sink.kind)) { return true; }
+    }
+
+    // §QW-1 — leaf-level: ALL tainted leaves must be sanitized for sink.kind,
+    // AND at least one tainted leaf must exist. Vacuously-clean args (no
+    // tainted leaves at all) fall through with `false` so dynamic-SQL findings
+    // aren't suppressed for argless dynamic composition.
+    return this._allTaintedLeavesSanitizedForKind(args, state, sink.kind);
+  }
+
+  private _allTaintedLeavesSanitizedForKind(
+    args: SyntaxNode[],
+    state: ScopeState,
+    sinkKind: SinkKind,
+  ): boolean {
+    let foundTainted = false;
+    let unsanitizedFound = false;
+
+    const visit = (n: SyntaxNode, isRoot: boolean): void => {
+      if (unsanitizedFound) { return; }
+      if (!isRoot && FUNCTION_SCOPE_TYPES.includes(n.type)) { return; }
+
+      // Inline sanitizer call covering sink.kind: trust the output. Count its
+      // tainted args as `foundTainted` so the parent can claim positive
+      // sanitization, then stop descending.
+      if (!isRoot && isFunctionCall(n)) {
+        const name = getCallName(n);
+        const callKinds = this._sanitizerCallKinds(name);
+        const isCovering =
+          (callKinds && callKinds.has(sinkKind)) ||
+          this._isSanitizingReplaceCall(n, name) ||
+          this._isNumericCoercionExpression(n);
+        if (isCovering) {
+          for (const inner of getCallArguments(n)) {
+            if (this._expressionTaintStrength(inner, state) !== false) {
+              foundTainted = true;
+              break;
+            }
+          }
+          return;
+        }
+      }
+
+      const symbol = this._normalizeSymbol(n.text);
+      if (symbol && (state.tainted.has(symbol) || state.weakTainted.has(symbol))) {
+        foundTainted = true;
+        if (state.sanitized.has(symbol)) { return; }
+        const partial = state.sanitizedFor.get(symbol);
+        if (partial && partial.has(sinkKind)) { return; }
+        const guardLine = state.negateGuardedAfter.get(symbol);
+        if (guardLine !== undefined && n.startPosition.row + 1 >= guardLine) { return; }
+        unsanitizedFound = true;
+        return;
+      }
+
+      for (let i = 0; i < namedChildCount(n); i++) {
+        const child = namedChild(n, i);
+        if (!child) { continue; }
+        visit(child, false);
+        if (unsanitizedFound) { return; }
+      }
+    };
+
+    for (const arg of args) {
+      visit(arg, true);
+      if (unsanitizedFound) { return false; }
+    }
+    return foundTainted;
   }
 
   private _isParameterizedSqlCall(node: SyntaxNode, sink: SinkDefinition, state: ScopeState): boolean {
@@ -1902,11 +2326,32 @@ export class IntraProceduralTaintTracker {
   private _receiverLooksLikeDb(fullName: string): boolean {
     const lastDot = fullName.lastIndexOf('.');
     if (lastDot === -1) { return false; }
-    let receiver = fullName.slice(0, lastDot);
-    // Strip any trailing `()` so `getDb()` is treated as `getDb`.
-    receiver = receiver.replace(/\s*\(\s*\)\s*$/, '');
-    // Split on non-alphanumeric AND camelCase boundaries.
-    const tokens = receiver
+    const receiver = fullName.slice(0, lastDot);
+    return this._tokensIntersectDbKeywords(receiver);
+  }
+
+  /**
+   * §QW-2 — when the receiver of a SQL-shaped call (`x.query(...)`) is
+   * narrowed by an enclosing `if (x instanceof T) { ... }` guard, treat the
+   * receiver as DB-shaped if T tokenizes to a DB keyword. Lets us flag
+   * `if (handle instanceof Pool) { handle.query(req.body.id); }` where the
+   * receiver name alone wouldn't match.
+   */
+  private _receiverInstanceofImpliesDb(node: SyntaxNode, fullName: string, scope: SyntaxNode): boolean {
+    const lastDot = fullName.lastIndexOf('.');
+    if (lastDot === -1) { return false; }
+    const receiver = fullName.slice(0, lastDot).replace(/\s*\(\s*\)\s*$/, '');
+    const receiverSym = this._normalizeSymbol(receiver);
+    if (!receiverSym) { return false; }
+    const narrowings = this._findEnclosingInstanceofNarrowings(node, scope);
+    const typeName = narrowings.get(receiverSym);
+    if (!typeName) { return false; }
+    return this._tokensIntersectDbKeywords(typeName);
+  }
+
+  private _tokensIntersectDbKeywords(text: string): boolean {
+    const cleaned = text.replace(/\s*\(\s*\)\s*$/, '');
+    const tokens = cleaned
       .split(/[^A-Za-z0-9]+|(?<=[a-z0-9])(?=[A-Z])/)
       .map(t => t.toLowerCase())
       .filter(Boolean);

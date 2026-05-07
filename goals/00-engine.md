@@ -425,6 +425,15 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 - **Effort:** **S** (1 day on top of §EN-4).
 - **Tests:** `instanceof-narrows-receiver-type.ts`.
 - **Risks / gotchas:** None significant.
+- **Progress:** §QW-2 landed at sha pending (2026-05-07). Without the
+  full §EN-4 CFG/lattice we approximate the dominated region by walking
+  parents from the call site looking for an enclosing `if_statement` whose
+  consequence contains the call and whose test is a (possibly &&-conjoined)
+  `x instanceof T`. SQL-sink resolution consults this map: if the receiver
+  symbol narrows to a DB-shaped class (`Pool`, `PrismaClient`, `Sequelize`,
+  `Database`, …) the call resolves as `sql` even when the receiver name
+  isn't itself DB-shaped. A full lattice-based narrowing for every
+  expression / typeof / arbitrary sink kind still tracks here.
 
 ## §EN-13 — Loop-bounded analysis
 

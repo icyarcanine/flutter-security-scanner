@@ -921,6 +921,165 @@ async function main() {
     assert(set.has('new/path.js'), `expected rename target 'new/path.js'; got: ${[...set].join(',')}`);
   });
 
+  // ── §QW-1 / §PR-6 — sink-specific sanitizer applicability ──────────────
+
+  await test('QW-1: escapeHtml() flowing into SQL still flags HIGH', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, db) {
+        const safe = escapeHtml(req.body.id);
+        return db.query("SELECT * FROM u WHERE id = " + safe);
+      }`,
+    });
+    assert(findings.some(f => f.severity === 'high'),
+      `escapeHtml is HTML-only; SQL sink should still flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('QW-1: escapeSql() flowing into innerHTML still flags HIGH', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, el) {
+        const safe = sqlstring.escape(req.body.id);
+        el.innerHTML = "<div>id=" + safe + "</div>";
+      }`,
+    });
+    assert(findings.some(f => f.severity === 'high'),
+      `SQL escape is SQL-only; innerHTML sink should flag HIGH: ${JSON.stringify(findings)}`);
+  });
+
+  await test('QW-1: encodeURIComponent suppresses URL/redirect/header but not SQL', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, db) {
+        const safe = encodeURIComponent(req.body.id);
+        return db.query("SELECT * FROM u WHERE id = " + safe);
+      }`,
+    });
+    assert(findings.some(f => f.severity === 'high'),
+      `encodeURIComponent does not protect SQL: ${JSON.stringify(findings)}`);
+  });
+
+  await test('QW-1: sqlstring.escape() correctly suppresses SQL sink', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, db) {
+        const safe = sqlstring.escape(req.body.id);
+        return db.query("SELECT * FROM u WHERE id = " + safe);
+      }`,
+    });
+    assert(!findings.some(f => f.severity === 'high'),
+      `sqlstring.escape covers SQL; should suppress: ${JSON.stringify(findings)}`);
+  });
+
+  await test('QW-1: parseInt() (numeric coercion) still suppresses every sink', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, db, res) {
+        const id = parseInt(req.body.id);
+        db.query("WHERE id = " + id);
+        res.send("<div>id=" + id + "</div>");
+      }`,
+    });
+    assert(!findings.some(f => f.severity === 'high'),
+      `parseInt should clear all sinks: ${JSON.stringify(findings)}`);
+  });
+
+  // ── §QW-2 — instanceof T narrows receiver type ─────────────────────────
+
+  await test('QW-2: receiver narrowed via instanceof Pool flags as SQL sink', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, handle) {
+        if (handle instanceof Pool) {
+          handle.query("SELECT * FROM u WHERE id=" + req.body.id);
+        }
+      }`,
+    });
+    assert(findings.some(f => f.severity === 'high'),
+      `instanceof Pool should narrow receiver to DB-shape and flag SQL: ${JSON.stringify(findings)}`);
+  });
+
+  await test('QW-2: receiver without instanceof guard does NOT flag (no DB shape)', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, handle) {
+        handle.query(req.body.id);
+      }`,
+    });
+    assert(!findings.some(f => f.severity === 'high'),
+      `bare 'handle.query' without DB-shape or instanceof must not flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('QW-2: instanceof PrismaClient narrows to DB-shape', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, x) {
+        if (x instanceof PrismaClient) {
+          x.query("SELECT id FROM u WHERE n=" + req.body.n);
+        }
+      }`,
+    });
+    assert(findings.some(f => f.severity === 'high'),
+      `instanceof PrismaClient should narrow to DB: ${JSON.stringify(findings)}`);
+  });
+
+  await test('QW-2: instanceof on unrelated type does NOT narrow', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, x) {
+        if (x instanceof EventEmitter) {
+          x.query(req.body.id);
+        }
+      }`,
+    });
+    assert(!findings.some(f => f.severity === 'high'),
+      `instanceof EventEmitter is not DB-shaped; must not flag: ${JSON.stringify(findings)}`);
+  });
+
+  // ── §QW-41 — Negate-guard recognition ──────────────────────────────────
+
+  await test('QW-41: if (!ALLOW.has(x)) return; suppresses subsequent sink', async () => {
+    const findings = await scanWith({
+      'a.js': `const ALLOW = new Set(['a','b']);
+        function h(req, db) {
+          const id = req.body.id;
+          if (!ALLOW.has(id)) return;
+          db.query("WHERE id = " + id);
+        }`,
+    });
+    assert(!findings.some(f => f.severity === 'high'),
+      `negate-guard with !Set.has should clear taint: ${JSON.stringify(findings)}`);
+  });
+
+  await test('QW-41: if (!validHosts.includes(x)) throw suppresses subsequent sink', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, db) {
+          const id = req.body.id;
+          if (!validHosts.includes(id)) throw new Error('bad');
+          db.query("WHERE id = " + id);
+        }`,
+    });
+    assert(!findings.some(f => f.severity === 'high'),
+      `negate-guard with !Array.includes should clear taint: ${JSON.stringify(findings)}`);
+  });
+
+  await test('QW-41: sink BEFORE the guard still fires', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, db) {
+          const id = req.body.id;
+          db.query("WHERE id = " + id);
+          if (!ALLOW.has(id)) return;
+        }`,
+    });
+    assert(findings.some(f => f.severity === 'high'),
+      `sink before guard should still fire: ${JSON.stringify(findings)}`);
+  });
+
+  await test('QW-41: positive guard (no early exit) does NOT suppress', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, db) {
+          const id = req.body.id;
+          if (ALLOW.has(id)) {
+            doSomething(id);
+          }
+          db.query("WHERE id = " + id);
+        }`,
+    });
+    assert(findings.some(f => f.severity === 'high'),
+      `positive if-test (no negate, no early exit) must NOT clear taint: ${JSON.stringify(findings)}`);
+  });
+
   await test('parallel scans of the same fixture produce identical findings', async () => {
     const fixture = {
       'a.js': `function h(req, db) { return db.query("SELECT * FROM u WHERE id = " + req.body.id); }`,

@@ -19,7 +19,7 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
 ---
 
-## §PR-1 — Allowlist barrier guards
+## §PR-1 — Allowlist barrier guards (negate variant ✅ DONE — sha pending (2026-05-07) via §QW-41)
 
 - **Why:** Misses fixture 11 (SSRF allowlist). The single biggest FP
   source on real apps.
@@ -46,6 +46,13 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
     *after* the if-block.
   - Mutated allowlists (`allow.add(taint)`) — barrier doesn't apply.
   - `.includes()` on attacker-controlled arrays — still tainted.
+- **Progress:** §QW-41 landed at sha pending (2026-05-07). Top-level
+  `if (!ALLOW.has(x)) return/throw/continue/break;` (and the `.includes`,
+  `.test`, `.indexOf(...) === -1`, `!ALLOW[x]` shapes) are recognized as a
+  pre-pass during scope seeding. Symbols pass into a per-scope
+  `negateGuardedAfter: Map<symbol, line>`; sink checks past that line treat
+  the symbol as fully sanitized. Positive guards (`if (allow.has(x)) sink(x)`)
+  and guards inside nested blocks still wait on §EN-4's CFG.
 
 ## §PR-2 — Type-narrowing guards (typeof / instanceof)
 
@@ -147,6 +154,14 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 - **Dependencies:** §PR-5.
 - **Effort:** **S** (1 day post §PR-5).
 - **Tests:** Sink-kind-specific sanitizer fixtures.
+- **Progress:** §QW-1 landed at sha pending (2026-05-07). The TS engine
+  now ships a built-in `SINK_SPECIFIC_SANITIZERS` registry mapping
+  `escapeHtml`/`encodeURIComponent`/`sqlstring.escape`/`escapeShell` and
+  similar to per-kind coverage; numeric coercion + generic validators stay
+  full-spectrum. `state.sanitizedFor` tracks per-symbol partial coverage and
+  the sink check (`_isSanitizedSinkCall`) walks compound args to verify the
+  flowing taint is sanitized for the specific sink kind. The §PR-5 origin
+  resolution / `.fshrc trustedSanitizers` extension still tracks here.
 
 ## §PR-7 — Per-rule confidence calibration
 

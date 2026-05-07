@@ -24,7 +24,7 @@ items (§00 engine, §05 scale) come after the quick wins are exhausted.
 |---|--------|------|--------|-------|
 | 1 | §QW-12 / §SC-8 | Bounded rule runtime | ✅ | 30s default, configurable via `--rule-timeout`; aborts emit `scanner-internal-error` |
 | 2 | §QW-13 / §SC-4 | Bounded file size with warning | ✅ | `--max-file-size`; `report.skippedFiles[]`; default 1 MB; mergeReports preserves cross-root |
-| 3 | §QW-1 / §PR-6 | Sink-specific sanitizer applicability | ⏸ | depends on §PR-5 |
+| 3 | §QW-1 / §PR-6 | Sink-specific sanitizer applicability | ✅ | per-kind `SINK_SPECIFIC_SANITIZERS` registry; `state.sanitizedFor` partial coverage; sink-time leaf walk |
 | 4 | §QW-21 / §IN-30 | Config schema for `.fshrc.yaml` | ✅ | `schemas/fshrc.schema.json`; VS Code yamlValidation+jsonValidation |
 | 5 | §QW-3 / §RC-50 | Dynamic `import(taint)` sink | ✅ | code-class sink (CWE-95); pos+neg tests in taint-engine suite |
 | 6 | §QW-4 / §RC-58 | Hardcoded IP literal flag | ✅ | new rule `hardcoded-ip`; IPv4+IPv6; skips RFC 1918, link-local, doc ranges, comments |
@@ -179,3 +179,30 @@ Quick-win backlog now has only dependency-gated items:
 - §QW-1 waits on §PR-5.
 - §QW-2 waits on §EN-4.
 - §QW-41 waits on §EN-4.
+
+### 2026-05-07 — sink-specific sanitizers + guard narrowing
+
+Closed the three gated quick-win items by shipping minimal versions that
+deliver the user-visible precision wins without waiting on the L/XL §PR-5
+and §EN-4 dependencies:
+
+| Task | Approach |
+|------|----------|
+| §QW-1 / §PR-6 | New `SINK_SPECIFIC_SANITIZERS` registry maps `escapeHtml`/`encodeURIComponent`/`escapeSql`/`escapeShell`-shaped calls to per-kind coverage. `ScopeState.sanitizedFor: Map<symbol, Set<SinkKind>>` tracks partial sanitization across assignments. `_isSanitizedSinkCall` walks compound args (e.g. `"WHERE id=" + safe`) and only suppresses when every tainted leaf is sanitized for the actual sink kind, so `escapeHtml(taint)` flowing into SQL still flags HIGH. |
+| §QW-2 / §EN-12 | `_findEnclosingInstanceofNarrowings` walks parents of a sink call looking for an `if (x instanceof T)` whose consequent contains the call (and joined `&&` clauses). When the receiver narrows to a DB-shaped class (Pool/PrismaClient/Sequelize/Database/etc.), the SQL sink resolver consults the narrowing in addition to its existing receiver-name and SQL-literal heuristics. |
+| §QW-41 / §PR-1 | Pre-pass `_collectNegateGuards` walks each scope's top-level statements for `if (!ALLOW.has(x)) return/throw/continue/break;` (and `.includes`, `.test`, `.indexOf(...)===-1`, `!ALLOW[x]` shapes). `ScopeState.negateGuardedAfter: Map<symbol, line>` records the first guaranteed-clean line; `_expressionTaintStrength` and the sink-call leaf walk treat the symbol as fully sanitized past that line. |
+
+Engine refactors that fall out of QW-1 are load-bearing for the others:
+`_expressionTaintStrength` now only short-circuits on FULL sanitization,
+so partial sanitizer calls (e.g. `escapeHtml(taint)` inline) propagate
+inner taint to the sink, where the per-kind decision happens. Numeric
+coercion / generic validators / sanitizing replace stay full-spectrum.
+
+Verification:
+- `npm test` passes — 112 taint-engine tests (up from 99) including
+  12 new fixtures across QW-1/QW-2/QW-41, plus precision/IFDS/AST/
+  rule-timeout/file-size/output-format/suppression/cli-filter suites.
+- `HOME=/tmp dart run tool/smoke_test.dart` passes.
+- `dart analyze lib bin tool` exits with the existing 13 info-level
+  lints (unchanged).
+- `git diff --check` passes before commit.
