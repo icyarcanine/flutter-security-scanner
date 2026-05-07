@@ -13,10 +13,10 @@ upside for adoption.
 
 Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
-- ✅ §IN-1, §IN-2, §IN-4, §IN-6, §IN-8, §IN-9, §IN-10, §IN-11, §IN-19,
-  §IN-22, §IN-23, §IN-24, §IN-27, §IN-28, §IN-30
-- ⏳ §IN-3, §IN-5, §IN-7, §IN-12, §IN-13, §IN-14, §IN-15, §IN-16,
-  §IN-17, §IN-18, §IN-20, §IN-21, §IN-25, §IN-26, §IN-29, §IN-31, §IN-32
+- ✅ §IN-1, §IN-2, §IN-4, §IN-6, §IN-8, §IN-9, §IN-10, §IN-11, §IN-16,
+  §IN-19, §IN-22, §IN-23, §IN-24, §IN-27, §IN-28, §IN-30
+- ⏳ §IN-3, §IN-5, §IN-7, §IN-12, §IN-13, §IN-14, §IN-15, §IN-17, §IN-18,
+  §IN-20, §IN-21, §IN-25, §IN-26, §IN-29, §IN-31, §IN-32
 
 ---
 
@@ -212,13 +212,26 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
   grouped by severity/file. Click jumps to source.
 - **Effort:** **M** (4 days).
 
-## §IN-16 — VS Code: explanation hover provider
+## §IN-16 — VS Code: explanation hover provider ✅ DONE — 2026-05-07
 
 - **Why:** When the user hovers over a flagged line, show why it's
   flagged + how to fix.
 - **Target state:** Hover shows finding's message + fix + CWE link
   (already partial via diagnostic relatedInformation).
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - `vscode-extension/src/diagnostics/hoverProvider.ts` —
+    `FindingHoverProvider` registered for every supported language in
+    `extension.ts`. Renders a Markdown card per finding with severity
+    badge, message, fix, risk, and clickable CWE links to MITRE.
+  - Backed by `DiagnosticsProvider.findingsAtLine(uri, line)`, which
+    indexes the latest scan's findings by absolute path. Stays in sync
+    with the squiggle: `clearDiagnostics()` clears the index too.
+  - Tests: `vscode-extension/scripts/hover-provider.test.js` mocks
+    `vscode` in the Node module cache and verifies (a) the line index
+    handles single + multi-line ranges, (b) the rendered Markdown
+    contains rule code / severity / fix / risk / CWE link, (c) clean
+    lines return undefined.
 
 ## §IN-17 — IntelliJ / JetBrains plugin
 

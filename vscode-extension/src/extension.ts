@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { DiagnosticsProvider } from './diagnostics/diagnosticsProvider';
+import { FindingHoverProvider } from './diagnostics/hoverProvider';
 import { scanWorkspace } from './commands/scanWorkspace';
 import { scanFile } from './commands/scanFile';
 import { runSecurityChecks } from './commands/runSecurityChecks';
@@ -61,6 +62,18 @@ export function activate(context: vscode.ExtensionContext) {
     } catch {
       // If code actions registration fails (unlikely but possible in forks), continue without them
       console.error('[SAST] Code actions unavailable in this editor — quick fixes disabled.');
+    }
+
+    // §IN-16 — Hover provider: show rule, fix, risk, and CWE links inline
+    // when the user hovers a flagged line. Keyed off the same finding index
+    // the diagnostic squiggle uses, so hover and squiggle stay in sync.
+    try {
+      const hoverProvider = new FindingHoverProvider(diagnostics);
+      context.subscriptions.push(
+        vscode.languages.registerHoverProvider(supportedLanguages, hoverProvider),
+      );
+    } catch {
+      console.error('[SAST] Hover provider unavailable in this editor.');
     }
 
     // Show status bar whenever a workspace is open. Previously it was only

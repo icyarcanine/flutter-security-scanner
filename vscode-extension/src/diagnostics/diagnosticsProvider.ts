@@ -5,6 +5,13 @@ import { ProjectScanReport } from '../scanner/scanner';
 
 export class DiagnosticsProvider {
   private readonly _collection: vscode.DiagnosticCollection;
+  /**
+   * Findings indexed by absolute file path. Populated on every
+   * `updateDiagnostics()` so the hover provider (§IN-16) can answer
+   * "what was reported at this line?" without re-scanning. Stays in sync
+   * with the diagnostic collection — clearing one clears the other.
+   */
+  private readonly _findingsByFile = new Map<string, Finding[]>();
 
   constructor() {
     this._collection = vscode.languages.createDiagnosticCollection('flutter-supabase-helper');
@@ -12,6 +19,7 @@ export class DiagnosticsProvider {
 
   updateDiagnostics(report: ProjectScanReport): void {
     this._collection.clear();
+    this._findingsByFile.clear();
     const byFile = new Map<string, vscode.Diagnostic[]>();
 
     for (const finding of report.findings) {
@@ -24,6 +32,8 @@ export class DiagnosticsProvider {
       const diag = this._findingToDiagnostic(finding, absolutePath);
       if (!byFile.has(absolutePath)) byFile.set(absolutePath, []);
       byFile.get(absolutePath)!.push(diag);
+      if (!this._findingsByFile.has(absolutePath)) this._findingsByFile.set(absolutePath, []);
+      this._findingsByFile.get(absolutePath)!.push(finding);
     }
 
     for (const [filePath, diags] of byFile) {
@@ -38,6 +48,25 @@ export class DiagnosticsProvider {
 
   clearDiagnostics(): void {
     this._collection.clear();
+    this._findingsByFile.clear();
+  }
+
+  /**
+   * Findings whose primary location's line matches the requested 0-based
+   * editor line. Used by the hover provider — kept here rather than in a
+   * separate index so the data stays consistent with the diagnostic
+   * collection lifecycle.
+   */
+  findingsAtLine(uri: vscode.Uri, zeroBasedLine: number): Finding[] {
+    const fsPath = uri.fsPath;
+    const findings = this._findingsByFile.get(fsPath);
+    if (!findings) return [];
+    const targetOneBased = zeroBasedLine + 1;
+    return findings.filter(f => {
+      const start = f.line ?? 0;
+      const end = f.endLine ?? start;
+      return targetOneBased >= start && targetOneBased <= end;
+    });
   }
 
   dispose(): void {
