@@ -1,0 +1,119 @@
+# goals/ — what it takes to leave CodeQL in the dust
+
+This folder is the master TODO for catching up to (and beating) CodeQL on
+the dimensions that matter for SAST. It exists so that **a single LLM agent
+can pick up one file and work on it without needing to load the others**.
+
+## Honest framing
+
+The phrase "leave CodeQL in the dust" needs caveats. CodeQL is the product
+of GitHub Security Lab + Semmle + 15+ years of research. They ship 250+
+queries on JavaScript alone, points-to analysis, a Datalog-style query
+language, and run as the engine behind GitHub Code Scanning. Matching them
+on every dimension is **roughly 100+ engineer-years** of work.
+
+There are two viable strategies:
+
+1. **Head-to-head match** — close every gap in [§00–§07](.). Years of work.
+2. **Differentiation** — be 10× better on a smaller surface CodeQL doesn't
+   serve well: zero-config setup, mobile (Dart/Flutter/Swift/Kotlin),
+   Supabase/edge platforms, AI-assisted autofixes, real-time IDE feedback,
+   incremental rescan. Months of work. **This is where we can actually win.**
+
+The files in this folder list **everything** for both strategies. Agents
+working on the project should pick a file based on the strategy currently
+chosen, not pick at random.
+
+## File index
+
+| File | Scope | Strategy this serves |
+|------|-------|----------------------|
+| [00-engine.md](00-engine.md) | Taint engine fundamentals — cross-file, async, points-to, CFG, type narrowing | Head-to-head |
+| [01-language-coverage.md](01-language-coverage.md) | Per-language source/sink depth (JS, TS, Python, Java, Go, C/C++, C#, Ruby, Swift, Kotlin, Dart) | Both |
+| [02-framework-models.md](02-framework-models.md) | Express, NestJS, Next.js, Django, Spring, Rails, ASP.NET, ORMs, etc. | Both |
+| [03-rule-coverage.md](03-rule-coverage.md) | Every CodeQL CWE class we lack (proto pollution, ReDoS, log injection, XXE, …) | Head-to-head |
+| [04-precision.md](04-precision.md) | Guard reasoning, sanitizer evidence, barrier nodes, confidence calibration | Both |
+| [05-scale.md](05-scale.md) | Whole-program DB, incremental rescan, monorepo support, memory bounds | Head-to-head |
+| [06-integrations.md](06-integrations.md) | SARIF features, GitHub PR comments, GitLab, IDE plugins, dashboards | Differentiation |
+| [07-rule-authoring.md](07-rule-authoring.md) | Custom rule DSL (Semgrep/QL alternative), rule sharing, plugin architecture | Differentiation |
+| [08-quality-evals.md](08-quality-evals.md) | OWASP Benchmark, Juliet (NIST), SARD, real-CVE corpus, ML-ranking, telemetry | Both |
+| [09-supabase-flutter.md](09-supabase-flutter.md) | Preserve and extend the Supabase/Flutter/Dart edge CodeQL doesn't have | Differentiation (where we already lead) |
+| [10-non-goals.md](10-non-goals.md) | What we deliberately won't pursue and why | Both |
+| [11-quick-wins.md](11-quick-wins.md) | < 1 day tasks that close real benchmark gaps. Read this first if you have a few hours | Both |
+
+## How to read each file
+
+Every task entry in every file uses this exact shape:
+
+```
+### Task name (a stable anchor like §SQ-1)
+
+- **Why:** one sentence stating the user-visible benefit
+- **Current state:** path-cited evidence of what we have today
+- **Target state:** what "done" looks like, observable from CLI / API
+- **Approach:** the actual implementation strategy. Specific functions,
+  data structures, edge cases. Not vague.
+- **Dependencies:** other §-numbered tasks that must land first
+- **Effort:** S (< 1 day) / M (1–5 days) / L (1–4 weeks) / XL (months)
+- **Tests:** what fixture(s) prove the task is done
+- **Risks / non-obvious gotchas:** the things that bite during implementation
+```
+
+If a task is missing one of those fields, treat that as a bug in the goals
+doc — open a fix.
+
+## Effort ratings, calibrated
+
+| Rating | Wall time for one engineer / agent | Examples |
+|---|---|---|
+| **S** | < 1 day | Add a regex sink to an existing rule. Promote a heuristic to a setting. Fix a documented FP. |
+| **M** | 1–5 days | New rule end-to-end with tests. Add framework source-set. Wire a new output format. |
+| **L** | 1–4 weeks | New language at AST + sink-set level. Refactor the taint engine to support a new analysis dimension (e.g. async). New benchmark suite. |
+| **XL** | > 1 month | New language with full taint. Whole-program DB layer. Custom rule DSL with parser + runtime. Distributed scan workers. |
+
+Estimates assume someone who already knows the codebase and the technique.
+For an LLM agent or new contributor, multiply by 2–3×.
+
+## How to pick a task
+
+1. Read [11-quick-wins.md](11-quick-wins.md) first. Twenty cheap tasks
+   close more of the benchmark gap than one hard task. Always start here.
+2. If you have multi-week scope: pick something from §00 (engine) or §05
+   (scale). These unblock everything else.
+3. If you're rule-authoring: pick from §03 first, then §02 (framework
+   models help every rule downstream).
+4. If you're doing UX / integrations: §06 and §08.
+5. **Do not** start a §00 task and a §05 task in the same PR. Both
+   touch core infrastructure and merging them will hurt.
+
+## Convention: how each goals file numbers tasks
+
+`§<area>-<index>` where `<area>` is two letters (`EN`, `LC`, `FM`, `RC`,
+`PR`, `SC`, `IN`, `RA`, `QE`, `SF`, `QW`) and `<index>` is sequential
+within that file.
+
+Anchors stay stable. **Never renumber** — agents will have those numbers
+in their context. Append new tasks with the next index, even if it leaves
+ordering imperfect.
+
+## Status conventions
+
+When a task lands, mark it in-place:
+
+```
+### Task name (§EN-1) ✅ DONE — sha 0f434cf
+```
+
+Keep the `✅ DONE` line; do not delete the entry. The history is the
+artifact.
+
+## Compare to where we are today (May 2026)
+
+Run `npm test` from `vscode-extension/` and `bin/fluttersupabasehelper.dart`
+benchmark to know the baseline. The COMPARISON.md document at the repo
+root shows our current position vs CodeQL on a 15-fixture benchmark — 6
+ties, 4 hard losses, 0 net wins outside of Dart.
+
+To "leave CodeQL in the dust" we need to flip that to something like:
+12 wins (us) / 3 wins (CodeQL) / 0 ties on a much larger benchmark.
+Achievable with the work in this folder. Not achievable in a quarter.
