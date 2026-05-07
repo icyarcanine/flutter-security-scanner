@@ -13,10 +13,10 @@ upside for adoption.
 
 Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
-- ✅ §IN-1, §IN-2, §IN-4, §IN-6, §IN-8, §IN-9, §IN-10, §IN-11, §IN-16,
-  §IN-19, §IN-22, §IN-23, §IN-24, §IN-27, §IN-28, §IN-30
-- ⏳ §IN-3, §IN-5, §IN-7, §IN-12, §IN-13, §IN-14, §IN-15, §IN-17, §IN-18,
-  §IN-20, §IN-21, §IN-25, §IN-26, §IN-29, §IN-31, §IN-32
+- ✅ §IN-1, §IN-2, §IN-4, §IN-5, §IN-6, §IN-8, §IN-9, §IN-10, §IN-11,
+  §IN-16, §IN-19, §IN-22, §IN-23, §IN-24, §IN-27, §IN-28, §IN-30
+- ⏳ §IN-3, §IN-7, §IN-12, §IN-13, §IN-14, §IN-15, §IN-17, §IN-18, §IN-20,
+  §IN-21, §IN-25, §IN-26, §IN-29, §IN-31, §IN-32
 
 ---
 
@@ -104,11 +104,22 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
   Severity mapping: high+high-conf → blocker, high → critical, medium →
   major, low → minor. Fingerprint is sha-1(code|path|line|message).
 
-## §IN-5 — GitLab Security Report format
+## §IN-5 — GitLab Security Report format ✅ DONE — 2026-05-07
 
 - **Target state:** `--format=gitlab-security` outputs the GitLab
   Vulnerability Report schema (different from Code Quality).
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - `vscode-extension/src/output/gitlabSecurity.ts` emits the v15 SAST
+    schema: top-level `version` + `scan` (analyzer/scanner/type/status/
+    timestamps) + `vulnerabilities[]`. Each vulnerability carries a
+    deterministic UUIDv4-shaped id (sha-1 over code+path+line+message),
+    severity in GitLab's Critical/High/Medium/Low/Info scale, and CWE
+    identifiers when available.
+  - CLI flags: `--gitlab-security` and `--format=gitlab-security`.
+  - Test: `testGitLabSecurity` in scripts/output-formats.test.js — checks
+    schema version, required scan fields, UUIDv4 id shape, severity bucket
+    membership, and same-input determinism.
 
 ## §IN-6 — Bitbucket Code Insights ✅ DONE — sha f2d31ad (2026-05-07)
 

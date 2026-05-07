@@ -13,6 +13,7 @@ import { toMarkdown } from './output/markdown';
 import { toCsv } from './output/csv';
 import { toJunit } from './output/junit';
 import { toGitLabCodeQuality } from './output/gitlab';
+import { toGitLabSecurity } from './output/gitlabSecurity';
 import { toBitbucketCodeInsights } from './output/bitbucket';
 import { toHtmlReport } from './output/html';
 import { buildDefaultRules } from './rules/index';
@@ -22,7 +23,7 @@ import { buildDefaultRules } from './rules/index';
 interface CliArgs {
   command: string;
   target: string;
-  format: 'json' | 'pretty' | 'summary' | 'sarif' | 'markdown' | 'csv' | 'junit' | 'gitlab' | 'bitbucket' | 'html';
+  format: 'json' | 'pretty' | 'summary' | 'sarif' | 'markdown' | 'csv' | 'junit' | 'gitlab' | 'gitlab-security' | 'bitbucket' | 'html';
   failOn?: 'high' | 'medium' | 'low';
   failConfidence?: 'high' | 'medium' | 'low';
   useBaseline: boolean;
@@ -67,6 +68,7 @@ function parseArgs(argv: string[]): CliArgs | null {
     else if (args[i] === '--csv') { flags.format = 'csv'; }
     else if (args[i] === '--junit') { flags.format = 'junit'; }
     else if (args[i] === '--gitlab') { flags.format = 'gitlab'; }
+    else if (args[i] === '--gitlab-security') { flags.format = 'gitlab-security'; }
     else if (args[i] === '--bitbucket') { flags.format = 'bitbucket'; }
     else if (args[i] === '--html') { flags.format = 'html'; }
     else if ((args[i] === '--format' || args[i].startsWith('--format=')) && (args[i].includes('=') || args[i + 1])) {
@@ -349,6 +351,9 @@ async function runScan(args: CliArgs) {
         break;
       case 'gitlab':
         emitOrWrite(args.outputFile, toGitLabCodeQuality(filteredReport(report, findings)));
+        break;
+      case 'gitlab-security':
+        emitOrWrite(args.outputFile, toGitLabSecurity(filteredReport(report, findings)));
         break;
       case 'bitbucket':
         emitOrWrite(args.outputFile, toBitbucketCodeInsights(filteredReport(report, findings)));
@@ -1013,6 +1018,7 @@ Options:
   --csv                   RFC 4180 CSV
   --junit                 JUnit XML (Jenkins, CircleCI, Buildkite, …)
   --gitlab                GitLab Code Quality JSON (MR widgets)
+  --gitlab-security       GitLab SAST Security Report (Vulnerability Report widget)
   --bitbucket             Bitbucket Code Insights JSON
   --html                  Standalone HTML report
   --format <name>         Same as the per-format flags above

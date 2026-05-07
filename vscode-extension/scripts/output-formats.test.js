@@ -29,6 +29,7 @@ const { toGitLabCodeQuality } = require('../out/output/gitlab');
 const { toBitbucketCodeInsights } = require('../out/output/bitbucket');
 const { toHtmlReport } = require('../out/output/html');
 const { toSarif } = require('../out/output/sarif');
+const { toGitLabSecurity } = require('../out/output/gitlabSecurity');
 
 async function buildReport() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fss-out-'));
@@ -201,6 +202,50 @@ async function testSarifTaxonomyAndAutomation() {
   }
 }
 
+async function testGitLabSecurity() {
+  // §IN-5: GitLab Vulnerability Report widget consumes a different artifact
+  // than Code Quality. Validate the v15 SAST schema's required fields.
+  const report = await buildReport();
+  const json = JSON.parse(toGitLabSecurity(report, {
+    scannerVersion: '1.2.3',
+    startTime: '2026-05-07T10:00:00Z',
+    endTime: '2026-05-07T10:00:05Z',
+  }));
+  assert.strictEqual(json.version, '15.0.6');
+  assert.strictEqual(json.scan.type, 'sast');
+  assert.strictEqual(json.scan.status, 'success');
+  assert.strictEqual(json.scan.analyzer.version, '1.2.3');
+  assert.strictEqual(json.scan.start_time, '2026-05-07T10:00:00Z');
+  assert.strictEqual(json.scan.end_time, '2026-05-07T10:00:05Z');
+  assert.ok(Array.isArray(json.vulnerabilities) && json.vulnerabilities.length > 0,
+    'gitlab-security must emit vulnerabilities');
+  for (const v of json.vulnerabilities) {
+    assert.match(v.id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      `vulnerability id must be UUIDv4-shaped: ${v.id}`);
+    assert.strictEqual(v.category, 'sast');
+    assert.ok(v.name, 'vulnerability must have a name');
+    assert.ok(['Critical', 'High', 'Medium', 'Low', 'Info', 'Unknown'].includes(v.severity),
+      `bad severity: ${v.severity}`);
+    assert.ok(v.location?.file, 'vulnerability must have a location.file');
+    assert.ok(typeof v.location?.start_line === 'number', 'vulnerability must have location.start_line');
+    assert.ok(Array.isArray(v.identifiers) && v.identifiers.length > 0,
+      'vulnerability must have at least one identifier');
+    // Ensure the rule-id identifier is always present so dedupe across runs works.
+    const ruleIdent = v.identifiers.find(i => i.type === 'flutter-supabase-helper-rule');
+    assert.ok(ruleIdent, 'each vulnerability must include the rule identifier');
+  }
+
+  // Same-input determinism: the synthesised UUIDs are sha-1-derived, so two
+  // calls over the same report must produce identical JSON (ignoring scan
+  // timestamps which we override).
+  const second = JSON.parse(toGitLabSecurity(report, {
+    scannerVersion: '1.2.3',
+    startTime: '2026-05-07T10:00:00Z',
+    endTime: '2026-05-07T10:00:05Z',
+  }));
+  assert.deepStrictEqual(second, json, 'gitlab-security output must be deterministic');
+}
+
 async function testSarifBaselineState() {
   // §IN-1 deepening: baselineFingerprints set => results stamped 'unchanged'
   // (matched) or 'new' (unmatched). Without the set, the field is omitted.
@@ -240,6 +285,7 @@ async function testSarifBaselineState() {
   await testSarifSnippets();
   await testSarifTaxonomyAndAutomation();
   await testSarifBaselineState();
+  await testGitLabSecurity();
   console.log('output-formats self-test: PASS');
 })().catch(err => {
   console.error('output-formats self-test: FAIL');
