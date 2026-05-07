@@ -20,40 +20,40 @@ read the deeper files.
 - **Effort:** **S** (1 day post §EN-4).
 - Once §EN-4 lands, this is one method.
 
-## §QW-3 — Dynamic `import(taint)` flag ([03-rule-coverage.md §RC-50](03-rule-coverage.md))
+## §QW-3 — Dynamic `import(taint)` flag ([03-rule-coverage.md §RC-50](03-rule-coverage.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 - Add to the existing sink kind `code`. Single test fixture.
 
-## §QW-4 — Hardcoded IP literal flag ([03-rule-coverage.md §RC-58](03-rule-coverage.md))
+## §QW-4 — Hardcoded IP literal flag ([03-rule-coverage.md §RC-58](03-rule-coverage.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 - Plain regex over source. New rule.
 
-## §QW-5 — `rejectUnauthorized: false` flag ([03-rule-coverage.md §RC-43](03-rule-coverage.md))
+## §QW-5 — `rejectUnauthorized: false` flag ([03-rule-coverage.md §RC-43](03-rule-coverage.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 - Detect via regex.
 
-## §QW-6 — `target="_blank"` without `rel` (tabnabbing) ([03-rule-coverage.md §RC-13](03-rule-coverage.md))
+## §QW-6 — `target="_blank"` without `rel` (tabnabbing) ([03-rule-coverage.md §RC-13](03-rule-coverage.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 
-## §QW-7 — Plain `http://` in production HTTP clients ([03-rule-coverage.md §RC-19](03-rule-coverage.md))
+## §QW-7 — Plain `http://` in production HTTP clients ([03-rule-coverage.md §RC-19](03-rule-coverage.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 
-## §QW-8 — Weak crypto on JS side ([03-rule-coverage.md §RC-20](03-rule-coverage.md))
+## §QW-8 — Weak crypto on JS side ([03-rule-coverage.md §RC-20](03-rule-coverage.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 - Mirror the Dart-side `weak-crypto` rule.
 
-## §QW-9 — Stripe/Twilio/SendGrid/OpenAI/Anthropic token shapes ([03-rule-coverage.md §RC-21](03-rule-coverage.md))
+## §QW-9 — Stripe/Twilio/SendGrid/OpenAI/Anthropic token shapes ([03-rule-coverage.md §RC-21](03-rule-coverage.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day per provider).
 - Each is one regex addition to `genericSecretRule`.
 
-## §QW-10 — Header injection (CRLF) ([03-rule-coverage.md §RC-4](03-rule-coverage.md))
+## §QW-10 — Header injection (CRLF) ([03-rule-coverage.md §RC-4](03-rule-coverage.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 
@@ -62,34 +62,34 @@ read the deeper files.
 - **Effort:** **S** (1 day).
 - Add `Number`, `+`, `~~`, `| 0`, `>>> 0` as numeric coercion.
 
-## §QW-12 — Engine: bounded rule runtime ([05-scale.md §SC-8](05-scale.md))
+## §QW-12 — Engine: bounded rule runtime ([05-scale.md §SC-8](05-scale.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 - One `Promise.race`. Catches catastrophic regex hangs.
 
-## §QW-13 — Bounded file size with logged warning ([05-scale.md §SC-4](05-scale.md))
+## §QW-13 — Bounded file size with logged warning ([05-scale.md §SC-4](05-scale.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 - Today silent skip; add a warning + count in scan output.
 
-## §QW-14 — Markdown report output ([06-integrations.md §IN-10](06-integrations.md))
+## §QW-14 — Markdown report output ([06-integrations.md §IN-10](06-integrations.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 - Mirror the SARIF emitter; output a Markdown table.
 
-## §QW-15 — CSV export ([06-integrations.md §IN-11](06-integrations.md))
+## §QW-15 — CSV export ([06-integrations.md §IN-11](06-integrations.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 
-## §QW-16 — JUnit XML output ([06-integrations.md §IN-8](06-integrations.md))
+## §QW-16 — JUnit XML output ([06-integrations.md §IN-8](06-integrations.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 
-## §QW-17 — `--format=gitlab` Code Quality output ([06-integrations.md §IN-4](06-integrations.md))
+## §QW-17 — `--format=gitlab` Code Quality output ([06-integrations.md §IN-4](06-integrations.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 
-## §QW-18 — `--format=bitbucket` Code Insights output ([06-integrations.md §IN-6](06-integrations.md))
+## §QW-18 — `--format=bitbucket` Code Insights output ([06-integrations.md §IN-6](06-integrations.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 
@@ -101,12 +101,12 @@ read the deeper files.
 
 - **Effort:** **S** (1 day).
 
-## §QW-21 — Config schema for `.fshrc.yaml` ([06-integrations.md §IN-30](06-integrations.md))
+## §QW-21 — Config schema for `.fshrc.yaml` ([06-integrations.md §IN-30](06-integrations.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 - Publish a JSON schema; VS Code pickup is automatic.
 
-## §QW-22 — Suppression-comment count surfacing ([04-precision.md §PR-15](04-precision.md))
+## §QW-22 — Suppression-comment count surfacing ([04-precision.md §PR-15](04-precision.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 - Helps users notice noisy rules.
