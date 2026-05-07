@@ -104,9 +104,35 @@ const SUPPORTED_EXTENSIONS = new Set([
   '.js', '.jsx', '.ts', '.tsx', '.py', '.go', '.java'
 ]);
 
+/** Default per-file byte cap. Files larger than this are skipped with a warning. */
+export const DEFAULT_MAX_FILE_SIZE_BYTES = 1024 * 1024; // 1 MB
+
+/**
+ * One file the loader chose not to read. Surfaced via
+ * {@link ProjectContext.skippedFiles} so the scanner can warn about silently
+ * missing coverage instead of pretending everything was scanned.
+ */
+export interface SkippedFile {
+  relativePath: string;
+  sizeBytes: number;
+  reason: 'oversize';
+}
+
+export interface ProjectContextLoadOptions {
+  /** Per-file size cap in bytes. Defaults to {@link DEFAULT_MAX_FILE_SIZE_BYTES}. */
+  maxFileSizeBytes?: number;
+}
+
 export class ProjectContext {
   readonly rootPath: string;
   readonly files: ScannedFile[];
+  /**
+   * Files that were rejected by the loader (e.g. exceeded the size budget).
+   * Empty on a clean scan; non-empty when the scanner had to skip something.
+   * Surfaces in `ProjectScanReport.skippedFiles` so users notice gaps
+   * instead of getting a silently-incomplete scan.
+   */
+  readonly skippedFiles: SkippedFile[];
 
   private _envEntries?: EnvEntry[];
   private _tableAccesses?: TableAccess[];
@@ -115,9 +141,10 @@ export class ProjectContext {
   private _supabaseClientLocations?: Location[];
   private _rlsEvidenceLevel?: RlsEvidenceLevel;
 
-  constructor(rootPath: string, files: ScannedFile[]) {
+  constructor(rootPath: string, files: ScannedFile[], skippedFiles: SkippedFile[] = []) {
     this.rootPath = rootPath;
     this.files = files;
+    this.skippedFiles = skippedFiles;
   }
 
   // ── Async Static loader ────────────────────────
@@ -125,9 +152,15 @@ export class ProjectContext {
   static async load(
     rootPath: string,
     onProgress?: (filesLoaded: number) => void,
+    options: ProjectContextLoadOptions = {},
   ): Promise<ProjectContext> {
     const rootDir = normalizePath(path.resolve(rootPath));
     const files: ScannedFile[] = [];
+    const skippedFiles: SkippedFile[] = [];
+    const maxFileSizeBytes = Math.max(
+      0,
+      options.maxFileSizeBytes ?? DEFAULT_MAX_FILE_SIZE_BYTES,
+    );
 
     // Throttle progress reports — calling vscode's progress.report() on every
     // single file is expensive on big monorepos. Every 50 files is plenty.
@@ -177,10 +210,20 @@ export class ProjectContext {
           }
           try {
             const stat = await fs.stat(fullPath);
-            if (stat.size <= 1024 * 1024) { // 1MB limit
+            if (maxFileSizeBytes === 0 || stat.size <= maxFileSizeBytes) {
               const content = await ProjectContext._readTextFile(fullPath);
               files.push(new ScannedFile(normalizePath(fullPath), rel, content));
               tickProgress();
+            } else {
+              // Surface oversize files instead of silently dropping them. The
+              // scanner aggregates these into the report so users see a
+              // warning + count rather than wondering why a 5 MB minified
+              // bundle produced no findings.
+              skippedFiles.push({
+                relativePath: rel,
+                sizeBytes: stat.size,
+                reason: 'oversize',
+              });
             }
           } catch (e) {
             // Ignore unreadable files
@@ -192,7 +235,8 @@ export class ProjectContext {
     await walk(rootDir);
     if (onProgress) { onProgress(files.length); }   // final tick
     files.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
-    return new ProjectContext(rootDir, files);
+    skippedFiles.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+    return new ProjectContext(rootDir, files, skippedFiles);
   }
 
   /**

@@ -8,9 +8,10 @@ vscode-extension/out/
 vscode-extension/*.vsix
 vscode-extension/src/**/*.js
 vscode-extension/src/**/*.js.map
-# Staged-on-publish copies of root-level README/LICENSE — see stage-docs script
+# Staged-on-publish copies of root-level README/LICENSE/schemas — see stage-docs script
 vscode-extension/README.md
 vscode-extension/LICENSE
+vscode-extension/schemas/
 
 .DS_Store
 .env*

@@ -7,6 +7,11 @@ import { ProjectScanner, ProjectScanReport } from './scanner/scanner';
 import { Finding } from './models/finding';
 import { generateBaseline, saveBaseline, loadBaseline, applyBaseline, BASELINE_FILENAME } from './baseline';
 import { toSarif } from './output/sarif';
+import { toMarkdown } from './output/markdown';
+import { toCsv } from './output/csv';
+import { toJunit } from './output/junit';
+import { toGitLabCodeQuality } from './output/gitlab';
+import { toBitbucketCodeInsights } from './output/bitbucket';
 import { buildDefaultRules } from './rules/index';
 
 // ── Argument Parsing ────────────────────────────
@@ -14,7 +19,7 @@ import { buildDefaultRules } from './rules/index';
 interface CliArgs {
   command: string;
   target: string;
-  format: 'json' | 'pretty' | 'summary' | 'sarif';
+  format: 'json' | 'pretty' | 'summary' | 'sarif' | 'markdown' | 'csv' | 'junit' | 'gitlab' | 'bitbucket';
   failOn?: 'high' | 'medium' | 'low';
   useBaseline: boolean;
   openInEditor: boolean;
@@ -29,6 +34,13 @@ interface CliArgs {
    * the ref). Powers PR-style scanning in CI without needing a baseline.
    */
   changedSince?: string;
+  /**
+   * Per-rule timeout in milliseconds. Rules exceeding this are aborted and
+   * surface a `scanner-internal-error` finding. `0` disables the budget.
+   */
+  ruleTimeoutMs?: number;
+  /** Per-file size cap in bytes. `0` disables the cap. */
+  maxFileSizeBytes?: number;
 }
 
 function parseArgs(argv: string[]): CliArgs | null {
@@ -43,6 +55,14 @@ function parseArgs(argv: string[]): CliArgs | null {
     else if (args[i] === '--pretty') { flags.format = 'pretty'; }
     else if (args[i] === '--summary') { flags.format = 'summary'; }
     else if (args[i] === '--sarif') { flags.format = 'sarif'; }
+    else if (args[i] === '--markdown') { flags.format = 'markdown'; }
+    else if (args[i] === '--csv') { flags.format = 'csv'; }
+    else if (args[i] === '--junit') { flags.format = 'junit'; }
+    else if (args[i] === '--gitlab') { flags.format = 'gitlab'; }
+    else if (args[i] === '--bitbucket') { flags.format = 'bitbucket'; }
+    else if ((args[i] === '--format' || args[i].startsWith('--format=')) && (args[i].includes('=') || args[i + 1])) {
+      flags.format = args[i].includes('=') ? args[i].split('=', 2)[1] : args[++i];
+    }
     else if (args[i] === '--fail-on' && args[i + 1]) { flags.failOn = args[++i]; }
     else if (args[i] === '--baseline') { flags.baseline = 'true'; }
     else if (args[i] === '--open') { flags.open = 'true'; }
@@ -56,6 +76,12 @@ function parseArgs(argv: string[]): CliArgs | null {
     else if ((args[i] === '--changed-since' || args[i].startsWith('--changed-since=')) && (args[i].includes('=') || args[i + 1])) {
       // Accept both `--changed-since main` and `--changed-since=main`.
       flags.changedSince = args[i].includes('=') ? args[i].split('=', 2)[1] : args[++i];
+    }
+    else if ((args[i] === '--rule-timeout' || args[i].startsWith('--rule-timeout=')) && (args[i].includes('=') || args[i + 1])) {
+      flags.ruleTimeoutMs = args[i].includes('=') ? args[i].split('=', 2)[1] : args[++i];
+    }
+    else if ((args[i] === '--max-file-size' || args[i].startsWith('--max-file-size=')) && (args[i].includes('=') || args[i + 1])) {
+      flags.maxFileSize = args[i].includes('=') ? args[i].split('=', 2)[1] : args[++i];
     }
     else if (!args[i].startsWith('-')) { target = args[i]; }
   }
@@ -73,7 +99,49 @@ function parseArgs(argv: string[]): CliArgs | null {
     outputFile: flags.outputFile,
     disabledRules,
     changedSince: flags.changedSince,
+    ruleTimeoutMs: flags.ruleTimeoutMs != null ? parseTimeoutMs(flags.ruleTimeoutMs) : undefined,
+    maxFileSizeBytes: flags.maxFileSize != null ? parseByteSize(flags.maxFileSize) : undefined,
   };
+}
+
+/**
+ * Parse `--max-file-size` values. Accepts plain bytes (`5242880`) or
+ * suffixed forms (`5MB`, `512kb`, `1g`). Returns NaN for unparseable input;
+ * the caller treats that as "use default."
+ */
+function parseByteSize(raw: string): number {
+  const trimmed = raw.trim().toLowerCase();
+  const m = /^(\d+(?:\.\d+)?)\s*(b|kb|mb|gb|k|m|g)?$/.exec(trimmed);
+  if (!m) { return NaN; }
+  const n = parseFloat(m[1]);
+  switch (m[2]) {
+    case 'gb':
+    case 'g': return Math.round(n * 1024 * 1024 * 1024);
+    case 'mb':
+    case 'm': return Math.round(n * 1024 * 1024);
+    case 'kb':
+    case 'k': return Math.round(n * 1024);
+    case 'b':
+    default: return Math.round(n);
+  }
+}
+
+/**
+ * Parse `--rule-timeout` values. Accepts plain integers (`30000`) and
+ * suffixed forms (`30s`, `5m`, `500ms`). Returns NaN for unparseable input;
+ * the caller treats that as "use default."
+ */
+function parseTimeoutMs(raw: string): number {
+  const trimmed = raw.trim().toLowerCase();
+  const m = /^(\d+(?:\.\d+)?)(ms|s|m)?$/.exec(trimmed);
+  if (!m) { return NaN; }
+  const n = parseFloat(m[1]);
+  switch (m[2]) {
+    case 's': return Math.round(n * 1000);
+    case 'm': return Math.round(n * 60_000);
+    case 'ms':
+    default: return Math.round(n);
+  }
 }
 
 /**
@@ -162,7 +230,20 @@ async function runScan(args: CliArgs) {
     console.error(`[SAST] Disabled rules: ${args.disabledRules.join(', ')}`);
   }
 
-  const scanner = new ProjectScanner({ includeSuggestions: true, disabledRules: args.disabledRules });
+  const ruleTimeoutMs = Number.isFinite(args.ruleTimeoutMs) ? args.ruleTimeoutMs : undefined;
+  if (args.ruleTimeoutMs != null && !Number.isFinite(args.ruleTimeoutMs)) {
+    console.error(`[SAST] Warning: --rule-timeout value not understood; using default.`);
+  }
+  const maxFileSizeBytes = Number.isFinite(args.maxFileSizeBytes) ? args.maxFileSizeBytes : undefined;
+  if (args.maxFileSizeBytes != null && !Number.isFinite(args.maxFileSizeBytes)) {
+    console.error(`[SAST] Warning: --max-file-size value not understood; using default.`);
+  }
+  const scanner = new ProjectScanner({
+    includeSuggestions: true,
+    disabledRules: args.disabledRules,
+    ruleTimeoutMs,
+    maxFileSizeBytes,
+  });
 
   try {
     const report = await scanner.scan(rootPath);
@@ -228,6 +309,21 @@ async function runScan(args: CliArgs) {
         emitOrWrite(args.outputFile, JSON.stringify(sarif, null, 2));
         break;
       }
+      case 'markdown':
+        emitOrWrite(args.outputFile, toMarkdown(filteredReport(report, findings)));
+        break;
+      case 'csv':
+        emitOrWrite(args.outputFile, toCsv(filteredReport(report, findings)));
+        break;
+      case 'junit':
+        emitOrWrite(args.outputFile, toJunit(filteredReport(report, findings)));
+        break;
+      case 'gitlab':
+        emitOrWrite(args.outputFile, toGitLabCodeQuality(filteredReport(report, findings)));
+        break;
+      case 'bitbucket':
+        emitOrWrite(args.outputFile, toBitbucketCodeInsights(filteredReport(report, findings)));
+        break;
     }
 
     // --open: open HIGH findings in editor
@@ -251,6 +347,21 @@ async function runScan(args: CliArgs) {
     console.error(`[SAST] Fatal error during scan:`, err instanceof Error ? err.message : err);
     process.exit(1);
   }
+}
+
+/**
+ * Wrap a `ProjectScanReport` so emitters that read `.findings` see the
+ * post-filter list (after baseline + threshold + truncation). Other report
+ * fields (`skippedFiles`, `astSuccessRate`, etc.) pass through unchanged via
+ * the original prototype.
+ */
+function filteredReport(report: ProjectScanReport, findings: Finding[]): ProjectScanReport {
+  // Create an object that delegates to the original report but overrides
+  // findings. Using `Object.create` preserves prototype methods/getters
+  // (e.g. `astSuccessRate`, `highCount`) so emitters can rely on them.
+  const view = Object.create(report) as ProjectScanReport;
+  Object.defineProperty(view, 'findings', { value: findings, writable: false, enumerable: true });
+  return view;
 }
 
 // ── Finding truncation ──────────────────────────
@@ -312,6 +423,12 @@ function buildJsonReport(report: ProjectScanReport, findings: Finding[], rootPat
       astSuccessRate: report.astSuccessRate,
       astFailuresByLanguage: report.astDiagnostics.failuresByLanguage,
       scanDurationMs: report.scanDurationMs,
+      skippedFiles: report.skippedFiles.map(s => ({
+        relativePath: s.relativePath,
+        sizeBytes: s.sizeBytes,
+        reason: s.reason,
+      })),
+      suppressionsByRule: Object.fromEntries(report.suppressionsByRule),
     },
     findings: findings.map(f => ({
       severity: f.severity,
@@ -358,6 +475,9 @@ function outputPretty(report: ProjectScanReport, findings: Finding[], counts: Fu
   console.log(`  Scan duration:  ${report.scanDurationMs}ms`);
   console.log(`  AST success:    ${report.astSuccessRate}%`);
   console.log(`  Total findings: ${counts.total}`);
+  if (report.skippedFiles.length > 0) {
+    console.log(`  Skipped:        ${report.skippedFiles.length} file(s) over size budget`);
+  }
   if (findings.length < counts.total) {
     console.log(`  Showing:        ${findings.length} (top by severity)`);
   }
@@ -410,7 +530,11 @@ function outputSummary(report: ProjectScanReport, counts: FullCounts) {
   console.log(`  HIGH:     ${counts.high}`);
   console.log(`  MEDIUM:   ${counts.medium}`);
   console.log(`  LOW:      ${counts.low}`);
-  console.log(`  Total:    ${counts.total}\n`);
+  console.log(`  Total:    ${counts.total}`);
+  if (report.skippedFiles.length > 0) {
+    console.log(`  Skipped:  ${report.skippedFiles.length} (oversize)`);
+  }
+  console.log('');
 }
 
 // ── CI threshold ────────────────────────────────
@@ -691,6 +815,12 @@ Options:
   --pretty                Human-readable grouped output
   --summary               Compact summary only
   --sarif                 Output SARIF 2.1.0 (for GitHub Code Scanning, etc.)
+  --markdown              Markdown report (PRs / issues / Slack)
+  --csv                   RFC 4180 CSV
+  --junit                 JUnit XML (Jenkins, CircleCI, Buildkite, …)
+  --gitlab                GitLab Code Quality JSON (MR widgets)
+  --bitbucket             Bitbucket Code Insights JSON
+  --format <name>         Same as the per-format flags above
   -o, --output <path>     Write output to a file instead of stdout
   --fail-on <level>       Exit 1 if findings >= level (high|medium|low)
   --baseline              Compare against baseline, show only new findings
@@ -698,6 +828,8 @@ Options:
   --max-findings <n>      Limit output to top N findings (by severity)
   --disable <a,b>         Skip these rule codes (comma-separated, repeatable)
   --changed-since <ref>   Only show findings in files changed vs git <ref>
+  --rule-timeout <ms|s|m> Per-rule wall-clock budget (default 30s, 0 to disable)
+  --max-file-size <size>  Per-file size cap, e.g. 5MB / 512KB / 1g (default 1MB)
 
 Examples:
   npx flutter-supabase-helper scan ./my-project --pretty

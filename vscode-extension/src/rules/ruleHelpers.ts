@@ -40,6 +40,40 @@ export function isCommentLine(line: string): boolean {
   return trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*');
 }
 
+/**
+ * Return `line` with any trailing line-comment removed. Crucially, this does
+ * NOT mistake the `//` in URLs or string literals (`"https://example.com"`)
+ * for a comment marker — naive `.indexOf('//')` does, which corrupts every
+ * regex check downstream.
+ *
+ * Walks character-by-character tracking quote state. `commentToken` is the
+ * comment lead-in for the language at hand: `//` for JS/TS/Dart/Java/Go,
+ * `#` for shell/Python/conf/env. Strings inside the line are honored for
+ * `'…'`, `"…"`, and back-tick template literals.
+ */
+export function stripLineComment(line: string, commentToken: '//' | '#' = '//'): string {
+  let inString: '"' | "'" | '`' | null = null;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inString) {
+      if (ch === '\\') { i++; continue; }            // skip escaped char
+      if (ch === inString) { inString = null; }
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      inString = ch as '"' | "'" | '`';
+      continue;
+    }
+    if (commentToken === '//' && ch === '/' && line[i + 1] === '/') {
+      return line.substring(0, i);
+    }
+    if (commentToken === '#' && ch === '#') {
+      return line.substring(0, i);
+    }
+  }
+  return line;
+}
+
 export function firstReferenceFor(
   context: ProjectContext,
   token: string,

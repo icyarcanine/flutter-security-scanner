@@ -45,28 +45,61 @@ export function buildSuppressionContext(rootPath: string, files: { relativePath:
  * Returns only findings that are NOT suppressed.
  */
 export function applySuppression(findings: Finding[], ctx: SuppressionContext): Finding[] {
-  return findings.filter(f => {
-    if (!f.filePath) return true;
+  const result = applySuppressionWithStats(findings, ctx);
+  return result.kept;
+}
 
-    // File-level suppression via .sastignore
+/**
+ * Per-rule count of suppressed findings (§QW-22 / §PR-15). Empty when no
+ * findings were dropped. Used by the scanner to emit
+ * `[SAST] Rule X had N suppressions — consider reviewing FP rate` when
+ * any rule's count exceeds {@link SUPPRESSION_REVIEW_THRESHOLD}.
+ */
+export interface SuppressionStats {
+  kept: Finding[];
+  suppressedByRule: Map<string, number>;
+}
+
+/**
+ * Same as {@link applySuppression} but also returns per-rule suppression
+ * counts. Lets the scanner surface noisy rules. We count *findings filtered
+ * out by a directive*, not raw `// sast-ignore` occurrences — the former is
+ * the actual FP signal users care about.
+ */
+export function applySuppressionWithStats(
+  findings: Finding[],
+  ctx: SuppressionContext,
+): SuppressionStats {
+  const kept: Finding[] = [];
+  const suppressedByRule = new Map<string, number>();
+  const tally = (code: string) => suppressedByRule.set(code, (suppressedByRule.get(code) ?? 0) + 1);
+
+  for (const f of findings) {
+    if (!f.filePath) { kept.push(f); continue; }
+
     if (isPathIgnored(f.filePath, ctx.ignoredPaths)) {
-      return false;
+      tally(f.code); continue;
     }
-
-    // Inline suppression
     if (f.line != null) {
       const fileMap = ctx.inlineSuppressions.get(f.filePath);
       if (fileMap) {
         const suppressed = fileMap.get(f.line);
         if (suppressed && (suppressed.has('*') || suppressed.has(f.code))) {
-          return false;
+          tally(f.code); continue;
         }
       }
     }
-
-    return true;
-  });
+    kept.push(f);
+  }
+  return { kept, suppressedByRule };
 }
+
+/**
+ * Threshold above which a rule's suppression count is flagged as a
+ * candidate for precision review. Picked at 5 because below that the
+ * suppression usually reflects local exceptions, not systemic noise.
+ */
+export const SUPPRESSION_REVIEW_THRESHOLD = 5;
 
 // ── .sastignore ─────────────────────────────────
 

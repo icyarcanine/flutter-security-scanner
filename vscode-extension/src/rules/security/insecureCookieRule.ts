@@ -116,6 +116,19 @@ export class InsecureCookieRule implements Rule {
             'sameSite: none disables CSRF protections; pairing it with secure: false (or omitted) opens the cookie to passive sniffing AND CSRF.',
             'CWE-352'));
         }
+
+        // §QW-31 / §RC-45 — leading-dot domain scopes the cookie to every
+        // subdomain. That's almost always wider than needed; if a single
+        // subdomain is XSS'd the auth cookie travels to it. Modern browsers
+        // ignore the leading dot but the scope expansion remains.
+        const domainMatch = /\bdomain\s*:\s*['"](\.[\w.-]+)['"]/i.exec(opts);
+        if (domainMatch) {
+          findings.push(this._make(file.relativePath, line,
+            `Cookie scoped to "${domainMatch[1]}" — broader than the current host (leading-dot includes every subdomain).`,
+            'Drop the `domain` option (cookie defaults to the host that set it) or scope to the exact subdomain that needs it. Wider scope means an XSS on any subdomain steals the cookie.',
+            'A broad cookie domain expands the blast radius of XSS / subdomain takeover; one compromised subdomain reads the cookie everyone uses.',
+            'CWE-732'));
+        }
       }
     }
     return findings;

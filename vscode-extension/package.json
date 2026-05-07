@@ -50,6 +50,7 @@
     "out/**/*.js",
     "out/**/*.d.ts",
     "media/**/*",
+    "schemas/**/*",
     "README.md",
     "LICENSE"
   ],
@@ -114,14 +115,26 @@
           "command": "flutter-supabase-helper.scanFile"
         }
       ]
-    }
+    },
+    "yamlValidation": [
+      {
+        "fileMatch": [".fshrc.yaml", ".fshrc.yml"],
+        "url": "./schemas/fshrc.schema.json"
+      }
+    ],
+    "jsonValidation": [
+      {
+        "fileMatch": ".fshrc.json",
+        "url": "./schemas/fshrc.schema.json"
+      }
+    ]
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "test": "npm run compile && node scripts/precision-self-test.js && node scripts/taint-engine.test.js && node scripts/test-ast.js && node scripts/ifds-self-test.js",
+    "test": "npm run compile && node scripts/precision-self-test.js && node scripts/taint-engine.test.js && node scripts/test-ast.js && node scripts/ifds-self-test.js && node scripts/rule-timeout.test.js && node scripts/file-size-budget.test.js && node scripts/output-formats.test.js && node scripts/suppression-stats.test.js",
     "test:taint": "npm run compile && node scripts/taint-engine.test.js",
     "watch": "tsc -watch -p ./",
-    "stage-docs": "node -e \"const fs=require('fs');for(const f of ['README.md','LICENSE'])fs.copyFileSync('../'+f,f)\"",
+    "stage-docs": "node -e \"const fs=require('fs');const path=require('path');for(const f of ['README.md','LICENSE'])fs.copyFileSync('../'+f,f);fs.mkdirSync('schemas',{recursive:true});fs.copyFileSync('../schemas/fshrc.schema.json','schemas/fshrc.schema.json');\"",
     "vscode:prepublish": "npm run stage-docs && npm run compile",
     "prepublishOnly": "npm run stage-docs && npm run compile && npm test",
     "lint": "eslint src --ext ts"

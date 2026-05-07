@@ -1,0 +1,162 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/icyarcanine/flutter-security-scanner/main/schemas/fshrc.schema.json",
+  "title": "Flutter Security Scanner config (.fshrc.yaml / .fshrc.yml / .fshrc.json)",
+  "description": "Project-local tuning for the scanner: rules to disable, severity remaps, path globs, defaults for --fail-on, and engine budgets. CLI flags always override this file.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "rules": {
+      "type": "object",
+      "description": "Per-rule overrides keyed by rule code. Use boolean shorthand to enable/disable, a string for the severity, or an object for fine control.",
+      "additionalProperties": {
+        "$ref": "#/definitions/ruleOverride"
+      },
+      "propertyNames": {
+        "$ref": "#/definitions/ruleCode"
+      }
+    },
+    "exclude": {
+      "type": "array",
+      "description": "Glob patterns (gitignore-shaped) excluded from the scan. Matched against project-relative POSIX paths. Wildcards: `*`, `**`, `?`. A pattern with no wildcard matches as a path prefix (e.g. `build` matches `build/main.dart`).",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true,
+      "examples": [
+        ["build/**", "**/*.g.dart", "third_party/"]
+      ]
+    },
+    "fail_on": {
+      "$ref": "#/definitions/severity",
+      "description": "Default --fail-on threshold when the CLI flag isn't supplied. Useful for codifying the team's CI gate."
+    },
+    "include_suggestions": {
+      "type": "boolean",
+      "description": "Default for --no-suggestions. When false, heuristic suggestions are dropped from the report."
+    },
+    "max_file_size": {
+      "$ref": "#/definitions/byteSize",
+      "description": "Per-file size cap. Files above the limit are skipped with a warning and reported in the scan stats. `0` disables the cap. Default: 1MB.",
+      "examples": ["1MB", "5MB", "512KB", 1048576]
+    },
+    "rule_timeout": {
+      "$ref": "#/definitions/duration",
+      "description": "Per-rule wall-clock budget. A rule that exceeds this is aborted and a `scanner-internal-error` finding is emitted. `0` disables. Default: 30s.",
+      "examples": ["30s", "5m", "30000"]
+    }
+  },
+  "definitions": {
+    "ruleCode": {
+      "type": "string",
+      "description": "Rule identifier, kebab-case. Unknown codes do not error (for forward compat with rules added in newer scanner versions), but typos silently no-op — copy from the docs.",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "examples": [
+        "injection-flaw",
+        "xss-flaw",
+        "hardcoded-secrets",
+        "high-entropy-secret",
+        "ifds-taint",
+        "jwt-misuse",
+        "insecure-cookie",
+        "cors-misconfig",
+        "insecure-random",
+        "unsafe-eval",
+        "sensitive-logging",
+        "client-side-trust",
+        "public-storage",
+        "committed-env",
+        "missing-env-vars",
+        "placeholder-env-value",
+        "debug-print",
+        "improper-initialization",
+        "multiple-supabase-clients",
+        "invalid-supabase-url",
+        "file-upload-validation",
+        "missing-rls-awareness",
+        "rls-policy-suggestion",
+        "table-ownership-filter",
+        "generic-secret"
+      ]
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "high", "medium", "low",
+        "error", "warning", "note", "info"
+      ],
+      "description": "Severity level. `error/warning/note/info` are SARIF-style aliases for `high/medium/low/low`."
+    },
+    "ruleOverride": {
+      "oneOf": [
+        {
+          "type": "boolean",
+          "description": "true = enabled (default), false = disable rule entirely."
+        },
+        {
+          "type": "string",
+          "description": "Shorthand: `off`/`disabled` to disable, or a severity (`high|medium|low|error|warning|note|info`) to remap severity.",
+          "enum": [
+            "off", "disabled",
+            "high", "medium", "low",
+            "error", "warning", "note", "info"
+          ]
+        },
+        {
+          "type": "object",
+          "description": "Object form for combining flags.",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Set to false to disable this rule."
+            },
+            "severity": {
+              "$ref": "#/definitions/severity",
+              "description": "Remap this rule's severity. Use sparingly — silencing a HIGH usually means the path should be excluded instead."
+            },
+            "exclude": {
+              "type": "array",
+              "description": "Glob patterns; findings from this rule whose file matches are dropped. Use this rather than severity:low to silence noisy paths.",
+              "items": { "type": "string", "minLength": 1 },
+              "uniqueItems": true
+            }
+          }
+        },
+        {
+          "type": "null",
+          "description": "An empty entry (`my-rule:`) is a no-op, not a disable."
+        }
+      ]
+    },
+    "byteSize": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Bytes."
+        },
+        {
+          "type": "string",
+          "pattern": "^\\d+(\\.\\d+)?\\s*(b|kb|k|mb|m|gb|g)$",
+          "description": "Suffixed: 1mb, 512kb, 1g, 100b. Case-insensitive."
+        }
+      ]
+    },
+    "duration": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Milliseconds."
+        },
+        {
+          "type": "string",
+          "pattern": "^\\d+(\\.\\d+)?\\s*(ms|s|m)$",
+          "description": "Suffixed: 30s, 5m, 500ms."
+        }
+      ]
+    }
+  }
+}

@@ -135,6 +135,29 @@ async function main() {
       `eval sink should flag CWE-95: ${JSON.stringify(findings)}`);
   });
 
+  await test('dynamic import(taint) flags as code sink (QW-3 / RC-50)', async () => {
+    // CodeQL classifies dynamic ESM import of an attacker-controlled module
+    // path as code-injection (CWE-95) because the loaded module's top-level
+    // code runs.
+    const findings = await scanWith({
+      'a.js': `async function h(req) { return await import('./mods/' + req.body.name); }`,
+    });
+    assert(findings.some(f => f.severity === 'high' && f.cwe === 'CWE-95' &&
+      /import/i.test(f.message)),
+      `dynamic import(taint) should flag CWE-95: ${JSON.stringify(findings)}`);
+  });
+
+  await test('static `import { x } from "..."` does NOT flag (QW-3 / RC-50)', async () => {
+    // The static-import statement is parsed as `import_statement`, not as a
+    // call_expression with `import` as callee. Verify the rule doesn't
+    // accidentally fire on it.
+    const findings = await scanWith({
+      'a.js': `import { x } from './mod'; function h(req) { return req.body.code; }`,
+    });
+    assert(!findings.some(f => /import/i.test(f.message)),
+      `static import should not flag: ${JSON.stringify(findings)}`);
+  });
+
   await test('SSRF (fetch) flags only on confirmed taint, not dynamic-only', async () => {
     const tainted = await scanWith({
       'a.js': `function h(req) { return fetch(req.body.url); }`,
@@ -230,6 +253,393 @@ async function main() {
     }, 'cors-misconfig');
     assert(f.length === 1 && f[0].cwe === 'CWE-942',
       `expected cors-misconfig CWE-942: ${JSON.stringify(f)}`);
+  });
+
+  await test('hardcoded-ip: public IPv4 flagged (QW-4 / RC-58)', async () => {
+    const findings = await scanWith({
+      'a.js': `const HOST = "8.8.8.8"; const url = "https://" + HOST;`,
+    }, 'hardcoded-ip');
+    assert(findings.some(f => f.message.includes('8.8.8.8') && f.cwe === 'CWE-547'),
+      `public IPv4 8.8.8.8 should flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('hardcoded-ip: private + loopback NOT flagged (QW-4 / RC-58)', async () => {
+    const findings = await scanWith({
+      'a.js': `const local = "127.0.0.1"; const lan = "192.168.1.1"; const ten = "10.0.0.5"; const cgnat = "100.64.0.1"; const docTest = "203.0.113.4";`,
+    }, 'hardcoded-ip');
+    assert.strictEqual(findings.length, 0,
+      `private/loopback/CGNAT/doc IPs should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('hardcoded-ip: example IP in // comment is ignored', async () => {
+    const findings = await scanWith({
+      'a.js': `// example: 8.8.8.8 is a public DNS\nconst x = 1;`,
+    }, 'hardcoded-ip');
+    assert.strictEqual(findings.length, 0,
+      `IPs inside line comments must not flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('hardcoded-ip: public IPv6 flagged, link-local + doc NOT flagged', async () => {
+    const flagged = await scanWith({
+      'a.js': `const dns = "2606:4700:4700::1111";`,
+    }, 'hardcoded-ip');
+    assert(flagged.some(f => /2606:4700:4700::1111/.test(f.message)),
+      `public IPv6 should flag: ${JSON.stringify(flagged)}`);
+
+    const safe = await scanWith({
+      'a.js': `const a = "::1"; const b = "fe80::1"; const c = "2001:db8::1"; const d = "fd12:3456::1";`,
+    }, 'hardcoded-ip');
+    assert.strictEqual(safe.length, 0,
+      `loopback/link-local/doc/ULA IPv6 should not flag: ${JSON.stringify(safe)}`);
+  });
+
+  await test('hardcoded-ip: version strings like 1.2.3.4 require valid octets — 256.1.1.1 ignored', async () => {
+    const findings = await scanWith({
+      'a.js': `const v = "256.1.1.1"; const w = "1.2.3.4.5";`,
+    }, 'hardcoded-ip');
+    assert.strictEqual(findings.length, 0,
+      `invalid octets / extra parts should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('improper-cert-validation: rejectUnauthorized:false flagged (QW-5 / RC-43)', async () => {
+    const findings = await scanWith({
+      'a.js': `const ax = require('axios'); ax.get('https://x', { rejectUnauthorized: false });`,
+    }, 'improper-cert-validation');
+    assert(findings.some(f => f.severity === 'high' && f.cwe === 'CWE-295' &&
+      /rejectUnauthorized/.test(f.message)),
+      `rejectUnauthorized:false should flag CWE-295: ${JSON.stringify(findings)}`);
+  });
+
+  await test('improper-cert-validation: NODE_TLS_REJECT_UNAUTHORIZED=0 flagged', async () => {
+    const findings = await scanWith({
+      'a.js': `process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';`,
+    }, 'improper-cert-validation');
+    assert(findings.some(f => /NODE_TLS_REJECT_UNAUTHORIZED/.test(f.message)),
+      `env opt-out should flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('improper-cert-validation: checkServerIdentity stub flagged', async () => {
+    const findings = await scanWith({
+      'a.js': `const opts = { checkServerIdentity: () => undefined };`,
+    }, 'improper-cert-validation');
+    assert(findings.some(f => /checkServerIdentity/.test(f.message)),
+      `checkServerIdentity stub should flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('improper-cert-validation: rejectUnauthorized:true is fine', async () => {
+    const findings = await scanWith({
+      'a.js': `const opts = { rejectUnauthorized: true };`,
+    }, 'improper-cert-validation');
+    assert.strictEqual(findings.length, 0,
+      `rejectUnauthorized:true should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('tabnabbing: <a target="_blank"> without rel flags (QW-6 / RC-13)', async () => {
+    const findings = await scanWith({
+      'a.tsx': `export const L = () => <a href="https://x" target="_blank">go</a>;`,
+    }, 'tabnabbing');
+    assert(findings.some(f => f.cwe === 'CWE-1022' && /target="_blank"/.test(f.message)),
+      `<a target=_blank without rel should flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('tabnabbing: rel="noopener" suppresses', async () => {
+    const findings = await scanWith({
+      'a.tsx': `export const L = () => <a href="https://x" target="_blank" rel="noopener noreferrer">go</a>;`,
+    }, 'tabnabbing');
+    assert.strictEqual(findings.length, 0,
+      `safe rel="noopener noreferrer" should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('tabnabbing: window.open(_blank) without noopener flags', async () => {
+    const findings = await scanWith({
+      'a.js': `function go(url) { window.open(url, '_blank'); }`,
+    }, 'tabnabbing');
+    assert(findings.some(f => /window\.open/.test(f.message)),
+      `window.open(_blank) should flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('tabnabbing: window.open with noopener feature is fine', async () => {
+    const findings = await scanWith({
+      'a.js': `function go(url) { window.open(url, '_blank', 'noopener,noreferrer'); }`,
+    }, 'tabnabbing');
+    assert.strictEqual(findings.length, 0,
+      `safe window.open should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('cleartext-http: fetch("http://api.example.com") flagged (QW-7 / RC-19)', async () => {
+    const findings = await scanWith({
+      'a.js': `function load() { return fetch('http://api.example.com/data'); }`,
+    }, 'cleartext-http');
+    assert(findings.some(f => f.cwe === 'CWE-319' && /api\.example\.com/.test(f.message)),
+      `cleartext fetch should flag CWE-319: ${JSON.stringify(findings)}`);
+  });
+
+  await test('cleartext-http: localhost / 127.0.0.1 / 192.168 NOT flagged', async () => {
+    const findings = await scanWith({
+      'a.js': `fetch('http://localhost:3000/x'); fetch('http://127.0.0.1:8080/y'); fetch('http://192.168.1.10/z'); fetch('http://10.0.0.5/q');`,
+    }, 'cleartext-http');
+    assert.strictEqual(findings.length, 0,
+      `loopback / RFC1918 cleartext should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('cleartext-http: comment text is ignored', async () => {
+    const findings = await scanWith({
+      'a.js': `// fetch('http://example.com') from old code\nconst x = 1;`,
+    }, 'cleartext-http');
+    assert.strictEqual(findings.length, 0,
+      `comment text should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('cleartext-http: https:// URLs are fine', async () => {
+    const findings = await scanWith({
+      'a.js': `fetch('https://api.example.com/x');`,
+    }, 'cleartext-http');
+    assert.strictEqual(findings.length, 0,
+      `https should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('weak-crypto-js: createHash("md5") flagged (QW-8 / RC-20)', async () => {
+    const findings = await scanWith({
+      'a.js': `const h = crypto.createHash('md5').update(x).digest('hex');`,
+    }, 'weak-crypto-js');
+    assert(findings.some(f => f.cwe === 'CWE-327' && /md5/i.test(f.message)),
+      `MD5 createHash should flag CWE-327: ${JSON.stringify(findings)}`);
+  });
+
+  await test('weak-crypto-js: aes-256-ecb flagged', async () => {
+    const findings = await scanWith({
+      'a.js': `const c = crypto.createCipheriv('aes-256-ecb', key, null);`,
+    }, 'weak-crypto-js');
+    assert(findings.some(f => /ECB/i.test(f.message)),
+      `aes-256-ecb should flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('weak-crypto-js: CryptoJS.MD5 / mode.ECB on separate lines flag', async () => {
+    const findings = await scanWith({
+      'a.js': `const h = CryptoJS.MD5(x);\nconst o = { mode: CryptoJS.mode.ECB };`,
+    }, 'weak-crypto-js');
+    assert.strictEqual(findings.length, 2,
+      `CryptoJS MD5 + mode.ECB should produce 2 findings (one per line): ${JSON.stringify(findings)}`);
+  });
+
+  await test('weak-crypto-js: createHash("sha256") is fine', async () => {
+    const findings = await scanWith({
+      'a.js': `const h = crypto.createHash('sha256');`,
+    }, 'weak-crypto-js');
+    assert.strictEqual(findings.length, 0,
+      `SHA-256 should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('generic-secret: Stripe live key flagged (QW-9 / RC-21)', async () => {
+    const stripeLiveKey = ['sk', 'live', 'AbCdEfGhIjKlMnOpQrStUvWxYz1234567890'].join('_');
+    const findings = await scanWith({
+      'a.js': `const stripe = "${stripeLiveKey}";`,
+    }, 'generic-secret');
+    assert(findings.some(f => /Stripe/.test(f.message) && f.confidence === 'high'),
+      `Stripe sk_live should flag HIGH: ${JSON.stringify(findings)}`);
+  });
+
+  await test('generic-secret: Twilio SID flagged', async () => {
+    const twilioSid = 'AC' + '1234567890abcdef1234567890abcdef';
+    const findings = await scanWith({
+      'a.js': `const sid = "${twilioSid}";`,
+    }, 'generic-secret');
+    assert(findings.some(f => /Twilio/.test(f.message)),
+      `Twilio SID should flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('generic-secret: SendGrid API key flagged', async () => {
+    const sendGridKey =
+      'SG' + '.aBcDeFgHiJkLmNoPqRsTuV.' + 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHI';
+    const findings = await scanWith({
+      'a.js': `const sg = "${sendGridKey}";`,
+    }, 'generic-secret');
+    assert(findings.some(f => /SendGrid/.test(f.message)),
+      `SendGrid key should flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('generic-secret: OpenAI / Anthropic / GitHub / Slack tokens flagged', async () => {
+    const findings = await scanWith({
+      'a.js': [
+        'const oa = "sk-proj-' + 'a'.repeat(48) + '";',
+        'const an = "sk-ant-api03-' + 'b'.repeat(80) + '";',
+        'const gh = "ghp_' + 'c'.repeat(36) + '";',
+        'const sl = "xoxb-' + 'd'.repeat(20) + '";',
+      ].join('\n'),
+    }, 'generic-secret');
+    const messages = findings.map(f => f.message).join('\n');
+    assert(/OpenAI/.test(messages), `OpenAI: ${messages}`);
+    assert(/Anthropic/.test(messages), `Anthropic: ${messages}`);
+    assert(/GitHub/.test(messages), `GitHub: ${messages}`);
+    assert(/Slack/.test(messages), `Slack: ${messages}`);
+  });
+
+  await test('header-injection: res.setHeader(name, taint) flagged (QW-10 / RC-4)', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, res) { res.setHeader('X-Echo', req.body.echo); }`,
+    });
+    assert(findings.some(f => f.code === 'injection-flaw' && f.cwe === 'CWE-113' &&
+      /header/.test(f.message)),
+      `res.setHeader(taint) should flag CWE-113: ${JSON.stringify(findings)}`);
+  });
+
+  await test('header-injection: res.cookie(name, taint) flagged', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, res) { res.cookie('session', req.query.s); }`,
+    });
+    assert(findings.some(f => f.cwe === 'CWE-113'),
+      `res.cookie(taint) should flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('header-injection: res.location(taint) flagged with CWE-113 (header takes precedence over redirect)', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, res) { res.location(req.body.url); }`,
+    });
+    assert(findings.some(f => f.cwe === 'CWE-113'),
+      `res.location(taint) should now flag CWE-113: ${JSON.stringify(findings)}`);
+  });
+
+  await test('header-injection: encodeURIComponent sanitizes', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, res) { res.setHeader('X-Echo', encodeURIComponent(req.body.echo)); }`,
+    });
+    assert(!findings.some(f => f.cwe === 'CWE-113'),
+      `encodeURIComponent should sanitize: ${JSON.stringify(findings)}`);
+  });
+
+  // ── §QW-32 / §RC-44 — crypto.createCipher (no IV / weak KDF) ────────────
+  await test('weak-crypto-js: crypto.createCipher (no IV) flagged (QW-32 / RC-44)', async () => {
+    const findings = await scanWith({
+      'a.js': `const c = crypto.createCipher('aes-256-cbc', password);`,
+    }, 'weak-crypto-js');
+    assert(findings.some(f => /createCipher/.test(f.message) && f.severity === 'high'),
+      `createCipher should flag HIGH: ${JSON.stringify(findings)}`);
+  });
+
+  await test('weak-crypto-js: createCipheriv (with IV) is fine', async () => {
+    const findings = await scanWith({
+      'a.js': `const c = crypto.createCipheriv('aes-256-gcm', key, iv);`,
+    }, 'weak-crypto-js');
+    assert.strictEqual(findings.length, 0,
+      `createCipheriv with proper algo should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  // ── §QW-29 / §RC-48 — TLSv1 / SSLv3 ─────────────────────────────────────
+  await test('weak-crypto-js: secureProtocol: "TLSv1" flagged (QW-29 / RC-48)', async () => {
+    const findings = await scanWith({
+      'a.js': `https.createServer({ secureProtocol: 'TLSv1_method' }, h);`,
+    }, 'weak-crypto-js');
+    assert(findings.some(f => /TLS\/SSL pinned/i.test(f.message)),
+      `TLSv1_method should flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('weak-crypto-js: minVersion: "TLSv1.2" is fine', async () => {
+    const findings = await scanWith({
+      'a.js': `tls.createServer({ minVersion: 'TLSv1.2' });`,
+    }, 'weak-crypto-js');
+    assert.strictEqual(findings.length, 0,
+      `TLSv1.2 should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  // ── §QW-31 / §RC-45 — leading-dot cookie domain ────────────────────────
+  await test('insecure-cookie: leading-dot domain flagged (QW-31 / RC-45)', async () => {
+    const findings = await scanWith({
+      'a.js': `res.cookie('sid', s, { domain: '.example.com', secure: true });`,
+    }, 'insecure-cookie');
+    assert(findings.some(f => /\.example\.com/.test(f.message) && f.cwe === 'CWE-732'),
+      `leading-dot domain should flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('insecure-cookie: scoped to current host (no domain) is fine', async () => {
+    const findings = await scanWith({
+      'a.js': `res.cookie('sid', s, { httpOnly: true, secure: true });`,
+    }, 'insecure-cookie');
+    assert(!findings.some(f => /domain/.test(f.message)),
+      `no-domain should not flag domain rule: ${JSON.stringify(findings)}`);
+  });
+
+  // ── §QW-30 / §RC-55 — credentials in localStorage ──────────────────────
+  await test('insecure-web-storage: setItem("token", x) flagged (QW-30 / RC-55)', async () => {
+    const findings = await scanWith({
+      'a.js': `localStorage.setItem('access_token', t);`,
+    }, 'insecure-web-storage');
+    assert(findings.some(f => f.cwe === 'CWE-922' && /access_token/.test(f.message)),
+      `localStorage token write should flag CWE-922: ${JSON.stringify(findings)}`);
+  });
+
+  await test('insecure-web-storage: setItem("theme", "dark") is fine', async () => {
+    const findings = await scanWith({
+      'a.js': `localStorage.setItem('theme', 'dark');`,
+    }, 'insecure-web-storage');
+    assert.strictEqual(findings.length, 0,
+      `non-sensitive key should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('insecure-web-storage: bracket assignment (sessionStorage["jwt"] =) flagged', async () => {
+    const findings = await scanWith({
+      'a.js': `sessionStorage['jwt'] = j;`,
+    }, 'insecure-web-storage');
+    assert(findings.some(f => /jwt/i.test(f.message)),
+      `sessionStorage[key] = should flag: ${JSON.stringify(findings)}`);
+  });
+
+  // ── §QW-43 / §RC-18 — error info disclosure ────────────────────────────
+  await test('error-info-disclosure: res.send(err.stack) flagged HIGH (QW-43 / RC-18)', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, res) { try { x(); } catch (err) { res.send(err.stack); } }`,
+    }, 'error-info-disclosure');
+    assert(findings.some(f => f.cwe === 'CWE-209' && f.severity === 'high' &&
+      /stack/i.test(f.message)),
+      `err.stack should flag HIGH/CWE-209: ${JSON.stringify(findings)}`);
+  });
+
+  await test('error-info-disclosure: res.json({ error: err }) flagged HIGH (raw)', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, res) { try { x(); } catch (err) { res.status(500).json({ error: err }); } }`,
+    }, 'error-info-disclosure');
+    assert(findings.some(f => /raw error/i.test(f.message) && f.severity === 'high'),
+      `raw err should flag HIGH: ${JSON.stringify(findings)}`);
+  });
+
+  await test('error-info-disclosure: err.message flagged MEDIUM', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, res) { try { x(); } catch (err) { res.send(err.message); } }`,
+    }, 'error-info-disclosure');
+    assert(findings.some(f => f.severity === 'medium'),
+      `err.message should flag MEDIUM: ${JSON.stringify(findings)}`);
+  });
+
+  await test('error-info-disclosure: generic-message response is fine', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, res) { try { x(); } catch (err) { console.error(err); res.status(500).send('Internal server error'); } }`,
+    }, 'error-info-disclosure');
+    assert.strictEqual(findings.length, 0,
+      `generic 500 message should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  // ── §QW-46 / §RC-56 — clipboard exposure ───────────────────────────────
+  await test('clipboard-exposure: writeText(token) flagged (QW-46 / RC-56)', async () => {
+    const findings = await scanWith({
+      'a.tsx': `function copy() { navigator.clipboard.writeText(accessToken); }`,
+    }, 'clipboard-exposure');
+    assert(findings.some(f => f.cwe === 'CWE-359' && /accessToken/.test(f.message)),
+      `writeText(token) should flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('clipboard-exposure: writeText(url) is fine', async () => {
+    const findings = await scanWith({
+      'a.tsx': `function copy() { navigator.clipboard.writeText(currentUrl); }`,
+    }, 'clipboard-exposure');
+    assert.strictEqual(findings.length, 0,
+      `non-sensitive copy should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('improper-cert-validation: comment lines are ignored', async () => {
+    const findings = await scanWith({
+      'a.js': `// rejectUnauthorized: false in older code\nconst x = 1;`,
+    }, 'improper-cert-validation');
+    assert.strictEqual(findings.length, 0,
+      `comment text must not flag: ${JSON.stringify(findings)}`);
   });
 
   await test('cors-misconfig: wildcard alone (no credentials) is NOT flagged', async () => {

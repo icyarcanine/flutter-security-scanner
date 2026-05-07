@@ -16,7 +16,7 @@ import {
   walkAst,
 } from '../ast/traversal';
 
-export type SinkKind = 'sql' | 'command' | 'code' | 'html' | 'template' | 'url' | 'path' | 'redirect' | 'nosql';
+export type SinkKind = 'sql' | 'command' | 'code' | 'html' | 'template' | 'url' | 'path' | 'redirect' | 'nosql' | 'header';
 
 /**
  * Confidence level of a taint chain.
@@ -1279,6 +1279,15 @@ export class IntraProceduralTaintTracker {
       return { name: fullName, kind: 'code' };
     }
 
+    // Dynamic ESM import — `import(taint)` resolves and executes a module
+    // identified by an attacker-controlled string. tree-sitter parses this as
+    // a call_expression with `import` as the callee, so it surfaces here as
+    // fullName === 'import'. CodeQL classifies this as the same `code-injection`
+    // bucket (CWE-95) since the loaded module's top-level code runs.
+    if (fullName === 'import' || lowerBare === 'import') {
+      return { name: fullName, kind: 'code' };
+    }
+
     if (lowerFull === 'document.write' || lowerBare === 'innerhtml') {
       return { name: fullName, kind: 'html' };
     }
@@ -1312,8 +1321,18 @@ export class IntraProceduralTaintTracker {
 
     // Open redirect — flagging tainted URLs flowing into res.redirect /
     // res.location. Common in Express handlers.
-    if (/^res\.(?:redirect|location)$/.test(fullName)) {
+    if (/^res\.redirect$/.test(fullName)) {
       return { name: fullName, kind: 'redirect' };
+    }
+
+    // Header injection / HTTP response splitting (CWE-113). Tainted strings
+    // into header-setting APIs let an attacker inject `\r\n` and forge
+    // arbitrary headers (or split the response body). `res.location` lives
+    // here too — it sets the Location header, so it's both an open-redirect
+    // and a header-injection sink. We treat it as `header` because the
+    // CRLF risk is the more serious of the two.
+    if (/^res\.(?:setHeader|header|cookie|location|writeHead|append)$/.test(fullName)) {
+      return { name: fullName, kind: 'header' };
     }
 
     // Code execution via setTimeout/setInterval string argument. Strings
@@ -1500,6 +1519,11 @@ export class IntraProceduralTaintTracker {
         return false;
       case 'redirect':
         // Open redirect dynamic-only is also too noisy.
+        return false;
+      case 'header':
+        // Header values are routinely dynamic in legitimate code (timestamps,
+        // session ids, content lengths). Flag only on confirmed taint flow
+        // through the regular path.
         return false;
       case 'nosql':
         // Detected only via _checkNoSqlInjection structural check.

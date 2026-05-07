@@ -25,6 +25,14 @@ import { InsecureRandomRule } from './security/insecureRandomRule';
 import { JwtMisuseRule } from './security/jwtMisuseRule';
 import { InsecureCookieRule } from './security/insecureCookieRule';
 import { CorsMisconfigRule } from './security/corsMisconfigRule';
+import { HardcodedIpRule } from './security/hardcodedIpRule';
+import { ImproperCertValidationRule } from './security/improperCertValidationRule';
+import { TabnabbingRule } from './security/tabnabbingRule';
+import { CleartextHttpRule } from './security/cleartextHttpRule';
+import { WeakCryptoJsRule } from './security/weakCryptoJsRule';
+import { InsecureWebStorageRule } from './security/insecureWebStorageRule';
+import { ErrorInfoDisclosureRule } from './security/errorInfoDisclosureRule';
+import { ClipboardExposureRule } from './security/clipboardExposureRule';
 
 export function buildDefaultRules(includeSuggestions: boolean): Rule[] {
   const rules: Rule[] = [
@@ -38,6 +46,14 @@ export function buildDefaultRules(includeSuggestions: boolean): Rule[] {
     new JwtMisuseRule(),
     new InsecureCookieRule(),
     new CorsMisconfigRule(),
+    new HardcodedIpRule(),
+    new ImproperCertValidationRule(),
+    new TabnabbingRule(),
+    new CleartextHttpRule(),
+    new WeakCryptoJsRule(),
+    new InsecureWebStorageRule(),
+    new ErrorInfoDisclosureRule(),
+    new ClipboardExposureRule(),
 
     // Security
     new HardcodedSecretsRule(),
