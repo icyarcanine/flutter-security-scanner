@@ -22,11 +22,21 @@ interface SarifMessage { text: string; }
 interface SarifArtifactLocation { uri: string; uriBaseId?: string; }
 interface SarifRegion {
   startLine: number; startColumn?: number; endLine?: number; endColumn?: number;
+  /**
+   * SARIF 2.1.0 §3.30.13 / §3.11.2 — embed the source text at the region.
+   * GitHub Code Scanning renders this as the snippet next to each result.
+   */
+  snippet?: SarifMessage;
 }
 interface SarifLocation {
   physicalLocation: {
     artifactLocation: SarifArtifactLocation;
     region: SarifRegion;
+    /**
+     * Wider region (typically ±2 lines) carrying its own snippet so a
+     * reviewer can see the surrounding context without opening the file.
+     */
+    contextRegion?: SarifRegion;
   };
 }
 interface SarifThreadFlowLocation {
@@ -79,6 +89,42 @@ function severityToLevel(s?: FindingSeverity): 'error' | 'warning' | 'note' {
   }
 }
 
+/**
+ * Cap embedded snippets so SARIF logs don't balloon on minified files. A
+ * GitHub-rendered snippet maxes out around a few hundred chars in practice.
+ */
+const MAX_SNIPPET_LINE_CHARS = 320;
+
+function clampLine(line: string): string {
+  if (line.length <= MAX_SNIPPET_LINE_CHARS) { return line; }
+  return line.slice(0, MAX_SNIPPET_LINE_CHARS) + '…';
+}
+
+/**
+ * Build region.snippet (just the offending line) and contextRegion (the line
+ * plus ±2 lines, with its own snippet). Returns `undefined` when the file is
+ * not in the scan corpus or the line number is out of range.
+ */
+function buildSnippets(
+  fileLines: string[] | undefined,
+  startLine: number,
+  endLine: number | undefined,
+): { snippet: SarifMessage; contextRegion: SarifRegion } | undefined {
+  if (!fileLines || fileLines.length === 0) { return undefined; }
+  const lo = Math.max(1, startLine);
+  const hi = Math.max(lo, endLine ?? startLine);
+  if (lo > fileLines.length) { return undefined; }
+  const primary = fileLines.slice(lo - 1, Math.min(hi, fileLines.length))
+    .map(clampLine).join('\n');
+  const ctxStart = Math.max(1, lo - 2);
+  const ctxEnd = Math.min(fileLines.length, hi + 2);
+  const contextText = fileLines.slice(ctxStart - 1, ctxEnd).map(clampLine).join('\n');
+  return {
+    snippet: { text: primary },
+    contextRegion: { startLine: ctxStart, endLine: ctxEnd, snippet: { text: contextText } },
+  };
+}
+
 function pathToUri(filePath: string, rootPath: string): string {
   // Prefer relative paths anchored to %SRCROOT% so the SARIF log is portable
   // across machines. If the path is already relative, leave it alone; if
@@ -107,6 +153,15 @@ export function toSarif(report: ProjectScanReport, rootPath: string): SarifLog {
   // produces — not just whichever happened to come first.
   const ruleCwes = new Map<string, Set<string>>();
   const results: SarifResult[] = [];
+
+  // Lookup table for snippet extraction. Keyed by relativePath because that's
+  // what `pathToUri` will produce when paths are inside the root. A finding
+  // whose absolute path is outside the root won't get a snippet — callers
+  // already accept SARIF results without snippets for that case.
+  const fileByRelative = new Map<string, string[]>();
+  for (const file of report.context.files) {
+    fileByRelative.set(file.relativePath.split(path.sep).join('/'), file.lines);
+  }
 
   for (const finding of report.findings) {
     if (!finding.filePath) { continue; }
@@ -141,23 +196,35 @@ export function toSarif(report: ProjectScanReport, rootPath: string): SarifLog {
     if (finding.endLine != null) { region.endLine = finding.endLine; }
     if (finding.endColumn != null) { region.endColumn = finding.endColumn; }
 
+    const findingRelative = pathToUri(finding.filePath, rootPath);
+    const snippets = buildSnippets(
+      fileByRelative.get(findingRelative),
+      startLine,
+      finding.endLine ?? undefined,
+    );
+    if (snippets) { region.snippet = snippets.snippet; }
+
     // SARIF codeFlows from finding.pathSteps (when present).
     let codeFlows: SarifCodeFlow[] | undefined;
     if (finding.pathSteps && finding.pathSteps.length > 0) {
-      const flowLocations: SarifThreadFlowLocation[] = finding.pathSteps.map(step => ({
-        location: {
-          physicalLocation: {
-            artifactLocation: {
-              uri: pathToUri(step.filePath ?? finding.filePath!, rootPath),
-              uriBaseId: 'SRCROOT',
-            },
-            region: {
-              startLine: step.line,
-              ...(step.column != null ? { startColumn: step.column } : {}),
+      const flowLocations: SarifThreadFlowLocation[] = finding.pathSteps.map(step => {
+        const stepUri = pathToUri(step.filePath ?? finding.filePath!, rootPath);
+        const stepRegion: SarifRegion = {
+          startLine: step.line,
+          ...(step.column != null ? { startColumn: step.column } : {}),
+        };
+        const stepSnippets = buildSnippets(fileByRelative.get(stepUri), step.line, undefined);
+        if (stepSnippets) { stepRegion.snippet = stepSnippets.snippet; }
+        return {
+          location: {
+            physicalLocation: {
+              artifactLocation: { uri: stepUri, uriBaseId: 'SRCROOT' },
+              region: stepRegion,
+              ...(stepSnippets ? { contextRegion: stepSnippets.contextRegion } : {}),
             },
           },
-        },
-      }));
+        };
+      });
       codeFlows = [{ threadFlows: [{ locations: flowLocations }] }];
     }
 
@@ -167,14 +234,15 @@ export function toSarif(report: ProjectScanReport, rootPath: string): SarifLog {
       message: { text: finding.message },
       locations: [{
         physicalLocation: {
-          artifactLocation: { uri: pathToUri(finding.filePath, rootPath), uriBaseId: 'SRCROOT' },
+          artifactLocation: { uri: findingRelative, uriBaseId: 'SRCROOT' },
           region,
+          ...(snippets ? { contextRegion: snippets.contextRegion } : {}),
         },
       }],
       ...(codeFlows ? { codeFlows } : {}),
       // Used by GitHub Code Scanning to dedupe across runs even when line numbers shift.
       partialFingerprints: {
-        primaryLocationLineHash: `${finding.code}:${pathToUri(finding.filePath, rootPath)}:${startLine}`,
+        primaryLocationLineHash: `${finding.code}:${findingRelative}:${startLine}`,
       },
       properties: {
         confidence: finding.confidence,

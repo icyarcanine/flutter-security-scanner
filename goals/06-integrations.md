@@ -13,12 +13,12 @@ upside for adoption.
 
 Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
-- ✅ §IN-4, §IN-6, §IN-8, §IN-9, §IN-10, §IN-11, §IN-19, §IN-22, §IN-24,
-  §IN-27, §IN-28, §IN-30
+- ✅ §IN-2, §IN-4, §IN-6, §IN-8, §IN-9, §IN-10, §IN-11, §IN-19, §IN-22,
+  §IN-24, §IN-27, §IN-28, §IN-30
 - 🟡 §IN-1 (SARIF 2.1.0 base output landed: codeFlows, partialFingerprints,
   per-rule CWE, SRCROOT base IDs; deepening tasks — taxonomies,
   baselineState, kind/rank, automationDetails — still pending)
-- ⏳ §IN-2, §IN-3, §IN-5, §IN-7, §IN-12, §IN-13, §IN-14, §IN-15, §IN-16,
+- ⏳ §IN-3, §IN-5, §IN-7, §IN-12, §IN-13, §IN-14, §IN-15, §IN-16,
   §IN-17, §IN-18, §IN-20, §IN-21, §IN-23, §IN-25, §IN-26, §IN-29, §IN-31, §IN-32
 
 ---
@@ -43,13 +43,27 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 - **Tests:** Validate output against the official SARIF schema. Use
   `sarif-multitool validate` (Microsoft tool).
 
-## §IN-2 — SARIF: include source code snippets in `physicalLocation`
+## §IN-2 — SARIF: include source code snippets in `physicalLocation` ✅ DONE — 2026-05-07
 
 - **Why:** GitHub Code Scanning shows a snippet next to each finding.
   Today our SARIF has no `region.snippet`.
 - **Target state:** Each result includes `region.snippet.text` (the
   ±2 lines around the finding).
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - TS-side: `vscode-extension/src/output/sarif.ts` builds a
+    `Map<relativePath, lines[]>` from `report.context.files` and emits
+    `region.snippet.text` (offending line) + `contextRegion` (line ±2,
+    with its own snippet) on every result. Taint code-flow steps carry
+    snippets too. Snippets are clamped at 320 chars/line so minified
+    bundles don't blow up the SARIF payload.
+  - Dart-side: `lib/src/output/sarif_writer.dart` accepts a new
+    `fileLines: Map<String, List<String>>?` parameter on `encode()`;
+    the CLI populates it from `report.context.files` for
+    `--format=sarif` runs.
+  - Tests: `vscode-extension/scripts/output-formats.test.js`
+    `testSarifSnippets`; `test/sarif_writer_test.dart` (3 cases:
+    embeds correctly, omits when no fileLines passed, clamps long lines).
 
 ## §IN-3 — GitHub PR review comments (line-level)
 

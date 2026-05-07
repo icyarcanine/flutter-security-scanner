@@ -97,9 +97,15 @@ void main(List<String> args) {
 
   switch (options.format) {
     case _OutputFormat.sarif:
+      // §IN-2: hand the writer the file content so SARIF embeds
+      // region.snippet + contextRegion next to every result.
+      final lines = <String, List<String>>{
+        for (final f in report.context.files) f.relativePath: f.lines,
+      };
       _emitSarif(
         findings: filtered,
         targetPath: options.targetPath,
+        fileLines: lines,
       );
     case _OutputFormat.json:
       _emitJson(
@@ -170,9 +176,14 @@ void _emitHuman({
 void _emitSarif({
   required List<Finding> findings,
   required String targetPath,
+  Map<String, List<String>>? fileLines,
 }) {
   const writer = SarifWriter();
-  stdout.writeln(writer.encode(findings, targetPath: targetPath));
+  stdout.writeln(writer.encode(
+    findings,
+    targetPath: targetPath,
+    fileLines: fileLines,
+  ));
 }
 
 void _emitJson({

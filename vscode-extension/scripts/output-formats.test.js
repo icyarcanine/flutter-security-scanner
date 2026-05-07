@@ -28,6 +28,7 @@ const { toJunit } = require('../out/output/junit');
 const { toGitLabCodeQuality } = require('../out/output/gitlab');
 const { toBitbucketCodeInsights } = require('../out/output/bitbucket');
 const { toHtmlReport } = require('../out/output/html');
+const { toSarif } = require('../out/output/sarif');
 
 async function buildReport() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fss-out-'));
@@ -38,6 +39,26 @@ async function buildReport() {
   const report = await scanner.scan(root);
   fs.rmSync(root, { recursive: true, force: true });
   return report;
+}
+
+async function buildReportWithRoot() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fss-sarif-'));
+  // Multi-line file so contextRegion has something to expand into.
+  const src = [
+    'function start() {',
+    '  return 1;',
+    '}',
+    'function h(req, db) {',
+    '  db.rawQuery("SELECT * FROM u WHERE id = " + req.body.id);',
+    '}',
+    'function end() {',
+    '  return 2;',
+    '}',
+  ].join('\n');
+  fs.writeFileSync(path.join(root, 'vuln.js'), src);
+  const scanner = new ProjectScanner({ includeSuggestions: false });
+  const report = await scanner.scan(root);
+  return { report, root };
 }
 
 async function testMarkdown() {
@@ -120,6 +141,30 @@ async function testHtml() {
   assert.match(html, /injection-flaw/, 'html output must include the rule code');
 }
 
+async function testSarifSnippets() {
+  // §IN-2: every result must carry region.snippet.text and contextRegion
+  // when the source line is in the scan corpus.
+  const { report, root } = await buildReportWithRoot();
+  try {
+    const sarif = toSarif(report, root);
+    const result = sarif.runs[0].results.find(r => r.ruleId === 'injection-flaw');
+    assert.ok(result, 'expected an injection-flaw result in SARIF output');
+    const phys = result.locations[0].physicalLocation;
+    assert.ok(phys.region.snippet?.text, 'region.snippet.text missing on result');
+    assert.ok(phys.region.snippet.text.includes('rawQuery'),
+      `region.snippet should embed the offending line; got: ${phys.region.snippet.text}`);
+    assert.ok(phys.contextRegion, 'contextRegion missing on result');
+    assert.ok(phys.contextRegion.snippet?.text, 'contextRegion.snippet.text missing');
+    assert.ok(phys.contextRegion.startLine < phys.region.startLine
+      || phys.contextRegion.endLine > phys.region.startLine,
+      'contextRegion should expand beyond the offending line');
+    assert.ok(phys.contextRegion.snippet.text.split('\n').length >= 2,
+      'contextRegion snippet should span at least 2 lines on a multi-line file');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
 (async function main() {
   await testMarkdown();
   await testCsv();
@@ -127,6 +172,7 @@ async function testHtml() {
   await testGitLab();
   await testBitbucket();
   await testHtml();
+  await testSarifSnippets();
   console.log('output-formats self-test: PASS');
 })().catch(err => {
   console.error('output-formats self-test: FAIL');

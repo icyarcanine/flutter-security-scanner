@@ -29,7 +29,17 @@ class SarifWriter {
   final String toolVersion;
   final String informationUri;
 
+  /// Maximum chars to keep on a single embedded snippet line. Minified
+  /// bundles can produce multi-MB single lines; truncating keeps the SARIF
+  /// log within sane size budgets without changing the surrounding shape.
+  static const int kMaxSnippetLineChars = 320;
+
   /// Serialises [findings] as a pretty-printed SARIF 2.1.0 JSON document.
+  ///
+  /// Pass [fileLines] to embed `region.snippet.text` and `contextRegion`
+  /// per §IN-2 so GitHub Code Scanning (and any other SARIF viewer) can
+  /// render the surrounding source without round-tripping to disk. Keys
+  /// are file paths exactly as they appear in `Finding.filePath`.
   ///
   /// The result is intentionally sorted and deterministic — two runs over the
   /// same repo must emit byte-identical SARIF so CI diff tools and baseline
@@ -37,7 +47,9 @@ class SarifWriter {
   String encode(
     List<Finding> findings, {
     String? targetPath,
+    Map<String, List<String>>? fileLines,
   }) {
+    final lines = fileLines ?? const <String, List<String>>{};
     // Build the rule dictionary. SARIF allows — and GitHub Code Scanning
     // prefers — the driver.rules array to list only rules that produced
     // results, so long as result.ruleIndex points into it. We go a step
@@ -62,7 +74,7 @@ class SarifWriter {
 
     final results = [
       for (final finding in findings)
-        _result(finding, ruleIndex[finding.code]!),
+        _result(finding, ruleIndex[finding.code]!, lines),
     ];
 
     final sarif = <String, Object?>{
@@ -124,12 +136,23 @@ class SarifWriter {
     };
   }
 
-  Map<String, Object?> _result(Finding finding, int ruleIdx) {
+  Map<String, Object?> _result(
+    Finding finding,
+    int ruleIdx,
+    Map<String, List<String>> fileLines,
+  ) {
     final locations = <Map<String, Object?>>[];
     if (finding.filePath != null) {
       final region = <String, Object?>{};
       if (finding.line != null && finding.line! > 0) {
         region['startLine'] = finding.line;
+      }
+      final snippets = _buildSnippets(
+        fileLines[finding.filePath!],
+        finding.line,
+      );
+      if (snippets != null) {
+        region['snippet'] = <String, Object?>{'text': snippets.regionText};
       }
       locations.add(<String, Object?>{
         'physicalLocation': <String, Object?>{
@@ -138,6 +161,12 @@ class SarifWriter {
             'uriBaseId': 'SRCROOT',
           },
           if (region.isNotEmpty) 'region': region,
+          if (snippets != null)
+            'contextRegion': <String, Object?>{
+              'startLine': snippets.contextStartLine,
+              'endLine': snippets.contextEndLine,
+              'snippet': <String, Object?>{'text': snippets.contextText},
+            },
         },
       });
     }
@@ -305,6 +334,44 @@ class SarifWriter {
   /// Stable fingerprint for a finding. Delegates to the shared helper so
   /// SARIF output and the baseline file use the same identifier.
   static String _fingerprint(Finding finding) => fingerprintFinding(finding);
+
+  /// Returns `null` when the source isn't available or the line is out of
+  /// range — callers should omit `snippet` and `contextRegion` rather than
+  /// emit empty ones.
+  static _Snippets? _buildSnippets(List<String>? lines, int? line) {
+    if (lines == null || lines.isEmpty) return null;
+    if (line == null || line <= 0 || line > lines.length) return null;
+    final regionText = _clampLine(lines[line - 1]);
+    final ctxStart = (line - 2).clamp(1, lines.length);
+    final ctxEnd = (line + 2).clamp(1, lines.length);
+    final ctxLines = <String>[
+      for (var i = ctxStart - 1; i < ctxEnd; i++) _clampLine(lines[i]),
+    ];
+    return _Snippets(
+      regionText: regionText,
+      contextText: ctxLines.join('\n'),
+      contextStartLine: ctxStart,
+      contextEndLine: ctxEnd,
+    );
+  }
+
+  static String _clampLine(String line) {
+    if (line.length <= kMaxSnippetLineChars) return line;
+    return '${line.substring(0, kMaxSnippetLineChars)}…';
+  }
+}
+
+class _Snippets {
+  const _Snippets({
+    required this.regionText,
+    required this.contextText,
+    required this.contextStartLine,
+    required this.contextEndLine,
+  });
+  final String regionText;
+  final String contextText;
+  final int contextStartLine;
+  final int contextEndLine;
 }
 
 /// Aggregated per-rule metadata built while walking the findings list. Used to
