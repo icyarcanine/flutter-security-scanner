@@ -138,19 +138,19 @@ read the deeper files.
 
 - **Effort:** **S** (2 days).
 
-## §QW-29 — TLSv1 / SSL3 deprecated protocols ([03-rule-coverage.md §RC-48](03-rule-coverage.md))
+## §QW-29 — TLSv1 / SSL3 deprecated protocols ([03-rule-coverage.md §RC-48](03-rule-coverage.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 
-## §QW-30 — Stored credentials in `localStorage` / `sessionStorage` ([03-rule-coverage.md §RC-55](03-rule-coverage.md))
+## §QW-30 — Stored credentials in `localStorage` / `sessionStorage` ([03-rule-coverage.md §RC-55](03-rule-coverage.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 
-## §QW-31 — Cookie domain too-broad warning ([03-rule-coverage.md §RC-45](03-rule-coverage.md))
+## §QW-31 — Cookie domain too-broad warning ([03-rule-coverage.md §RC-45](03-rule-coverage.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 
-## §QW-32 — `crypto.createCipher` insecure-mode ([03-rule-coverage.md §RC-44](03-rule-coverage.md))
+## §QW-32 — `crypto.createCipher` insecure-mode ([03-rule-coverage.md §RC-44](03-rule-coverage.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 
@@ -197,7 +197,7 @@ read the deeper files.
 
 - **Effort:** **S** (1 day).
 
-## §QW-43 — Information-via-exception (`res.send(err.stack)`) ([03-rule-coverage.md §RC-18](03-rule-coverage.md))
+## §QW-43 — Information-via-exception (`res.send(err.stack)`) ([03-rule-coverage.md §RC-18](03-rule-coverage.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 
@@ -209,7 +209,7 @@ read the deeper files.
 
 - **Effort:** **S** (audit only).
 
-## §QW-46 — Clipboard exposure on JS side ([03-rule-coverage.md §RC-56](03-rule-coverage.md))
+## §QW-46 — Clipboard exposure on JS side ([03-rule-coverage.md §RC-56](03-rule-coverage.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 

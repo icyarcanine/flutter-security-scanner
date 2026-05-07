@@ -74,7 +74,7 @@ For shape and registration steps, mirror existing rules under
 - **Effort:** **S** (1 day).
 - **Tests:** `console.log(taint)`, Winston, Pino fixtures.
 
-## §RC-4 — Header injection / response splitting (CWE-113)
+## §RC-4 — Header injection / response splitting (CWE-113) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Why:** Tainted data into `Set-Cookie` / `Location` headers can
   forge new headers via `\r\n`.
@@ -85,6 +85,20 @@ For shape and registration steps, mirror existing rules under
   `replace(/\r\n/, '')`.
 - **Dependencies:** None.
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - Added `'header'` to `SinkKind` in `taint/dataFlow.ts`; CWE-113 in
+    `injectionRule._cweForSink`.
+  - Recognised sinks: `res.setHeader`, `res.header`, `res.cookie`,
+    `res.location` (re-classed from `redirect` since the CRLF risk is
+    more serious), `res.writeHead`, `res.append`.
+  - Existing sanitizer registry already includes `encodeURIComponent`,
+    so `res.setHeader('X', encodeURIComponent(req.body.x))` is correctly
+    treated as safe. `replace(/\r\n/, '')` heuristic deferred — rare.
+  - Dynamic-only mode disabled for header sinks (legitimate code sets
+    headers from dynamic values constantly); only confirmed taint flow
+    flags.
+  - Injection rule prefilter regex extended to include the new methods.
+  - 4 tests in `scripts/taint-engine.test.js`.
 
 ## §RC-5 — Open redirect deepening (CWE-601)
 
@@ -157,7 +171,7 @@ For shape and registration steps, mirror existing rules under
   injection.
 - **Effort:** **M** (2 days).
 
-## §RC-13 — Tabnabbing (CWE-1022)
+## §RC-13 — Tabnabbing (CWE-1022) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Why:** `target="_blank"` without `rel="noopener noreferrer"` lets
   the destination access `window.opener`.
@@ -165,6 +179,14 @@ For shape and registration steps, mirror existing rules under
 - **Target state:** Detect JSX `<a target="_blank">` without `rel`,
   HTML files, `window.open` without `noopener`.
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - New rule `tabnabbing` (RuleStage.fast, CWE-1022, MEDIUM/HIGH-conf).
+  - Two patterns: anchor tag `<a target="_blank">` and
+    `window.open(url, '_blank', features?)`.
+  - Suppressed when `rel` contains `noopener` or `noreferrer`, or when
+    the windowFeatures string contains either token.
+  - File-type gate: `.html|.htm|.js|.jsx|.ts|.tsx|.mjs|.cjs|.vue|.svelte|.astro`.
+  - 4 tests in `scripts/taint-engine.test.js`.
 
 ## §RC-14 — Insecure file upload sinks (CWE-434)
 
@@ -194,21 +216,50 @@ For shape and registration steps, mirror existing rules under
   ORM lookup without an `userId === currentUser.id` check.
 - **Effort:** **L** (~1 week).
 
-## §RC-18 — Information exposure through exception (CWE-209)
+## §RC-18 — Information exposure through exception (CWE-209) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Target state:** Detect `res.send(err.message)` / `res.send(err.stack)`
   patterns.
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - New `error-info-disclosure` rule covers Express/Fastify-style response
+    calls and Koa `ctx.body = ...` assignments.
+  - `err.stack` and raw error-object responses are HIGH; `err.message` is
+    MEDIUM because validation errors can be legitimate when explicitly
+    whitelisted.
+  - Negative test keeps generic 500 responses quiet.
 
-## §RC-19 — Cleartext transmission of sensitive info (CWE-319)
+## §RC-19 — Cleartext transmission of sensitive info (CWE-319) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Why:** `http://` instead of `https://` in HTTP clients.
 - **Current state:** Partial — we don't have a dedicated rule.
 - **Target state:** Flag `fetch('http://...')` patterns where `https://`
   would be expected (production URLs).
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - New rule `cleartext-http` (RuleStage.fast, CWE-319, MEDIUM).
+  - Recognised clients: `fetch`, `axios.*`, `got.*`, `ky.*`, `superagent.*`,
+    `request`, `https.get/request`, `XMLHttpRequest.open`.
+  - Loopback (`localhost`, `127.0.0.1`, `::1`, `0.0.0.0`) and RFC 1918
+    ranges (10.x, 192.168.x, 172.16-31.x) auto-suppressed — local-dev
+    cleartext is not a deployable risk.
+  - Skips Dart files; Dart-side `plaintext-http` rule covers those.
+  - Uses `stripLineComment` so `//`-comment URLs don't trigger.
+  - 4 tests in `scripts/taint-engine.test.js`.
 
-## §RC-20 — Weak cryptography variants (CWE-327)
+## §RC-20 — Weak cryptography variants (CWE-327) ✅ DONE — sha f2d31ad (2026-05-07)
+
+- **Implementation notes:**
+  - New JS-side rule `weak-crypto-js` mirrors the Dart `weak-crypto`.
+  - Catches: `crypto.createHash('md5'|'sha1'|...)`,
+    `crypto.createHmac('md5'|'sha1', ...)`,
+    `crypto.createCipheriv('aes-*-ecb'|'des'|'3des'|'rc4'|'blowfish', ...)`,
+    `CryptoJS.MD5/SHA1/MD4/MD2`, `CryptoJS.mode.ECB`,
+    `crypto.subtle.digest('SHA-1'|'MD5', ...)`.
+  - One finding per line (multi-pattern lines fold to first match) so
+    a misuse doesn't produce a stack of overlapping findings.
+  - Tests in `scripts/taint-engine.test.js` cover MD5, ECB, CryptoJS,
+    and a SHA-256 negative.
 
 - **Why:** We have `weak-crypto` rule on the Dart side. JS side missing.
 - **Target state:** Detect `crypto.createCipher('des', …)` /
@@ -216,7 +267,21 @@ For shape and registration steps, mirror existing rules under
   contexts.
 - **Effort:** **S** (1 day).
 
-## §RC-21 — Hardcoded credentials variants (already strong)
+## §RC-21 — Hardcoded credentials variants (already strong) ✅ DONE — sha f2d31ad (2026-05-07)
+
+- **Implementation notes:**
+  - Added 7 vendor-specific regexes to `genericSecretRule` patterns array,
+    each gated to a distinctive prefix so confidence stays HIGH:
+    - **Stripe** `(sk|rk|pk)_(live|test)_[A-Za-z0-9]{24,}`
+    - **Twilio** `(AC|SK)[0-9a-fA-F]{32}` (account / API-key SIDs)
+    - **SendGrid** `SG\.[A-Za-z0-9_-]{16,32}\.[A-Za-z0-9_-]{32,80}`
+    - **OpenAI** `sk-(proj-)?[A-Za-z0-9_-]{20,}`
+    - **Anthropic** `sk-ant(-api\d+)?-[A-Za-z0-9_-]{40,}`
+    - **GitHub** `gh[pousr]_[A-Za-z0-9]{36,255}`
+    - **Slack** `xox[baprs]-[A-Za-z0-9-]{10,}`
+  - Existing AWS / private-key / JWT patterns kept at LOW confidence to
+    avoid breaking the precision-self-test contract.
+  - 4 new tests in `scripts/taint-engine.test.js`.
 
 - **Current state:** `hardcoded-secrets`, `generic-secret` cover AWS,
   GCP, JWT, generic.
@@ -356,23 +421,42 @@ For shape and registration steps, mirror existing rules under
 
 - **Effort:** **L** (~1 week).
 
-## §RC-43 — Improper certificate validation
+## §RC-43 — Improper certificate validation ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Target state:** Flag `rejectUnauthorized: false`, `https.Agent({ rejectUnauthorized: false })`,
   custom `tls.connect` with disabled verify.
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - New rule `improper-cert-validation` (CWE-295, HIGH severity).
+  - Catches three escape hatches: `rejectUnauthorized:false`,
+    `NODE_TLS_REJECT_UNAUTHORIZED=0`, and stub `checkServerIdentity`
+    (arrow / function returning `undefined|null|{}`).
+  - Reuses new `stripLineComment` helper that walks the line tracking
+    quote state — required because the naive `indexOf('//')` mistakes
+    URLs (`'https://x'`) for line comments. Both this rule and
+    `hardcoded-ip` now share that helper.
+  - 5 positive/negative tests in `scripts/taint-engine.test.js`.
 
-## §RC-44 — Insecure cryptographic key storage
+## §RC-44 — Insecure cryptographic key storage ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Target state:** `crypto.createCipher(algo, hardcodedKey)` where key
   is a string literal and algo is real.
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - Extended `weak-crypto-js` to flag deprecated Node
+    `crypto.createCipher` / `crypto.createDecipher` calls.
+  - Negative test confirms `createCipheriv` with a non-weak algorithm remains
+    clean.
 
-## §RC-45 — Cookie scope issues (Domain, Path)
+## §RC-45 — Cookie scope issues (Domain, Path) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Target state:** Cookies set with `Domain: .example.com` (broader
   than needed) flag.
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - Extended `insecure-cookie` to flag leading-dot domain options and explain
+    the subdomain blast-radius issue.
+  - No-domain host-scoped cookies remain clean.
 
 ## §RC-46 — CSRF token absence
 
@@ -386,21 +470,36 @@ For shape and registration steps, mirror existing rules under
   with `*` resource.
 - **Effort:** **L** (~1 week).
 
-## §RC-48 — SSL/TLS deprecated protocols
+## §RC-48 — SSL/TLS deprecated protocols ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Target state:** `tls.createServer({ secureProtocol: 'TLSv1' })`,
   `https.request({ secureProtocol: 'TLSv1' })`.
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - Extended `weak-crypto-js` to flag `secureProtocol` / `minVersion`
+    pinning to SSLv3, TLSv1.0, or TLSv1.1.
+  - Negative test keeps `minVersion: "TLSv1.2"` clean.
 
 ## §RC-49 — Improper input validation in cryptographic operations
 
 - **Target state:** RSA padding misconfig, AES IV reuse.
 - **Effort:** **L** (~1 week).
 
-## §RC-50 — Untrusted code injection via dynamic `import()`
+## §RC-50 — Untrusted code injection via dynamic `import()` ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Target state:** `import(taint)` flag.
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - Added `import` as a code-class sink (CWE-95) in
+    `vscode-extension/src/taint/dataFlow.ts:_sinkForCall`.
+  - Extended `injectionRule.ts`'s sink prefilter regex with `\bimport\s*\(`
+    so files using dynamic import enter the AST stage.
+  - Tree-sitter parses `import('./mod' + x)` as a `call_expression`
+    whose callee is the `import` keyword node, so `getCallName` returns
+    `"import"`. Static `import { … } from '…'` is `import_statement`
+    and never reaches the call-expression sink path — covered by a
+    negative test.
+  - Tests in `scripts/taint-engine.test.js` (positive + negative).
 
 ## §RC-51 — Server-side request forgery via WebSocket (CWE-918)
 
@@ -421,28 +520,53 @@ For shape and registration steps, mirror existing rules under
 - **Target state:** `eval(\`literal ${taint}\`)` already covered. Verify.
 - **Effort:** **S** (1 day).
 
-## §RC-55 — Stored credentials in localStorage / IndexedDB
+## §RC-55 — Stored credentials in localStorage / IndexedDB ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Target state:** `localStorage.setItem('token', x)`, `sessionStorage`.
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - New `insecure-web-storage` rule flags credential-shaped keys in
+    `localStorage` / `sessionStorage` writes (`setItem`, bracket assignment,
+    and property assignment).
+  - Benign preference keys such as `theme` remain clean.
 
-## §RC-56 — Privacy leak — clipboard / pasteboard exposure
+## §RC-56 — Privacy leak — clipboard / pasteboard exposure ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Current state:** `clipboard-exposure` rule on Dart side.
 - **Target state:** JS-side `navigator.clipboard.writeText(taint)` with
   sensitive payload.
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - New JS-side `clipboard-exposure` rule flags
+    `navigator.clipboard.writeText(...)` when the copied expression contains
+    credential-shaped identifiers.
+  - `writeText(url)` stays clean; legacy `document.execCommand("copy")`
+    produces only a low-confidence reminder to inspect the selected payload.
 
 ## §RC-57 — Insecure default permissions (CWE-276)
 
 - **Target state:** `fs.chmod(p, 0o777)` etc.
 - **Effort:** **S** (1 day).
 
-## §RC-58 — Hardcoded IP addresses
+## §RC-58 — Hardcoded IP addresses ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Target state:** Static IP literals in source code (cheap to detect,
   often a misconfig).
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - New rule `hardcoded-ip` (kebab-case code,
+    `vscode-extension/src/rules/security/hardcodedIpRule.ts`,
+    `RuleStage.fast`, CWE-547).
+  - IPv4: anchored octet regex with valid-range check; ignores RFC 1918,
+    RFC 6598 CGNAT, loopback, link-local, multicast, broadcast, 0.0.0.0/8,
+    and the documentation ranges (TEST-NET-1/2/3, benchmark).
+  - IPv6: permissive prefilter, then a structural validator
+    `_parseIPv6` that handles `::` elision and exact-8-group constraint;
+    skips `::`, `::1`, `fe80::/10`, `fc00::/7`, `2001:db8::/32`, `ff*`.
+  - Strips `//` (and `#` for shell/Python/conf) line comments before
+    matching so example IPs in docstrings don't fire.
+  - Severity LOW / confidence MEDIUM — regex-only, intended as a noisy
+    suggestion until paired with a "is this a config file?" gate.
 
 ## §RC-59 — Time-of-check time-of-use on cookies (login fixation)
 

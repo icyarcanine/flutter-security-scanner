@@ -53,7 +53,7 @@ See [00-engine.md §EN-8](00-engine.md).
   - The progress callback gets called per-file already; no change
     there.
 
-## §SC-4 — Bounded file size budget
+## §SC-4 — Bounded file size budget ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Why:** A 10 MB minified bundle blocks the scan. Today we skip
   files > 1 MB silently.
@@ -62,6 +62,18 @@ See [00-engine.md §EN-8](00-engine.md).
   in scan stats. Configurable limit via `.fshrc.yaml`:
   `maxFileSize: 5MB`.
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - `ProjectContextLoadOptions.maxFileSizeBytes` (0 disables; default
+    1 MB via `DEFAULT_MAX_FILE_SIZE_BYTES`).
+  - `ProjectContext.skippedFiles: SkippedFile[]` exposes
+    `{relativePath, sizeBytes, reason: 'oversize'}`.
+  - `ProjectScanReport.skippedFiles` proxies through; `mergeReports`
+    absolutizes paths so multi-root scans report unambiguous locations.
+  - Console warning lists the largest 5 oversize files on every scan.
+  - JSON / pretty / summary outputs all carry a skipped-files line.
+  - `--max-file-size <size>` CLI flag accepts `5MB`/`512KB`/`1g`/plain bytes.
+  - YAML-driven configurability lands with §IN-30 (config schema).
+  - Test: `scripts/file-size-budget.test.js`.
 
 ## §SC-5 — Distributed scan workers
 
@@ -112,7 +124,7 @@ See [00-engine.md §EN-8](00-engine.md).
   the DB (per §SC-1 and §EN-7).
 - **Effort:** Maintenance.
 
-## §SC-8 — Bounded rule runtime
+## §SC-8 — Bounded rule runtime ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Why:** A pathological rule (catastrophic regex) shouldn't hang
   the scan.
@@ -125,6 +137,15 @@ See [00-engine.md §EN-8](00-engine.md).
 - **Dependencies:** None.
 - **Effort:** **S** (1 day).
 - **Tests:** Inject a deliberately-slow fixture; assert timeout fires.
+- **Implementation notes:**
+  - `DEFAULT_RULE_TIMEOUT_MS = 30_000` exported from `scanner.ts`.
+  - `ProjectScannerOptions.ruleTimeoutMs` (0 disables; default 30s).
+  - `--rule-timeout <ms|s|m>` CLI flag accepts plain ms or `30s`/`5m`.
+  - Timeout emits a `scanner-internal-error` Finding (low severity, high
+    confidence) naming the rule and budget so the abort isn't silent.
+  - Test: `scripts/rule-timeout.test.js` — patches the rule registry with
+    a synthetic always-pending rule and a fast sibling, asserts the slow
+    rule is aborted and the fast rule's findings still come through.
 
 ## §SC-9 — Parallelism across files within a single rule
 

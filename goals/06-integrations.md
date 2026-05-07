@@ -55,7 +55,7 @@ upside for adoption.
     summary comment.
   - Don't double-post on re-runs; track comment IDs.
 
-## §IN-4 — GitLab Code Quality format
+## §IN-4 — GitLab Code Quality format ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Why:** GitLab consumes a specific JSON format. SARIF compatibility
   exists but Code Quality is the native pipeline.
@@ -65,6 +65,10 @@ upside for adoption.
 - **Approach:** New `output/gitlab.ts`. Schema:
   https://docs.gitlab.com/ee/ci/testing/code_quality.html
 - **Effort:** **S** (1 day).
+- **Implementation notes:** `output/gitlab.ts` produces an array of
+  `{description, check_name, fingerprint, severity, location: {path, lines: {begin}}}`.
+  Severity mapping: high+high-conf → blocker, high → critical, medium →
+  major, low → minor. Fingerprint is sha-1(code|path|line|message).
 
 ## §IN-5 — GitLab Security Report format
 
@@ -72,11 +76,16 @@ upside for adoption.
   Vulnerability Report schema (different from Code Quality).
 - **Effort:** **S** (1 day).
 
-## §IN-6 — Bitbucket Code Insights
+## §IN-6 — Bitbucket Code Insights ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Target state:** `--format=bitbucket` outputs the Code Insights
   Report API JSON.
 - **Effort:** **S** (1 day).
+- **Implementation notes:** `output/bitbucket.ts` emits the annotations
+  array — `{external_id, type: 'VULNERABILITY', severity, summary,
+  details, path, line}`. Severity mapping: high+high-conf → CRITICAL,
+  high → HIGH, medium → MEDIUM, else LOW. CI scripts upload via
+  `curl -X POST` to the report endpoint.
 
 ## §IN-7 — Azure DevOps work items
 
@@ -84,12 +93,16 @@ upside for adoption.
   results.
 - **Effort:** **M** (3 days).
 
-## §IN-8 — Jenkins / generic JUnit XML output
+## §IN-8 — Jenkins / generic JUnit XML output ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Why:** Many Jenkins pipelines consume JUnit XML.
 - **Target state:** `--format=junit` outputs a JUnit-shaped XML where
   each finding is a `<failure>`.
 - **Effort:** **S** (1 day).
+- **Implementation notes:** `output/junit.ts` emits XML 1.0 / UTF-8 with
+  a single `<testsuite>` containing one `<testcase>` per finding (with
+  `<failure>`) and one `<testcase><skipped/>` per oversize file. `tests`
+  / `failures` / `skipped` attributes set from the report.
 
 ## §IN-9 — Standalone HTML report
 
@@ -101,17 +114,25 @@ upside for adoption.
   standalone HTML template.
 - **Effort:** **M** (4 days).
 
-## §IN-10 — Markdown report
+## §IN-10 — Markdown report ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Why:** Easy to paste into PR descriptions / issue tickets.
 - **Target state:** `--format=markdown` outputs a Markdown summary
   table + per-finding bullets.
 - **Effort:** **S** (1 day).
+- **Implementation notes:** `output/markdown.ts` — `# SAST scan report`
+  header, summary list (files scanned / findings / duration / AST
+  success / oversize-skipped count), then a `| Severity | Rule | File | Line | Message |`
+  table with severity badges (🔴 / 🟡 / 🔵). Pipes and newlines in
+  cells are escaped.
 
-## §IN-11 — CSV export
+## §IN-11 — CSV export ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Target state:** `--format=csv` for spreadsheet consumption.
 - **Effort:** **S** (1 day).
+- **Implementation notes:** `output/csv.ts` — RFC 4180 quoting (CRLF
+  line endings, doubled `""` for embedded quotes). Columns: severity,
+  category, confidence, code, cwe, file, line, column, message, fix.
 
 ## §IN-12 — CycloneDX SBOM integration
 
@@ -254,11 +275,27 @@ upside for adoption.
   config-file > default.
 - **Effort:** **M** (1 week).
 
-## §IN-30 — Config schema + validation
+## §IN-30 — Config schema + validation ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Target state:** Publish a JSON Schema for `.fshrc.yaml`. VS Code
   picks it up via `yaml.schemas` for autocomplete.
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - Schema lives at `schemas/fshrc.schema.json` (Draft-07).
+  - Covers: `rules` (per-code overrides — bool, string shorthand, or
+    object form with `enabled`/`severity`/`exclude`), top-level
+    `exclude`, `fail_on`, `include_suggestions`, plus the new
+    `max_file_size` (§SC-4) and `rule_timeout` (§SC-8) keys.
+  - Severity supports both raw (`high|medium|low`) and SARIF aliases
+    (`error|warning|note|info`).
+  - VS Code pickup is automatic via the extension's `contributes.yamlValidation`
+    (matches `.fshrc.yaml`/`.fshrc.yml`) and `contributes.jsonValidation`
+    (matches `.fshrc.json`). Schema is staged into
+    `vscode-extension/schemas/` by the existing `stage-docs` script and
+    bundled via `package.json` `files`.
+  - The Dart-side `lib/src/config/scanner_config.dart` loader stays the
+    runtime source of truth; the schema documents the same shape so
+    teams can write configs without grepping through the loader.
 
 ## §IN-31 — Result diff: cross-tool (SARIF vs SARIF)
 

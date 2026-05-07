@@ -250,7 +250,7 @@ that supports them lives in [00-engine.md §EN-4](00-engine.md).
   `/* @sast-sink-sql */ db.query(...)`.
 - **Effort:** **M** (3 days).
 
-## §PR-15 — FP feedback loop via suppression patterns
+## §PR-15 — FP feedback loop via suppression patterns ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Why:** When the same `// sast-ignore <code>` appears N times in a
   codebase, the rule is likely too noisy. Surface this.
@@ -261,6 +261,23 @@ that supports them lives in [00-engine.md §EN-4](00-engine.md).
   suppressions; consider reviewing FP rate.`
 - **Approach:** Add to existing suppression context tracking.
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - New `applySuppressionWithStats` (suppression.ts) returns
+    `{kept, suppressedByRule}`; the legacy `applySuppression` delegates
+    to it for backwards compatibility.
+  - Threshold: `SUPPRESSION_REVIEW_THRESHOLD = 5`. Rules at-or-above
+    that count get a `[SAST] Rule "X" had N findings suppressed —
+    consider reviewing its FP rate.` warning on stderr.
+  - `ProjectScanReport.suppressionsByRule: ReadonlyMap<string, number>`.
+  - `mergeReports` sums per-folder counts so multi-root scans report
+    project-wide suppression rates.
+  - JSON output (`stats.suppressionsByRule`) carries the map for CI
+    dashboards.
+  - Counts what was *filtered* (the actual FP signal) rather than raw
+    `// sast-ignore` directive occurrences (which may not match any
+    finding).
+  - Test: `scripts/suppression-stats.test.js` — covers the warn+no-warn
+    paths and verifies counts match findings filtered out.
 
 ## §PR-16 — Symbolic-execution-lite for simple constants
 
