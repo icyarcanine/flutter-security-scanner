@@ -20,6 +20,7 @@ import { GenericSecretRule } from './secrets/genericSecretRule';
 import { InjectionRule } from './security/injectionRule';
 import { XssRule } from './security/xssRule';
 import { UnsafeEvalRule } from './bugs/unsafeEvalRule';
+import { IfdsTaintRule } from './security/ifdsTaintRule';
 import { InsecureRandomRule } from './security/insecureRandomRule';
 import { JwtMisuseRule } from './security/jwtMisuseRule';
 import { InsecureCookieRule } from './security/insecureCookieRule';
@@ -32,6 +33,7 @@ export function buildDefaultRules(includeSuggestions: boolean): Rule[] {
     new InjectionRule(),
     new XssRule(),
     new UnsafeEvalRule(),
+    new IfdsTaintRule(),
     new InsecureRandomRule(),
     new JwtMisuseRule(),
     new InsecureCookieRule(),

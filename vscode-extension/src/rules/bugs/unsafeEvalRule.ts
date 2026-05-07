@@ -1,5 +1,5 @@
 import { Rule, RuleStage } from '../rule';
-import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
+import { Finding, FindingSeverity, FindingCategory, FindingConfidence, DetectionMethod } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 import { findNodesByType, getCallName, isFunctionCall } from '../../ast/traversal';
 import { findingRangeFromNode } from '../ruleHelpers';
@@ -31,6 +31,7 @@ export class UnsafeEvalRule implements Rule {
               code: this.code,
               severity: FindingSeverity.medium,
               confidence: FindingConfidence.medium,
+              detectionMethod: DetectionMethod.structural,
               message: `Found direct usage of ${callName}() -> ${node.text.substring(0, 30)}...`,
               fix: `Remove ${callName}() and use safer alternatives like JSON.parse or safe expression parsers.`,
               risk: 'Using dynamic code execution paths is highly dangerous and can allow arbitrary code execution.',
@@ -59,6 +60,7 @@ export class UnsafeEvalRule implements Rule {
               code: this.code,
               severity: FindingSeverity.medium,
               confidence: FindingConfidence.low,
+              detectionMethod: DetectionMethod.regex,
               message: `Found usage of ${evalMatch[1]}() (AST unavailable, regex fallback)`,
               fix: `Remove ${evalMatch[1]}() and use safer alternatives.`,
               risk: 'Dynamic code execution is dangerous. Lower confidence due to regex-only detection.',

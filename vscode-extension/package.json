@@ -1,8 +1,8 @@
 {
   "name": "flutter-supabase-helper",
   "displayName": "Flutter Supabase Helper — Hybrid SAST",
-  "description": "Multi-language SAST scanner with source-to-sink taint tracking, SARIF output, and 23 rules covering injection, JWT misuse, CORS, insecure cookies, hardcoded secrets, and Supabase RLS gaps.",
-  "version": "1.0.0",
+  "description": "Multi-language SAST scanner with IFDS taint tracking, SARIF output, and 24+ rules covering injection, JWT misuse, CORS, insecure cookies, hardcoded secrets, and Supabase RLS gaps.",
+  "version": "1.1.0",
   "publisher": "flutter-supabase-helper",
   "license": "MIT",
   "repository": {
@@ -56,6 +56,11 @@
   "contributes": {
     "commands": [
       {
+        "command": "flutter-supabase-helper.runSecurityChecks",
+        "title": "Flutter Supabase Helper: Run Security Checks",
+        "icon": "$(shield)"
+      },
+      {
         "command": "flutter-supabase-helper.scanWorkspace",
         "title": "Flutter Supabase Helper: Scan Workspace",
         "icon": "$(shield)"
@@ -94,15 +99,26 @@
     "menus": {
       "editor/title": [
         {
-          "command": "flutter-supabase-helper.scanWorkspace",
+          "command": "flutter-supabase-helper.runSecurityChecks",
           "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "flutter-supabase-helper.runSecurityChecks"
+        },
+        {
+          "command": "flutter-supabase-helper.scanWorkspace"
+        },
+        {
+          "command": "flutter-supabase-helper.scanFile"
         }
       ]
     }
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "test": "npm run compile && node scripts/precision-self-test.js && node scripts/taint-engine.test.js && node scripts/test-ast.js",
+    "test": "npm run compile && node scripts/precision-self-test.js && node scripts/taint-engine.test.js && node scripts/test-ast.js && node scripts/ifds-self-test.js",
     "test:taint": "npm run compile && node scripts/taint-engine.test.js",
     "watch": "tsc -watch -p ./",
     "stage-docs": "node -e \"const fs=require('fs');for(const f of ['README.md','LICENSE'])fs.copyFileSync('../'+f,f)\"",

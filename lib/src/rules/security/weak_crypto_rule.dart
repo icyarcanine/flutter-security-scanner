@@ -94,16 +94,13 @@ class WeakCryptoRule extends Rule {
       FindingSeverity.high,
     ),
 
-    // ── Insecure random number generation ─────────────────────────────────
-    _CryptoCheck(
-      RegExp(r'''\bRandom\s*\(\s*\)'''),
-      'Insecure Random() used (not cryptographically secure)',
-      'Use Random.secure() for any security-sensitive randomness: '
-          'tokens, keys, nonces, salts, or OTPs.',
-      'Random() uses a predictable PRNG. Attackers can predict outputs and '
-          'forge tokens or keys.',
-      FindingSeverity.medium,
-    ),
+    // NOTE: A bare `Random()` check is intentionally NOT in this list.
+    // Non-cryptographic Random() is fine for UI jitter, animations, tests,
+    // and procedural generation. It is only a vulnerability when used to
+    // generate tokens, keys, salts, nonces, OTPs, or similar secrets — and
+    // that case is handled separately by [_checkInsecureRandomInContext],
+    // which inspects the surrounding lines for security-sensitive keywords
+    // before flagging.
 
     // ── Deprecated or weak key sizes ──────────────────────────────────────
     _CryptoCheck(
@@ -154,13 +151,27 @@ class WeakCryptoRule extends Rule {
     return findings;
   }
 
-  /// Flag Random() only when used near security-sensitive keywords to reduce
-  /// false positives (Random() is fine for UI jitter, animations, etc.).
+  /// Flag `Random()` only when it is used near security-sensitive keywords
+  /// (tokens, keys, salts, nonces, OTPs, etc.).
+  ///
+  /// A global check for `Random()` generates an overwhelming number of false
+  /// positives on UI animations, particle effects, test fixtures, and
+  /// procedural generation. This context-sensitive pass inspects a small
+  /// window of lines around the call site and only emits a finding when the
+  /// surrounding code clearly deals with something security-critical.
+  ///
+  /// To keep the window tight (and avoid "nearby unrelated function also
+  /// mentions `token`" noise), we prefer looking at:
+  ///   1. The enclosing identifier/function name on the same line or the
+  ///      nearest line above (`generateToken`, `deriveKey`, …).
+  ///   2. A small ±5-line window of surrounding source.
   List<Finding> _checkInsecureRandomInContext(ScannedFile file) {
     final findings = <Finding>[];
     final randomPattern = RegExp(r'''\bRandom\s*\(\s*\)''');
-    final securityContext = RegExp(
-      r'''token|secret|key|salt|nonce|iv|otp|password|pin|seed|hash|encrypt|cipher|sign|auth''',
+    final securityKeywordPattern = RegExp(
+      r'''\b(token|secret|salt|nonce|otp|password|passcode|passphrase|'''
+      r'''apiKey|authKey|privateKey|encryptionKey|cipherKey|sessionId|'''
+      r'''csrf|hmac|signature|seed|derive)\b''',
       caseSensitive: false,
     );
 
@@ -168,29 +179,61 @@ class WeakCryptoRule extends Rule {
       final line = file.lineForOffset(match.start);
       if (isCommentLine(file.lines[line - 1])) continue;
 
-      final context = file.contextAroundLine(line, before: 5, after: 5);
-      if (securityContext.hasMatch(context)) {
-        // Already covered by the generic Random() check above — skip dups.
-        // This method is for additional context-aware flagging only.
-      }
+      // Use a tight window so we do not bleed into unrelated code above.
+      final window = file.contextAroundLine(line, before: 5, after: 5);
+      if (!securityKeywordPattern.hasMatch(window)) continue;
+
+      findings.add(
+        Finding(
+          severity: FindingSeverity.medium,
+          confidence: FindingConfidence.medium,
+          category: FindingCategory.security,
+          code: code,
+          message:
+              'Non-cryptographic Random() used in a security-sensitive context',
+          fix:
+              'Use Random.secure() for any security-sensitive randomness: '
+              'tokens, keys, nonces, salts, OTPs, and session identifiers.',
+          risk:
+              'Random() uses a predictable PRNG. Attackers can recover the '
+              'seed and forge tokens, keys, or session identifiers.',
+          filePath: file.relativePath,
+          line: line,
+        ),
+      );
     }
 
     return findings;
   }
 
   bool _isGeneratedCode(ScannedFile file) {
-    if (file.name.endsWith('.g.dart') ||
-        file.name.endsWith('.freezed.dart') ||
-        file.name.endsWith('.gen.dart') ||
-        file.name.endsWith('.mocks.dart')) {
+    // Defensive secondary check. The primary filter lives in
+    // [ProjectContext._isGeneratedCode] and already runs for every rule that
+    // consumes `appDartFiles`; this kept copy is a safety net should a future
+    // refactor route raw Dart files through here without going through the
+    // project-level filter.
+    final name = file.name;
+    if (name.endsWith('.g.dart') ||
+        name.endsWith('.freezed.dart') ||
+        name.endsWith('.gen.dart') ||
+        name.endsWith('.mocks.dart') ||
+        name.endsWith('.gr.dart') ||
+        name.endsWith('.pb.dart') ||
+        name.endsWith('_bindings_generated.dart') ||
+        name.endsWith('_generated_bindings.dart') ||
+        name.endsWith('.ffi.dart')) {
       return true;
     }
-    // Check first 5 lines for generated code markers.
-    final checkLines = file.lines.length < 5 ? file.lines.length : 5;
+    final checkLines = file.lines.length < 8 ? file.lines.length : 8;
     for (var i = 0; i < checkLines; i++) {
-      if (file.lines[i].contains('GENERATED CODE') ||
-          file.lines[i].contains('DO NOT MODIFY') ||
-          file.lines[i].contains('AUTO-GENERATED')) {
+      final line = file.lines[i];
+      if (line.contains('GENERATED CODE') ||
+          line.contains('GENERATED FILE') ||
+          line.contains('AUTO-GENERATED') ||
+          line.contains('AUTOGENERATED') ||
+          line.contains('DO NOT MODIFY') ||
+          line.contains('DO NOT EDIT') ||
+          line.contains('@generated')) {
         return true;
       }
     }

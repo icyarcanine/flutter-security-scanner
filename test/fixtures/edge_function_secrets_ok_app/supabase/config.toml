@@ -1,0 +1,8 @@
+project_id = "example-project"
+
+[api]
+enabled = true
+port = 54321
+
+[functions.hello]
+verify_jwt = true

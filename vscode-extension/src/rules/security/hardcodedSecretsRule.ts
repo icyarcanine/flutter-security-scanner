@@ -1,5 +1,5 @@
 import { Rule, RuleStage } from '../rule';
-import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
+import { Finding, FindingSeverity, FindingCategory, FindingConfidence, DetectionMethod } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 import { ScannedFile } from '../../scanner/scannedFile';
 import { isCommentLine } from '../ruleHelpers';
@@ -48,6 +48,7 @@ export class HardcodedSecretsRule implements Rule {
         findings.push(new Finding({
           severity: FindingSeverity.high,
           confidence: FindingConfidence.high,
+          detectionMethod: DetectionMethod.regex,
           category: FindingCategory.security,
           code: this.code,
           message: 'Hardcoded Supabase anon key detected',
@@ -77,6 +78,7 @@ export class HardcodedSecretsRule implements Rule {
       findings.push(new Finding({
         severity: FindingSeverity.medium,
         confidence: FindingConfidence.high,
+        detectionMethod: DetectionMethod.regex,
         category: FindingCategory.security,
         code: this.code,
         message: 'Hardcoded Supabase URL detected',
@@ -104,6 +106,7 @@ export class HardcodedSecretsRule implements Rule {
       findings.push(new Finding({
         severity: FindingSeverity.medium,
         confidence: FindingConfidence.high,
+        detectionMethod: DetectionMethod.regex,
         category: FindingCategory.security,
         code: this.code,
         message: 'Hardcoded Supabase URL detected in YAML config',

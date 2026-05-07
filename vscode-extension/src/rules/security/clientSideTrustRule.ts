@@ -1,5 +1,5 @@
 import { Rule, RuleStage } from '../rule';
-import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
+import { Finding, FindingSeverity, FindingCategory, FindingConfidence, DetectionMethod } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 
 export class ClientSideTrustRule implements Rule {
@@ -13,6 +13,7 @@ export class ClientSideTrustRule implements Rule {
       findings.push(new Finding({
         severity: FindingSeverity.medium,
         confidence: FindingConfidence.medium,
+        detectionMethod: DetectionMethod.structural,
         category: FindingCategory.security,
         code: this.code,
         message: 'Supabase query relies on a client-provided user identifier',

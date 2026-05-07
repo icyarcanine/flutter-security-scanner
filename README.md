@@ -1,15 +1,26 @@
 # Flutter Supabase Helper — Hybrid SAST Engine
 
-A static application security testing (SAST) tool available as a VS Code
-extension and a headless CLI. Detects security vulnerabilities, hardcoded
-secrets, and misconfigurations across multiple languages using a three-stage
-analysis pipeline.
+A static application security testing (SAST) toolkit for Flutter + Supabase
+projects. The repository ships **two separate scanners** that share the same
+finding codes but run different engines:
+
+| Component | Location | Engine | When to use it |
+|-----------|----------|--------|----------------|
+| **VS Code extension** | `vscode-extension/` | Regex **+** tree-sitter AST **+** taint tracking — intra-procedural for JS/TS, **inter-procedural IFDS for Dart** (TypeScript, Node.js, `web-tree-sitter@0.21.0`) | Day-to-day authoring — inline quick fixes, AST/REGEX badges, taint-confirmed findings |
+| **Dart CLI** | `bin/fluttersupabasehelper.dart` | Regex-only, Flutter-/Supabase-specific rules (Dart) | CI gating on Flutter apps, headless scans, local `dart run` |
+
+The Dart CLI deliberately **does not** use tree-sitter or taint tracking. It is a
+fast, zero-dependency lint pass that complements `dart analyze` with Flutter- and
+Supabase-specific checks (missing RLS awareness, committed `.env`, unobscured
+password fields, weak platform manifests, etc.). Everything under "Analysis
+Pipeline", "Taint Model", and "Confidence Levels" below describes the **VS Code
+extension engine**, not the CLI.
 
 **Production features:** SARIF 2.1.0 output, CWE taxonomy, data-flow paths
 in findings, AST-aware inline suppressions, content-hash baselines, git diff
 mode for PR-style scans, parallel rule execution, multi-root workspaces,
 on-save scanning, per-rule disable, statement-aware suppression boundary,
-and 14 unit-tested taint engine invariants.
+inter-procedural IFDS for Dart, and 26 unit-tested taint engine invariants.
 
 ## What It Detects
 
@@ -30,24 +41,25 @@ and 14 unit-tested taint engine invariants.
 - **Unsafe patterns** — sensitive logging, debug artifacts, client-side
   trust violations, missing upload validation
 
-Every finding carries a CWE identifier (e.g. `CWE-89` SQL injection,
+Every security finding carries a CWE identifier (e.g. `CWE-89` SQL injection,
 `CWE-78` command, `CWE-918` SSRF, `CWE-79` XSS, `CWE-338` insecure random,
 `CWE-347` JWT, `CWE-942` CORS, `CWE-798` hardcoded credentials).
 
-## Supported Languages
+## Supported Languages (VS Code extension)
 
 | Tier | Languages | Analysis |
 |------|-----------|----------|
-| **Full** | JavaScript, TypeScript, JSX, TSX, Dart | Regex + AST + intra-procedural taint tracking |
+| **Full** | JavaScript, TypeScript, JSX, TSX | Regex + AST + intra-procedural taint tracking |
+| **Full (IFDS)** | Dart | Regex + AST + intra-procedural taint tracking + inter-procedural IFDS (`ifds-taint`) |
 | **AST** | Python, Go, Java | Regex + AST structural patterns |
 | **Regex** | SQL, YAML, JSON, `.env` | Heuristic rules only |
 
-## Analysis Pipeline
+## Analysis Pipeline (VS Code extension)
 
 1. **Regex** — fast heuristic pass across all files
 2. **AST** — selective parsing via `web-tree-sitter` WASM grammars
 3. **Taint tracking** — intra-procedural data-flow analysis with provenance
-   capture (JS, TS, Dart)
+   capture (JS/TS), plus inter-procedural IFDS for Dart (`ifds-taint` rule)
 
 Rules within each stage run in **parallel** (`Promise.all`); stages
 themselves run sequentially because later stages depend on caches built by
@@ -127,6 +139,33 @@ Example chain for `db.query("SELECT … " + sql)` where `sql = "…" + id`,
 4. line 4   — sink: db.query
 ```
 
+### Inter-procedural IFDS (Dart, `ifds-taint`)
+
+In addition to the intra-procedural tracker above, Dart projects get a
+second pass backed by a Reps-Horwitz-Sagiv tabulation IFDS solver. It
+runs as stage-3 rule `ifds-taint` and reports `Tainted value flows into
+sink '<name>' (IFDS)` at HIGH severity / HIGH confidence.
+
+- **Inter-procedural and context-sensitive** via procedure summaries
+  (path-edges keyed by entry fact, `pendingCallers` for late-summary
+  propagation).
+- **Branching CFG**: if/else, while, do-while, for-in, try/catch/finally
+  (flattened — sound, occasionally over-approximates).
+- **Strong kills** on clean reassignment; additive (augmented)
+  assignment preserves taint.
+- **Sources** (name-based heuristic): parameters named `userInput`,
+  `input`, `req`, `request`, `payload`, `data`, `body`, `query`,
+  `params`. Real HTTP / storage / SharedPreferences / stdin sources are
+  not yet modeled — expect false negatives.
+- **Sinks** are shared with the intra-procedural tracker (SQL, command,
+  code, HTML).
+- **Sanitizers** are shared too, and are unlabeled: any recognised
+  sanitizer clears taint for any sink (conservative but imprecise).
+
+The existing intra-procedural `InjectionRule` still runs; `ifds-taint`
+complements it. Duplicate findings on the same line are de-duped by the
+scanner.
+
 ### Confidence Levels
 
 | Confidence | Source | Typical FP Rate |
@@ -136,6 +175,22 @@ Example chain for `db.query("SELECT … " + sql)` where `sql = "…" + id`,
 | **LOW** | Regex / entropy heuristic | Higher — informational |
 
 ## CLI Usage
+
+### Dart CLI (regex-only, ships from the repo root)
+
+The Dart CLI is the recommended path for scanning a Flutter + Supabase app from CI or a terminal without Node.js. It loads the project, runs the rule set in `lib/src/rules/`, and prints human-readable findings.
+
+```bash
+dart run fluttersupabasehelper              # scan the current directory
+dart run fluttersupabasehelper ./my-project # scan a specific path
+dart run fluttersupabasehelper --no-suggestions
+```
+
+Exit code `1` when any non-suggestion finding is reported, `0` otherwise — drop it straight into CI.
+
+The Dart CLI does **not** perform AST parsing or taint tracking. It uses targeted regular expressions plus a small amount of statement-level context (nearest `.from(...)` call, nearby filter methods, comment-line heuristics). That keeps it fast (< 1 s on a typical Flutter repo) and hermetic, at the cost of missing data-flow vulnerabilities that only surface across multiple statements. For those, use the VS Code extension.
+
+### Node CLI (ships with the VS Code extension)
 
 ```bash
 npx flutter-supabase-helper scan ./my-project
@@ -234,6 +289,10 @@ db.query(
 // sast-ignore injection-flaw
 db.query("ok"  + req.body.id);
 db.query("FN"  + req.body.id);   // NOT suppressed — separate statement
+
+// IFDS-confirmed taint can also be suppressed by code:
+// sast-ignore ifds-taint
+db.rawQuery(userInput);
 ```
 
 The window is brace/paren-balanced and terminates at the first `;` or `}`,
@@ -308,13 +367,23 @@ values fall through to a safer default.
 
 ## Limitations
 
-- Intra-procedural taint only — no cross-function or cross-file tracking
-- Python, Go, Java have AST grammars but limited source/sink coverage
-- No CFG-based path-sensitive analysis (conditional sanitization is
-  conservatively *not* trusted, which biases toward false positives over
-  false negatives)
-- Comment-based suppression can be added by anyone with commit access; CI
-  policies should review/restrict suppression patterns
+- JS/TS taint is intra-procedural only — no cross-function or cross-file
+  tracking. Dart has an additional inter-procedural IFDS pass
+  (`ifds-taint`).
+- IFDS sources are a name-based heuristic; real HTTP / storage /
+  SharedPreferences / stdin sources are not modeled yet. No taint
+  labels — any sanitizer clears for any sink. No `await` / cascade /
+  named arguments / field-sensitive / collection / implicit-`this`
+  modeling. Virtual dispatch resolves by last-name only.
+- Python, Go, Java have AST grammars but limited source/sink coverage and
+  no taint models.
+- Non-Dart languages: no CFG-based path-sensitive analysis (conditional
+  sanitization is conservatively *not* trusted, which biases toward false
+  positives over false negatives).
+- Framework coverage limited to Express.js (`req.body/query/params`).
+- Entropy detection is probabilistic — some benign strings flagged at LOW.
+- Comment-based suppression can be added by anyone with commit access;
+  CI policies should review/restrict suppression patterns.
 
 ## Tests
 
@@ -325,10 +394,14 @@ npm run compile && npm test
 Runs in order:
 1. `precision-self-test.js` — end-to-end fixture sweep covering 17 rule
    interactions across JS / Dart / Python / test-path noise.
-2. `taint-engine.test.js` — 14 unit-style invariants for the
+2. `taint-engine.test.js` — 26 unit-style invariants for the
    `IntraProceduralTaintTracker` (source seeding, sanitizer recognition,
-   receiver heuristic, sink kinds, reassignment, parameterization).
+   receiver heuristic, sink kinds, reassignment, parameterization, all
+   four CWE-tagged new rules, comment immunity, git porcelain regression,
+   `Promise.all` concurrency stability).
 3. `test-ast.js` — AST grammar load smoke test.
+4. `ifds-self-test.js` — IFDS Dart taint engine fixtures (sources,
+   sinks, sanitizers, inter-procedural propagation).
 
 ## Requirements
 

@@ -1113,19 +1113,12 @@ export class IntraProceduralTaintTracker {
     // both styles fall through the same regexes.
     let compact = node.text.replace(/\s+/g, '').replace(/\?\./g, '.');
     compact = compact.replace(/\[(?:'([^']+)'|"([^"]+)")\]/g, (_m, a, b) => '.' + (a ?? b));
+
+    // ── Node/Express + browser ────────────────────────────────────────────
     if (/^(?:req|request)\.(?:body|query|params|file|files)(?:\.|\[|$)/.test(compact)) {
       return true;
     }
     if (/^(?:req|request)\.(?:uri\.queryparameters|queryparameters|headers|cookies|signedCookies|session|rawHeaders)(?:\.|\[|$)/i.test(compact)) {
-      return true;
-    }
-    if (/^(?:stdin|io\.stdin)\.readlinesync\(/i.test(compact)) {
-      return true;
-    }
-    if (/^platform\.environment(?:\.|\[|$)/i.test(compact)) {
-      return true;
-    }
-    if (/(?:^|\.)(?:text|value)$/.test(compact) && /controller|field|input/i.test(compact)) {
       return true;
     }
     if (/^process\.env(?:\.|\[|$)/.test(compact)) {
@@ -1134,7 +1127,8 @@ export class IntraProceduralTaintTracker {
     if (/^(?:process\.)?stdin(?:\.|\[|$)/i.test(compact)) {
       return true;
     }
-    // Flask / Django sources
+
+    // ── Python frameworks ─────────────────────────────────────────────────
     if (/^request\.(?:args|form|values|json|cookies|headers|files|data)(?:\.|\[|$)/.test(compact)) {
       return true;
     }
@@ -1145,6 +1139,71 @@ export class IntraProceduralTaintTracker {
     if (/^request\.(?:query_params|path_params)(?:\.|\[|$)/.test(compact)) {
       return true;
     }
+
+    // ── Dart / Flutter ────────────────────────────────────────────────────
+    // Gemini correctly pointed out that the taint engine's Node/Express bias
+    // left Dart sources essentially invisible. This block recognises the
+    // idioms a real Flutter app uses to accept untrusted input: text field
+    // controllers, deep-link query parameters, platform channel arguments,
+    // route arguments, platform environment, stdin, and file pickers.
+    if (/^(?:stdin|io\.stdin)\.readlinesync\(/i.test(compact)) {
+      return true;
+    }
+    if (/^platform\.environment(?:\.|\[|$)/i.test(compact)) {
+      return true;
+    }
+    // TextEditingController / TextField value access.
+    // Matches `_nameController.text`, `emailController.value.text`,
+    // `_searchField.text`, `userInput.text`, etc. The `controller|field|input`
+    // disambiguator keeps us from flagging unrelated `.text` getters.
+    if (/(?:^|\.)(?:text|value)(?:\.|\[|$)/.test(compact) && /controller|field|input|textediting/i.test(compact)) {
+      return true;
+    }
+    // Uri.base.queryParameters / Uri.parse(...).queryParameters — the standard
+    // way Flutter reads deep-link and web query string values.
+    if (/(?:^|\.)queryparameters(?:all)?(?:\.|\[|$)/i.test(compact)) {
+      return true;
+    }
+    // GoRouter / ModalRoute arguments — the common route parameter plumbing.
+    if (/(?:^|\.)(?:pathparameters|pathparams|queryparameters|extra)(?:\.|\[|$)/i.test(compact)) {
+      return true;
+    }
+    if (/\bmodalroute\.of\([^)]*\)[.!]?\.settings[.!]?\.arguments\b/i.test(compact)) {
+      return true;
+    }
+    if (/\bgorouterstate\.(?:of|\w+)/i.test(compact) && /(?:params|pathparameters|queryparameters|extra)/i.test(compact)) {
+      return true;
+    }
+    // Platform channel / MethodCall arguments — `call.arguments` inside an
+    // `onMethodCall` handler, `methodChannel.invokeMethod(...)` return values
+    // are harder to track statically, but `call.arguments` is unambiguous.
+    if (/(?:^|\.)(?:methodcall|call)\.arguments(?:\.|\[|$)/i.test(compact)) {
+      return true;
+    }
+    // Clipboard — anything pasted from the clipboard is attacker-controlled.
+    if (/\bclipboard\.getdata\(/i.test(compact) || /(?:^|\.)clipboarddata(?:\.|\[|$)/i.test(compact)) {
+      return true;
+    }
+    // File pickers — returned file paths are attacker-controlled (user can
+    // pick any file; bypass controls via symlinks etc.).
+    if (/\bfilepicker\.platform\.(?:pickfiles|pickdirectory|getfile)/i.test(compact)) {
+      return true;
+    }
+    if (/\bimagepicker\(\)?\.pick(?:image|video|multiimage|media)/i.test(compact)) {
+      return true;
+    }
+    // String.fromEnvironment / bool.fromEnvironment / int.fromEnvironment:
+    // compile-time defines, treated as attacker-controlled for taint
+    // purposes when they flow into a sink (an attacker building the app
+    // can set these).
+    if (/^(?:string|bool|int)\.fromenvironment\(/i.test(compact)) {
+      return true;
+    }
+    // Dart's HttpRequest / shelf / frog Request
+    if (/^(?:httprequest|request)\.(?:uri|headers|cookies|requestedUri)(?:\.|\[|$)/i.test(compact)) {
+      return true;
+    }
+
     return false;
   }
 
@@ -1298,6 +1357,75 @@ export class IntraProceduralTaintTracker {
         /\.search_s$/i.test(fullName) ||
         /^ldap\.searchEntries?$/i.test(fullName)) {
       return { name: fullName, kind: 'sql' };
+    }
+
+    // ── Dart / Flutter sinks ──────────────────────────────────────────────
+    // Gemini's critique was right that the engine had full Node/Python
+    // sinks but nothing for Dart. These cover the real exposure points in
+    // a Flutter app: filesystem, subprocess, webview JS, URL launchers.
+
+    // Dart File(...) / Directory(...) constructor — tainted path is a
+    // direct path-traversal vulnerability. We match the constructor call
+    // (`File(x)`, `Directory(x)`) by exact name rather than by method
+    // suffix because method names like `File` are rare and unambiguous.
+    if (bareName === 'File' || bareName === 'Directory') {
+      return { name: fullName, kind: 'path' };
+    }
+    if (/^file\.(?:fromUri|fromRawPath)$/i.test(fullName)) {
+      return { name: fullName, kind: 'path' };
+    }
+    // Flutter rootBundle load from a dynamic asset path.
+    if (/^rootbundle\.(?:loadstring|load|loadbuffer|loadstructuredata|loadstructuredbinarydata)$/i.test(fullName)) {
+      return { name: fullName, kind: 'path' };
+    }
+
+    // Dart Process.run / Process.start / Process.runSync — classic command
+    // injection when the executable OR the argument list is tainted. The
+    // sink slot is special here: `Process.run('sh', ['-c', tainted])` is
+    // unsafe even though arg 0 is the shell — the taint engine's "first arg"
+    // rule handles the executable case; for the argument-list case we fall
+    // back to `_isDynamicSinkCall` which walks the whole call.
+    if (/^process\.(?:run|start|runsync)$/i.test(fullName)) {
+      return { name: fullName, kind: 'command' };
+    }
+
+    // WebView JavaScript evaluation — direct code execution in a webview
+    // context. Dart webview APIs use several names across versions; we
+    // cover the common ones.
+    if (/(?:^|\.)(?:runjavascript|runjavascriptreturningresult|evaluatejavascript)$/i.test(fullName)) {
+      return { name: fullName, kind: 'code' };
+    }
+    // WebView loading a dynamic URL — open redirect / phishing vector.
+    if (/(?:^|\.)(?:loadurl|loadrequest|loadhtmlstring|loadflutterasset)$/i.test(fullName)) {
+      return { name: fullName, kind: 'url' };
+    }
+
+    // url_launcher / launchUrl — opening an attacker-controlled URL can
+    // trigger app-scheme hijacks or phishing.
+    if (bareName === 'launchurl' || bareName === 'launch' ||
+        lowerFull === 'urllauncher.launchurl' || lowerFull === 'urllauncher.launch') {
+      return { name: fullName, kind: 'url' };
+    }
+
+    // Dart HTTP clients: http.get / http.post / Dio / Client().send / etc.
+    // Tainted URL passed to these is SSRF (server-side) or arbitrary URL
+    // fetch (client-side, still an exposure when combined with response
+    // parsing).
+    if (/^http\.(?:get|post|put|delete|patch|head|read|readbytes)$/i.test(fullName)) {
+      return { name: fullName, kind: 'url' };
+    }
+    if (/(?:^|\.)dio\.(?:get|post|put|delete|patch|head|request|fetch|download)$/i.test(fullName)) {
+      return { name: fullName, kind: 'url' };
+    }
+    if (/(?:^|\.)(?:httpclient|client)\.(?:getUrl|postUrl|putUrl|deleteUrl|patchUrl|headUrl|openurl)$/i.test(fullName)) {
+      return { name: fullName, kind: 'url' };
+    }
+
+    // Navigator.pushNamed — route name injection. Treated as a url-kind
+    // sink so the same "confirmed taint only" policy applies (dynamic
+    // route names are common and mostly benign).
+    if (/(?:^|\.)pushnamed(?:andremoveuntil|andremoveuntilnotransition)?$/i.test(fullName)) {
+      return { name: fullName, kind: 'url' };
     }
 
     return null;

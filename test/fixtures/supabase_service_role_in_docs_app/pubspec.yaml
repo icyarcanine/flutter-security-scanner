@@ -1,0 +1,4 @@
+name: supabase_service_role_in_docs_app
+description: Positive fixture — service_role JWT leaked inside project docs.
+environment:
+  sdk: '>=3.0.0 <4.0.0'

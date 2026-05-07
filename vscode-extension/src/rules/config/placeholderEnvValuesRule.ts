@@ -1,5 +1,5 @@
 import { Rule, RuleStage } from '../rule';
-import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
+import { Finding, FindingSeverity, FindingCategory, FindingConfidence, DetectionMethod } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 
 const SENSITIVE_KEYS = new Set(['SUPABASE_URL', 'SUPABASE_ANON_KEY']);
@@ -18,6 +18,7 @@ export class PlaceholderEnvValuesRule implements Rule {
       findings.push(new Finding({
         severity: FindingSeverity.low,
         confidence: FindingConfidence.high,
+        detectionMethod: DetectionMethod.config,
         category: FindingCategory.config,
         code: this.code,
         message: `${entry.key} appears to be a placeholder value in ${entry.file.name}`,

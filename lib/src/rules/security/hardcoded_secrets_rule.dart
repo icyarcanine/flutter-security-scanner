@@ -42,7 +42,11 @@ class HardcodedSecretsRule extends Rule {
   List<Finding> _findHardcodedAnonKeys(ScannedFile file) {
     final findings = <Finding>[];
     final patterns = <RegExp>[
-      RegExp(r'''anonKey\s*:\s*['"]([^'"]{20,})['"]\s'''),
+      // Previously required a trailing `\s` after the closing quote, which
+      // missed tight syntax like `anonKey:'eyJ…',`. The trailing constraint
+      // is unnecessary — the string literal is already delimited by the
+      // matching quote.
+      RegExp(r'''anonKey\s*:\s*['"]([^'"]{20,})['"]'''),
       RegExp(r'''SUPABASE_ANON_KEY\s*[:=]\s*['"]([^'"]{20,})['"]'''),
       RegExp(
         r'''\bSupabaseClient\s*\(\s*['"][^'"]+['"]\s*,\s*['"]([^'"]{20,})['"]''',
@@ -63,7 +67,8 @@ class HardcodedSecretsRule extends Rule {
         if (!seenLines.add(line)) {
           continue;
         }
-        if (isCommentLine(file.lines[line - 1])) {
+        if (isOffsetCommented(file, match.start) ||
+            isCommentLine(file.lines[line - 1])) {
           continue;
         }
 
@@ -184,7 +189,8 @@ class HardcodedSecretsRule extends Rule {
 
     for (final match in firebaseKeyPattern.allMatches(file.content)) {
       final line = file.lineForOffset(match.start);
-      if (isCommentLine(file.lines[line - 1])) continue;
+      if (isOffsetCommented(file, match.start) ||
+          isCommentLine(file.lines[line - 1])) continue;
 
       findings.add(
         Finding(
@@ -222,7 +228,8 @@ class HardcodedSecretsRule extends Rule {
       if (_looksLikePlaceholder(value)) continue;
 
       final line = file.lineForOffset(match.start);
-      if (isCommentLine(file.lines[line - 1])) continue;
+      if (isOffsetCommented(file, match.start) ||
+          isCommentLine(file.lines[line - 1])) continue;
 
       findings.add(
         Finding(

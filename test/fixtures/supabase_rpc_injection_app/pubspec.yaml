@@ -1,0 +1,9 @@
+name: supabase_rpc_injection_app
+description: Positive fixture — dynamic RPC names and interpolated PostgREST filters.
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  supabase_flutter: ^2.0.0

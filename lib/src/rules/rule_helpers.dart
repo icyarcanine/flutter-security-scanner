@@ -109,6 +109,16 @@ bool isCommentLine(String line) {
       trimmed.startsWith('/*');
 }
 
+/// Returns true when [offset] in [file] is inside a `// …` line comment or a
+/// `/* … */` block comment. Prefer this over [isCommentLine] for rules that
+/// want to ignore vulnerabilities sitting inside multi-line block comments —
+/// the line-based check only inspects whether a line *starts* with a comment
+/// token, which misses any block comment whose opening `/*` is on a
+/// different line.
+bool isOffsetCommented(ScannedFile file, int offset) {
+  return file.isOffsetInsideComment(offset);
+}
+
 Location? firstReferenceFor(
   ProjectContext context,
   String token, {

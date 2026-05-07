@@ -1,0 +1,9 @@
+name: hive_encrypted_ok_app
+description: Negative fixture — Hive with encryptionCipher is acceptable.
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  hive: ^2.2.3

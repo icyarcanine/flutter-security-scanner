@@ -1,5 +1,5 @@
 import { Rule, RuleStage } from '../rule';
-import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
+import { Finding, FindingSeverity, FindingCategory, FindingConfidence, DetectionMethod } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 
 export class FileUploadValidationRule implements Rule {
@@ -18,6 +18,7 @@ export class FileUploadValidationRule implements Rule {
       findings.push(new Finding({
         severity: FindingSeverity.medium,
         confidence: FindingConfidence.medium,
+        detectionMethod: DetectionMethod.structural,
         category: FindingCategory.security,
         code: this.code,
         message: `Upload call is missing nearby ${missing.join(' and ')} validation`,

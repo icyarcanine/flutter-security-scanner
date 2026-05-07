@@ -1,5 +1,5 @@
 import { Rule, RuleStage } from '../rule';
-import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
+import { Finding, FindingSeverity, FindingCategory, FindingConfidence, DetectionMethod } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 import { firstReferenceFor } from '../ruleHelpers';
 
@@ -19,6 +19,7 @@ export class ImproperInitializationRule implements Rule {
     return [new Finding({
       severity: FindingSeverity.medium,
       confidence: FindingConfidence.high,
+      detectionMethod: DetectionMethod.structural,
       category: FindingCategory.config,
       code: this.code,
       message: 'supabase_flutter is used but Supabase.initialize(...) was not found',

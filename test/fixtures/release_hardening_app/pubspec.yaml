@@ -1,0 +1,8 @@
+name: release_hardening_app
+description: Fixture for the release-hardening rule (weak release buildType and unobfuscated build command).
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter

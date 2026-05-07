@@ -1,0 +1,19 @@
+# fluttersupabasehelper config for this fixture.
+#
+# Demonstrates the config file features:
+#   * `rules.<code>: off`                 — disable a rule entirely.
+#   * `rules.<code>.severity: <level>`    — downgrade / upgrade a rule.
+#   * `exclude`                           — global path globs.
+
+fail_on: high
+
+exclude:
+  - build/**
+
+rules:
+  # Suggestions are off for this fixture — suppress entirely.
+  rls-policy-suggestion: off
+  # Downgrade the long-lived signed URL from HIGH to LOW so fail_on=high
+  # does not turn the fixture red.
+  supabase-signed-url-ttl:
+    severity: low

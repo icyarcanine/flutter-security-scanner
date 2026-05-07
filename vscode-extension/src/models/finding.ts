@@ -19,6 +19,34 @@ export enum FindingConfidence {
   low = 'low',
 }
 
+/**
+ * How a finding was detected. The tool used to conflate confidence with the
+ * detection method and hardcoded "confirmed via taint analysis" for every
+ * HIGH finding — including hardcoded secrets and committed `.env` files,
+ * which have nothing to do with taint analysis. That was misleading.
+ *
+ * Detection method is now an explicit per-finding field. Every rule declares
+ * how it arrived at its result, and the human-readable reason is derived from
+ * both the confidence level AND the detection method so the explanation
+ * always tells the truth about what the scanner actually did.
+ */
+export enum DetectionMethod {
+  /** Intra-procedural taint tracking: a recognised source flows into a recognised sink. */
+  taint = 'taint',
+  /** AST structural match: a specific, unambiguous syntactic shape (e.g. `eval(...)`). */
+  structural = 'structural',
+  /** Regex match against a known-bad signature (e.g. `AKIA[0-9A-Z]{16}`). */
+  regex = 'regex',
+  /** Shannon-entropy secret scanning on string literals / assignments. */
+  entropy = 'entropy',
+  /** Inspected configuration files (AndroidManifest, Info.plist, pubspec, gradle, yaml). */
+  config = 'config',
+  /** Filesystem state (e.g. `.env` committed to the repo, `build/` present). */
+  filesystem = 'filesystem',
+  /** Ad-hoc heuristic — lowest-trust signal. */
+  heuristic = 'heuristic',
+}
+
 export function severityLabel(s: FindingSeverity): string {
   return s.toUpperCase();
 }
@@ -39,21 +67,80 @@ export function confidenceLabel(c: FindingConfidence): string {
   return c.toUpperCase();
 }
 
+export function detectionMethodLabel(m: DetectionMethod): string {
+  return m;
+}
+
 /**
- * Human-readable explanation of why the confidence level was assigned.
- * Designed to build developer trust in findings.
+ * Human-readable explanation of why a finding has its confidence level.
+ *
+ * The reason is a function of BOTH the confidence level and the detection
+ * method — claiming "confirmed via taint analysis" on a regex-matched
+ * hardcoded secret would be dishonest. Each (confidence, method) pair gets
+ * its own accurate sentence so developers can calibrate their trust.
  */
-export function confidenceReason(c?: FindingConfidence): string {
+export function confidenceReason(c?: FindingConfidence, m?: DetectionMethod): string {
+  if (c == null) { return 'Confidence not assessed'; }
+
+  const method = m ?? DetectionMethod.heuristic;
+
   switch (c) {
     case FindingConfidence.high:
-      return 'User-controlled input reaches a dangerous sink (confirmed via taint analysis)';
+      switch (method) {
+        case DetectionMethod.taint:
+          return 'User-controlled input flows into a dangerous sink (confirmed via intra-procedural taint analysis)';
+        case DetectionMethod.structural:
+          return 'Unambiguous AST match for a dangerous construct';
+        case DetectionMethod.regex:
+          return 'Regex match against a known-bad signature with high specificity';
+        case DetectionMethod.entropy:
+          return 'High-entropy string matching a known credential format';
+        case DetectionMethod.config:
+          return 'Confirmed from configuration file contents';
+        case DetectionMethod.filesystem:
+          return 'Confirmed from repository filesystem state';
+        case DetectionMethod.heuristic:
+          return 'High-confidence heuristic match';
+      }
+      break;
     case FindingConfidence.medium:
-      return 'Suspicious pattern detected via AST structural analysis, but no data flow confirmation';
+      switch (method) {
+        case DetectionMethod.taint:
+          return 'Indirect taint flow through an opaque wrapper (not fully confirmed)';
+        case DetectionMethod.structural:
+          return 'Suspicious AST pattern without data-flow confirmation';
+        case DetectionMethod.regex:
+          return 'Regex match that may have legitimate uses — review in context';
+        case DetectionMethod.entropy:
+          return 'Moderately entropic string in a sensitive position';
+        case DetectionMethod.config:
+          return 'Configuration pattern that is commonly but not always unsafe';
+        case DetectionMethod.filesystem:
+          return 'Filesystem state that often but not always indicates a problem';
+        case DetectionMethod.heuristic:
+          return 'Medium-confidence heuristic — verify in context';
+      }
+      break;
     case FindingConfidence.low:
-      return 'Heuristic match (regex or entropy), may be a false positive — verify manually';
-    default:
-      return 'Confidence not assessed';
+      switch (method) {
+        case DetectionMethod.taint:
+          return 'Weak taint signal — may be a false positive';
+        case DetectionMethod.structural:
+          return 'Structural hint only — verify manually';
+        case DetectionMethod.regex:
+          return 'Heuristic regex match — may be a false positive, verify manually';
+        case DetectionMethod.entropy:
+          return 'Entropy-based match — may be a false positive, verify manually';
+        case DetectionMethod.config:
+          return 'Configuration hint — verify manually';
+        case DetectionMethod.filesystem:
+          return 'Filesystem hint — verify manually';
+        case DetectionMethod.heuristic:
+          return 'Low-confidence heuristic — verify manually';
+      }
+      break;
   }
+  return 'Confidence not assessed';
 }
 
 export interface FindingOptions {
@@ -64,6 +151,11 @@ export interface FindingOptions {
   risk?: string;
   severity?: FindingSeverity;
   confidence?: FindingConfidence;
+  /**
+   * How this finding was produced. Drives the human-readable confidence
+   * explanation so we never claim "taint analysis" on a regex match again.
+   */
+  detectionMethod?: DetectionMethod;
   filePath?: string;
   line?: number;
   /**
@@ -103,6 +195,7 @@ export class Finding {
   readonly severity?: FindingSeverity;
   readonly category: FindingCategory;
   readonly confidence?: FindingConfidence;
+  readonly detectionMethod?: DetectionMethod;
   readonly code: string;
   readonly message: string;
   readonly fix: string;
@@ -120,6 +213,7 @@ export class Finding {
     this.severity = opts.severity;
     this.category = opts.category;
     this.confidence = opts.confidence;
+    this.detectionMethod = opts.detectionMethod;
     this.code = opts.code;
     this.message = opts.message;
     this.fix = opts.fix;
@@ -139,7 +233,7 @@ export class Finding {
   }
 
   get confidenceReason(): string {
-    return confidenceReason(this.confidence);
+    return confidenceReason(this.confidence, this.detectionMethod);
   }
 
   get locationLabel(): string {

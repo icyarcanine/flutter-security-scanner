@@ -4,17 +4,28 @@ import '../../models/scanned_file.dart';
 import '../../rule.dart';
 import '../rule_helpers.dart';
 
-/// Detects usage of eval() and Function() constructors that execute arbitrary
-/// code at runtime — a common code injection vector.
+/// Detects usage of `eval(...)` and `Function.apply(...)` — the only runtime
+/// code-evaluation entry points reachable from Dart.
+///
+/// A bare `Function(...)` expression is NOT flagged: in Dart `Function` is a
+/// type, so `void Function()`, `Function() callback`, and `typedef Foo =
+/// Function()` are all declarations — not executable code. The older pattern
+/// `\bFunction\s*\(` generated thousands of false positives on idiomatic Dart
+/// and has been removed.
 class UnsafeEvalRule extends Rule {
   const UnsafeEvalRule();
 
   @override
   String get code => 'unsafe-eval';
 
+  // `eval(` covers `dart:js` / `dart:js_interop` bridges such as
+  // `js.context.callMethod('eval', [...])` or a helper named `eval(...)`.
   static final _evalPattern = RegExp(r'''\beval\s*\(''');
 
-  static final _functionConstructorPattern = RegExp(r'''\bFunction\s*\(''');
+  // `Function.apply(...)` is Dart's reflective invocation API. It is NOT a
+  // string-eval, but it can still invoke arbitrary closures with arbitrary
+  // arguments; flagging it is worthwhile as a medium-confidence signal.
+  static final _functionApplyPattern = RegExp(r'''\bFunction\s*\.\s*apply\s*\(''');
 
   @override
   List<Finding> evaluate(ProjectContext context) {
@@ -22,7 +33,12 @@ class UnsafeEvalRule extends Rule {
 
     for (final file in context.appDartFiles) {
       _scanPattern(file, _evalPattern, 'eval()', findings);
-      _scanPattern(file, _functionConstructorPattern, 'Function()', findings);
+      _scanPattern(
+        file,
+        _functionApplyPattern,
+        'Function.apply()',
+        findings,
+      );
     }
 
     return findings;

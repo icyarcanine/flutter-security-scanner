@@ -18,6 +18,15 @@ String dirname(String path) {
   return normalized.substring(0, slashIndex);
 }
 
+String joinPath(String directory, String name) {
+  if (directory.isEmpty) return name;
+  final normalized = normalizePath(directory);
+  if (normalized.endsWith('/')) {
+    return '$normalized$name';
+  }
+  return '$normalized/$name';
+}
+
 String relativePath(String rootPath, String fullPath) {
   final normalizedRoot = normalizePath(
     rootPath,

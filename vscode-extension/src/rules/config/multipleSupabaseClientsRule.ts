@@ -1,5 +1,5 @@
 import { Rule, RuleStage } from '../rule';
-import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
+import { Finding, FindingSeverity, FindingCategory, FindingConfidence, DetectionMethod } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 
 export class MultipleSupabaseClientsRule implements Rule {
@@ -14,6 +14,7 @@ export class MultipleSupabaseClientsRule implements Rule {
     return [new Finding({
       severity: FindingSeverity.low,
       confidence: FindingConfidence.high,
+      detectionMethod: DetectionMethod.structural,
       category: FindingCategory.config,
       code: this.code,
       message: `${total} direct SupabaseClient(...) instances detected (first duplicate shown)`,

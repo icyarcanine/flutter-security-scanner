@@ -1,0 +1,10 @@
+name: edge_function_secrets_ok_app
+description: Negative fixture — edge function with tight CORS, JWT required, no key leakage.
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_dotenv: ^5.0.0
+  supabase_flutter: ^2.0.0

@@ -1,0 +1,9 @@
+name: platform_security_deep_app
+description: Fixture for the expanded platform-security rule (exported components, dangerous permissions, minSdk, iOS ATS exceptions, file sharing).
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  encrypt: ^5.0.0

@@ -1,5 +1,5 @@
 import { Rule, RuleStage } from '../rule';
-import { Finding, FindingSeverity, FindingCategory, FindingConfidence } from '../../models/finding';
+import { Finding, FindingSeverity, FindingCategory, FindingConfidence, DetectionMethod } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 import { isHighEntropySecret } from '../../utils/shannon';
 import { isNonProductionPath, looksLikePlaceholderSecret } from '../../noise';
@@ -65,6 +65,7 @@ export class GenericSecretRule implements Rule {
               code: this.code,
               severity: FindingSeverity.high,
               confidence: p.confidence,
+              detectionMethod: DetectionMethod.regex,
               message: `Found potentially hardcoded ${p.type}`,
               fix: `Move this ${p.type} to Environment Variables or a secure vault.`,
               risk: 'Hardcoded secrets can be extracted from source code and binaries, leading to complete system compromise.',
@@ -93,6 +94,7 @@ export class GenericSecretRule implements Rule {
             code: 'high-entropy-secret',
             severity: FindingSeverity.medium,
             confidence: FindingConfidence.low,
+            detectionMethod: DetectionMethod.entropy,
             message: `Found high entropy string literal (Shannon Entropy >= 4.5)`,
             fix: `Verify if this string is a secret. If so, move it to env variables.`,
             risk: 'High entropy strings often indicate hardcoded cryptographic keys or secrets.',
