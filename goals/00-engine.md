@@ -429,9 +429,14 @@ The current intra-procedural tracker lives at
 - **Why:** `String.prototype.replace`, `JSON.stringify`, `Array.prototype.join`,
   `URLSearchParams.get` — each has well-defined taint behavior. Today
   we treat all of them as opaque calls (returns unknown).
-- **Current state:** Unknown call returns are stripped of taint
-  (`_propagateAssignment` else branch in `dataFlow.ts:737`). This loses
-  taint that should propagate.
+- **Progress:** §QW-38/39/40 landed at sha `d0af6b4` (2026-05-07):
+  sanitizer recognition for allowlist-style `String.prototype.replace`,
+  `JSON.parse` / `JSON.stringify` / `Buffer.from` taint propagation, and
+  `URLSearchParams.get(...)` as user-controlled query input. The broader
+  registry of ~30 builtin signatures remains open.
+- **Current state:** Partial builtin support exists for the quick-win cases
+  above. The engine still lacks a centralized registry for the wider builtin
+  set below.
 - **Target state:** A registry of ~30 builtin signatures with explicit
   taint behavior:
   - `JSON.stringify(tainted)` → tainted

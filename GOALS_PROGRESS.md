@@ -60,6 +60,16 @@ items (§00 engine, §05 scale) come after the quick wins are exhausted.
 | 36 | §QW-48 / §IN-22 | pre-commit docs | ✅ | README includes local pre-commit snippet |
 | 37 | §QW-49 / §IN-24 | GitHub Actions workflow | ✅ | `.github/workflows/sast.yml`; SARIF upload + confidence-gated failure |
 | 38 | §QW-50 / §IN-19 | Slack notification | ✅ | `--notify slack:<webhook>` posts scan summary; failures warn only |
+| 39 | §QW-28 / §RC-25 | Symlink-following sink | ✅ | new `symlink-following`; user-controlled fs paths without realpath/lstat/O_NOFOLLOW guard |
+| 40 | §QW-33 / §SF-2 | Unscoped Realtime channel | ✅ | new `unscoped-realtime-channel`; channel subscriptions need ownership filters |
+| 41 | §QW-34 / §SF-25 | Realtime subscription cleanup | ✅ | new `realtime-subscription-leak`; assigned subscriptions need unsubscribe/removeChannel |
+| 42 | §QW-35 / §SF-12 | secure storage then logging | ✅ | new `secure-storage-logging`; flags logged `flutter_secure_storage` values |
+| 43 | §QW-36 / §SF-13 | Android JS bridge exposure | ✅ | new `android-webview-js-interface`; Java/Kotlin `addJavascriptInterface` |
+| 44 | §QW-38 / §EN-14 | `String.replace` sanitizer model | ✅ | allowlist-stripping `.replace(..., '')` forms clear taint |
+| 45 | §QW-39 / §EN-14 | `JSON.parse` propagation | ✅ | `JSON.parse` / `JSON.stringify` / `Buffer.from` propagate taint |
+| 46 | §QW-40 / §EN-14 | `URLSearchParams.get` source | ✅ | treated as user-controlled query input and routed through taint prefilter |
+| 47 | §QW-44 / §RC-27 | Python format-string injection | ✅ | new `python-format-injection`; `%` / f-string request data in sinks |
+| 48 | §QW-47 / §IN-9 | Standalone HTML report | ✅ | `--html` / `--format html`; self-contained filters by severity/rule/file/search |
 
 ## Session log
 
@@ -113,11 +123,9 @@ Verification:
 
 Next obvious moves:
 - §QW-1 once §PR-5 lands.
-- Remaining unblocked quick wins: §QW-28, §QW-33, §QW-34, §QW-35,
-  §QW-36, §QW-38, §QW-39, §QW-40, §QW-44, §QW-47.
-- Move into §00-engine.md (cross-file taint, async tracking) after the
-  quick-win backlog is exhausted — these are the L/XL items the
-  differentiation strategy turns on.
+- §QW-2 and §QW-41 once §EN-4 lands.
+- Move into §00-engine.md (cross-file taint, async tracking) for the L/XL
+  items the differentiation strategy turns on.
 
 ### 2026-05-07 — integration + coverage quick-win batch
 
@@ -144,3 +152,30 @@ Verification:
 - `HOME=/tmp dart run tool/smoke_test.dart` passes.
 - `dart analyze lib bin tool` exits 0 with existing info-level lints only.
 - `git diff --check` passes before commit.
+
+### 2026-05-07 — remaining unblocked quick wins
+
+Finished the rest of the unblocked quick-win file in `d0af6b4`:
+
+| SHA | Task |
+|-----|------|
+| `d0af6b4` | §QW-28 / §RC-25 — symlink-following filesystem paths |
+| `d0af6b4` | §QW-33 / §SF-2 — unscoped Realtime channels |
+| `d0af6b4` | §QW-34 / §SF-25 — missing Realtime subscription cleanup |
+| `d0af6b4` | §QW-35 / §SF-12 — secure-storage values written to logs |
+| `d0af6b4` | §QW-36 / §SF-13 — Android `addJavascriptInterface` bridge exposure |
+| `d0af6b4` | §QW-38/39/40 / §EN-14 — replace sanitizer, JSON propagation, URLSearchParams source |
+| `d0af6b4` | §QW-44 / §RC-27 — Python format-string injection |
+| `d0af6b4` | §QW-47 / §IN-9 — standalone HTML report |
+
+Verification:
+- `npm test` passes, including 99 taint/rule regression tests and HTML output
+  smoke coverage.
+- `HOME=/tmp dart run tool/smoke_test.dart` passes.
+- `dart analyze lib bin tool` exits 0 with the existing 13 info-level lints.
+- `git diff --check` passes before commit.
+
+Quick-win backlog now has only dependency-gated items:
+- §QW-1 waits on §PR-5.
+- §QW-2 waits on §EN-4.
+- §QW-41 waits on §EN-4.

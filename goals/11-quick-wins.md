@@ -134,7 +134,7 @@ read the deeper files.
 
 - **Effort:** **S** (1 day).
 
-## §QW-28 — Symlink-following sink ([03-rule-coverage.md §RC-25](03-rule-coverage.md))
+## §QW-28 — Symlink-following sink ([03-rule-coverage.md §RC-25](03-rule-coverage.md)) ✅ DONE — sha d0af6b4 (2026-05-07)
 
 - **Effort:** **S** (2 days).
 
@@ -154,20 +154,20 @@ read the deeper files.
 
 - **Effort:** **S** (1 day).
 
-## §QW-33 — Unscoped Realtime channel ([09-supabase-flutter.md §SF-2](09-supabase-flutter.md))
+## §QW-33 — Unscoped Realtime channel ([09-supabase-flutter.md §SF-2](09-supabase-flutter.md)) ✅ DONE — sha d0af6b4 (2026-05-07)
 
 - **Effort:** **M** (3 days).
 - Already partial.
 
-## §QW-34 — Forgotten `subscription.unsubscribe()` ([09-supabase-flutter.md §SF-25](09-supabase-flutter.md))
+## §QW-34 — Forgotten `subscription.unsubscribe()` ([09-supabase-flutter.md §SF-25](09-supabase-flutter.md)) ✅ DONE — sha d0af6b4 (2026-05-07)
 
 - **Effort:** **S** (1 day).
 
-## §QW-35 — `flutter_secure_storage` then logging ([09-supabase-flutter.md §SF-12](09-supabase-flutter.md))
+## §QW-35 — `flutter_secure_storage` then logging ([09-supabase-flutter.md §SF-12](09-supabase-flutter.md)) ✅ DONE — sha d0af6b4 (2026-05-07)
 
 - **Effort:** **S** (1 day).
 
-## §QW-36 — `addJavaScriptInterface` exposing native ([09-supabase-flutter.md §SF-13](09-supabase-flutter.md))
+## §QW-36 — `addJavaScriptInterface` exposing native ([09-supabase-flutter.md §SF-13](09-supabase-flutter.md)) ✅ DONE — sha d0af6b4 (2026-05-07)
 
 - **Effort:** **S** (1 day).
 
@@ -176,15 +176,15 @@ read the deeper files.
 - **Effort:** **S** (1 day).
 - Static list.
 
-## §QW-38 — `String.prototype.replace` with sanitizer regex recognition ([00-engine.md §EN-14](00-engine.md))
+## §QW-38 — `String.prototype.replace` with sanitizer regex recognition ([00-engine.md §EN-14](00-engine.md)) ✅ DONE — sha d0af6b4 (2026-05-07)
 
 - **Effort:** **S** (1 day, builds on §EN-14).
 
-## §QW-39 — `JSON.parse(taint)` propagation ([00-engine.md §EN-14](00-engine.md))
+## §QW-39 — `JSON.parse(taint)` propagation ([00-engine.md §EN-14](00-engine.md)) ✅ DONE — sha d0af6b4 (2026-05-07)
 
 - **Effort:** **S** (1 day, part of §EN-14).
 
-## §QW-40 — `URLSearchParams.get(literal)` always tainted ([00-engine.md §EN-14](00-engine.md))
+## §QW-40 — `URLSearchParams.get(literal)` always tainted ([00-engine.md §EN-14](00-engine.md)) ✅ DONE — sha d0af6b4 (2026-05-07)
 
 - **Effort:** **S** (1 day, part of §EN-14).
 
@@ -201,7 +201,7 @@ read the deeper files.
 
 - **Effort:** **S** (1 day).
 
-## §QW-44 — Format-string injection (Python `'%s' % taint`) ([03-rule-coverage.md §RC-27](03-rule-coverage.md))
+## §QW-44 — Format-string injection (Python `'%s' % taint`) ([03-rule-coverage.md §RC-27](03-rule-coverage.md)) ✅ DONE — sha d0af6b4 (2026-05-07)
 
 - **Effort:** **S** (1 day).
 
@@ -213,7 +213,7 @@ read the deeper files.
 
 - **Effort:** **S** (1 day).
 
-## §QW-47 — `--format=html` standalone HTML report ([06-integrations.md §IN-9](06-integrations.md))
+## §QW-47 — `--format=html` standalone HTML report ([06-integrations.md §IN-9](06-integrations.md)) ✅ DONE — sha d0af6b4 (2026-05-07)
 
 - **Effort:** **M** (4 days). Bigger; included because the value is high.
 

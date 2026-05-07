@@ -316,12 +316,17 @@ For shape and registration steps, mirror existing rules under
   - Keeps safe literal path construction clean and covers common
     `req.query` / `req.params` sources.
 
-## §RC-25 — Symlink following (CWE-59)
+## §RC-25 — Symlink following (CWE-59) ✅ DONE — sha d0af6b4 (2026-05-07)
 
 - **Target state:** Flag `fs.readFile(path, options)` where path is
   user-controlled and `options` doesn't include `withFileTypes` /
   symlink-rejection check.
 - **Effort:** **M** (2 days).
+- **Implementation notes:**
+  - Added JS/TS rule `symlink-following`.
+  - Flags obvious user-controlled `fs.readFile` / `fs.open` / stream/stat
+    paths unless a nearby `realpath` / `lstat` / `O_NOFOLLOW` guard exists.
+  - Emits CWE-59 at MEDIUM confidence to keep review context explicit.
 
 ## §RC-26 — Type confusion (CWE-843) — JS specific
 
@@ -329,11 +334,16 @@ For shape and registration steps, mirror existing rules under
   numeric operations.
 - **Effort:** **M** (3 days).
 
-## §RC-27 — Format string (CWE-134) — Python's % and f-strings
+## §RC-27 — Format string (CWE-134) — Python's % and f-strings ✅ DONE — sha d0af6b4 (2026-05-07)
 
 - **Target state:** Detect `'admin: %s' % taint` and `f"admin: {taint}"`
   flowing to log/SQL/command sinks.
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - Added `python-format-injection`.
+  - Flags direct SQL/command/log sink calls using `%` formatting or f-strings
+    with request/input/sys.argv/environment data.
+  - Keeps parameterized SQL calls clean.
 
 ## §RC-28 — Resource exhaustion (CWE-400)
 

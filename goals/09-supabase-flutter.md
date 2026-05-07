@@ -23,13 +23,19 @@ this file alone keeps us best-in-class for Flutter/Supabase teams.
 - **Dependencies:** None.
 - **Effort:** **M** (~1 week).
 
-## §SF-2 — Supabase Realtime subscription scope
+## §SF-2 — Supabase Realtime subscription scope ✅ DONE — sha d0af6b4 (2026-05-07)
 
 - **Why:** Unscoped Realtime subscriptions leak data to all clients.
 - **Current state:** Per commit history, partial rule exists.
 - **Target state:** Detect `.channel('public:posts')` without a
   `.eq('user_id', userId)` filter; flag CWE-639.
 - **Effort:** **M** (3 days).
+- **Implementation notes:**
+  - Added `unscoped-realtime-channel` for Dart and JS/TS Supabase clients.
+  - Flags `schema:table` realtime channel subscriptions that lack an ownership
+    filter in the surrounding chain.
+  - Recognizes `.eq(...)`, Supabase `filter: "user_id=eq..."`, and Dart
+    `PostgresChangeFilter(column: ...)` style scoping.
 
 ## §SF-3 — Supabase RPC injection
 
@@ -119,14 +125,18 @@ this file alone keeps us best-in-class for Flutter/Supabase teams.
   - Android: cleartextTrafficPermitted in `network-security-config.xml`
 - **Effort:** **S** (1 day).
 
-## §SF-12 — Insecure-storage on sqflite + Hive
+## §SF-12 — Insecure-storage on sqflite + Hive ✅ DONE — sha d0af6b4 (2026-05-07)
 
 - **Current state:** ✅ extended per commit history.
 - **Target state:** Extend to `flutter_secure_storage` misuse (e.g.
   using it then logging the value).
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - Added `secure-storage-logging`.
+  - Tracks sensitive values read from `flutter_secure_storage` and flags
+    `print` / `debugPrint` / `developer.log` of those values.
 
-## §SF-13 — WebView security deep checks
+## §SF-13 — WebView security deep checks ✅ DONE — sha d0af6b4 (2026-05-07)
 
 - **Current state:** ✅ extended per commit history.
 - **Target state:** Specific rules for:
@@ -134,6 +144,12 @@ this file alone keeps us best-in-class for Flutter/Supabase teams.
   - `evaluateJavascript(taint)`
   - `addJavaScriptInterface` exposing native methods
 - **Effort:** **M** (3 days).
+- **Implementation notes:**
+  - Existing Dart CLI WebView checks cover unrestricted JavaScript,
+    user-controlled `loadUrl`, `javascript:` loads, and dynamic
+    `evaluateJavascript` / `runJavaScript`.
+  - Added VS Code extension rule `android-webview-js-interface` for Java/Kotlin
+    `addJavascriptInterface(...)` bridge exposure.
 
 ## §SF-14 — Dart IFDS: extend source patterns
 
@@ -231,11 +247,15 @@ this file alone keeps us best-in-class for Flutter/Supabase teams.
 - **Current state:** ✅ `public-storage` rule.
 - **Target state:** Maintenance.
 
-## §SF-25 — Real-time client subscription resource leak
+## §SF-25 — Real-time client subscription resource leak ✅ DONE — sha d0af6b4 (2026-05-07)
 
 - **Why:** Forgotten `subscription.unsubscribe()` leaks Realtime
   channels.
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - Added `realtime-subscription-leak`.
+  - Flags assigned realtime subscriptions/channels with no same-file
+    `unsubscribe()` / `removeChannel(...)` cleanup.
 
 ## §SF-26 — Supabase Auth flow misconfig
 

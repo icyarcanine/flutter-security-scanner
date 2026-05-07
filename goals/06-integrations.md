@@ -104,7 +104,7 @@ upside for adoption.
   `<failure>`) and one `<testcase><skipped/>` per oversize file. `tests`
   / `failures` / `skipped` attributes set from the report.
 
-## §IN-9 — Standalone HTML report
+## §IN-9 — Standalone HTML report ✅ DONE — sha d0af6b4 (2026-05-07)
 
 - **Why:** A self-contained HTML file is the most-shareable output.
 - **Current state:** Webview shows results in VS Code; no standalone.
@@ -113,6 +113,11 @@ upside for adoption.
 - **Approach:** Reuse the webview rendering logic; bake into a
   standalone HTML template.
 - **Effort:** **M** (4 days).
+- **Implementation notes:**
+  - Added `output/html.ts` and CLI `--html` / `--format html` support.
+  - Emits one self-contained HTML document with inline CSS/JS, summary stats,
+    and severity/rule/file/search filters.
+  - Covered by the output-format smoke test.
 
 ## §IN-10 — Markdown report ✅ DONE — sha f2d31ad (2026-05-07)
 
