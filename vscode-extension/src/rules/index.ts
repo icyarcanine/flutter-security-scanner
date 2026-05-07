@@ -35,6 +35,12 @@ import { ErrorInfoDisclosureRule } from './security/errorInfoDisclosureRule';
 import { ClipboardExposureRule } from './security/clipboardExposureRule';
 import { PathTraversalJsRule } from './security/pathTraversalJsRule';
 import { DependencyConfusionRule } from './security/dependencyConfusionRule';
+import { SymlinkFollowingRule } from './security/symlinkFollowingRule';
+import { SecureStorageLoggingRule } from './security/secureStorageLoggingRule';
+import { AndroidWebViewJsInterfaceRule } from './security/androidWebViewJsInterfaceRule';
+import { PythonFormatInjectionRule } from './security/pythonFormatInjectionRule';
+import { UnscopedRealtimeChannelRule } from './supabase/unscopedRealtimeChannelRule';
+import { RealtimeSubscriptionLeakRule } from './supabase/realtimeSubscriptionLeakRule';
 
 export function buildDefaultRules(includeSuggestions: boolean): Rule[] {
   const rules: Rule[] = [
@@ -58,6 +64,12 @@ export function buildDefaultRules(includeSuggestions: boolean): Rule[] {
     new ClipboardExposureRule(),
     new PathTraversalJsRule(),
     new DependencyConfusionRule(),
+    new SymlinkFollowingRule(),
+    new SecureStorageLoggingRule(),
+    new AndroidWebViewJsInterfaceRule(),
+    new PythonFormatInjectionRule(),
+    new UnscopedRealtimeChannelRule(),
+    new RealtimeSubscriptionLeakRule(),
 
     // Security
     new HardcodedSecretsRule(),

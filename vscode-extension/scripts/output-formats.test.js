@@ -10,6 +10,7 @@
  *   - junit: well-formed XML with one <testcase> per finding
  *   - gitlab: a JSON array of {description, fingerprint, severity, location}
  *   - bitbucket: a JSON array of {external_id, severity, summary, path, line}
+ *   - html: self-contained report with filters and finding cards
  *
  * Validates structure rather than every byte — the emitters are too small
  * to merit golden-file comparison and golden files would rot quickly.
@@ -26,6 +27,7 @@ const { toCsv } = require('../out/output/csv');
 const { toJunit } = require('../out/output/junit');
 const { toGitLabCodeQuality } = require('../out/output/gitlab');
 const { toBitbucketCodeInsights } = require('../out/output/bitbucket');
+const { toHtmlReport } = require('../out/output/html');
 
 async function buildReport() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fss-out-'));
@@ -109,12 +111,22 @@ async function testBitbucket() {
   }
 }
 
+async function testHtml() {
+  const report = await buildReport();
+  const html = toHtmlReport(report);
+  assert.match(html, /<!doctype html>/i, 'html output must be a standalone document');
+  assert.match(html, /<select id="severity">/, 'html output must include severity filter');
+  assert.match(html, /class="finding"/, 'html output must include finding cards');
+  assert.match(html, /injection-flaw/, 'html output must include the rule code');
+}
+
 (async function main() {
   await testMarkdown();
   await testCsv();
   await testJunit();
   await testGitLab();
   await testBitbucket();
+  await testHtml();
   console.log('output-formats self-test: PASS');
 })().catch(err => {
   console.error('output-formats self-test: FAIL');

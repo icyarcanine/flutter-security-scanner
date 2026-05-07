@@ -16,18 +16,19 @@ password fields, weak platform manifests, etc.). Everything under "Analysis
 Pipeline", "Taint Model", and "Confidence Levels" below describes the **VS Code
 extension engine**, not the CLI.
 
-**Production features:** SARIF 2.1.0 output, CWE taxonomy, data-flow paths
+**Production features:** SARIF 2.1.0 output, standalone HTML reports, CWE taxonomy, data-flow paths
 in findings, AST-aware inline suppressions, content-hash baselines, git diff
 mode for PR-style scans, SARIF diff mode, confidence-based CI failure,
 parallel rule execution, multi-root workspaces, on-save scanning, per-rule
 disable, statement-aware suppression boundary, inter-procedural IFDS for
-Dart, and 80+ unit-tested taint engine invariants.
+Dart, and 99 unit-tested taint engine invariants.
 
 ## What It Detects
 
 - **Injection flaws** — SQL injection, command injection, code execution,
   XSS, path traversal, SSRF, open-redirect, LDAP/XPath, NoSQL `$where`,
-  template injection, deserialization (source-to-sink taint confirmed)
+  template injection, Python format-string injection, deserialization
+  (source-to-sink taint confirmed where applicable)
 - **Hardcoded secrets** — AWS keys, private keys, JWT tokens, hardcoded
   Supabase anon keys, high-entropy strings
 - **JWT misuse** — `jwt.decode` without verify, `algorithms: ['none']`,
@@ -40,9 +41,13 @@ Dart, and 80+ unit-tested taint engine invariants.
 - **Insecure randomness** — `Math.random()` for security-sensitive values
 - **JavaScript platform risks** — cleartext HTTP clients, tabnabbing,
   broad cookie domains, sensitive web storage, clipboard exposure,
-  deprecated TLS protocol pinning, weak crypto APIs, typosquatted packages
+  symlink-following filesystem reads, deprecated TLS protocol pinning,
+  weak crypto APIs, typosquatted packages
 - **Supabase misconfigurations** — missing RLS, insecure storage rules,
-  committed `.env` files, public buckets, multiple clients, improper init
+  committed `.env` files, public buckets, unscoped realtime channels,
+  leaked realtime subscriptions, multiple clients, improper init
+- **Mobile/WebView risks** — Android `addJavascriptInterface` bridges and
+  `flutter_secure_storage` values written to logs
 - **Unsafe patterns** — sensitive logging, debug artifacts, client-side
   trust violations, missing upload validation
 
@@ -57,7 +62,7 @@ Every security finding carries a CWE identifier (e.g. `CWE-89` SQL injection,
 | **Full** | JavaScript, TypeScript, JSX, TSX | Regex + AST + intra-procedural taint tracking |
 | **Full (IFDS)** | Dart | Regex + AST + intra-procedural taint tracking + inter-procedural IFDS (`ifds-taint`) |
 | **AST** | Python, Go, Java | Regex + AST structural patterns |
-| **Regex** | SQL, YAML, JSON, `.env` | Heuristic rules only |
+| **Regex** | Kotlin, SQL, YAML, JSON, `.env` | Heuristic rules only |
 
 ## Analysis Pipeline (VS Code extension)
 
@@ -80,6 +85,7 @@ following properties:
     parameters literally named `userInput`, `req.body/query/params/headers/...`
     member access, `process.env/stdin`, `platform.environment`,
     Flask/Django/FastAPI request fields, controller `.text/.value`.
+    `URLSearchParams.get(...)` is treated as user-controlled query input.
   - **Heuristic** (tainted only with handler-shape sibling): `data`,
     `payload`, `input` — flagged as a source only when the function also
     accepts a `res`/`response`/`next`/`reply`/`ctx` parameter (Express
@@ -109,6 +115,8 @@ following properties:
     `Number.parseFloat`, `Number`, unary `+`, `~~`, `| 0`, `>>> 0` —
     separated into a documented bucket because the return type (number)
     cannot carry SQL/shell/template payloads.
+  - String replacement sanitizers: `.replace(/[^A-Za-z0-9_-]/g, '')`,
+    `.replace(/\D/g, '')`, and similar allowlist-stripping forms.
   - Parameterized queries — recognized at the call level (second arg is
     `[…]`/`{…}`/`(…)` or matches `params/values/bindings/parameters`).
 - **Precision controls**:
@@ -219,6 +227,7 @@ npx flutter-supabase-helper scan . --sarif -o sast.sarif    # SARIF 2.1.0
 | `--junit` | JUnit XML | Jenkins, CircleCI, Buildkite |
 | `--gitlab` | GitLab Code Quality JSON | GitLab merge request widgets |
 | `--bitbucket` | Bitbucket Code Insights annotations | Bitbucket pull requests |
+| `--html` | Self-contained HTML with severity/rule/file filters | CI artifacts and shareable reports |
 
 ### CI Integration
 
@@ -438,10 +447,10 @@ npm run compile && npm test
 Runs in order:
 1. `precision-self-test.js` — end-to-end fixture sweep covering 17 rule
    interactions across JS / Dart / Python / test-path noise.
-2. `taint-engine.test.js` — 26 unit-style invariants for the
+2. `taint-engine.test.js` — 99 unit-style invariants for the
    `IntraProceduralTaintTracker` (source seeding, sanitizer recognition,
    receiver heuristic, sink kinds, reassignment, parameterization, all
-   four CWE-tagged new rules, comment immunity, git porcelain regression,
+   CWE-tagged rule quick wins, comment immunity, git porcelain regression,
    `Promise.all` concurrency stability).
 3. `test-ast.js` — AST grammar load smoke test.
 4. `ifds-self-test.js` — IFDS Dart taint engine fixtures (sources,

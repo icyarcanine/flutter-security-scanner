@@ -14,6 +14,7 @@ import { toCsv } from './output/csv';
 import { toJunit } from './output/junit';
 import { toGitLabCodeQuality } from './output/gitlab';
 import { toBitbucketCodeInsights } from './output/bitbucket';
+import { toHtmlReport } from './output/html';
 import { buildDefaultRules } from './rules/index';
 
 // ── Argument Parsing ────────────────────────────
@@ -21,7 +22,7 @@ import { buildDefaultRules } from './rules/index';
 interface CliArgs {
   command: string;
   target: string;
-  format: 'json' | 'pretty' | 'summary' | 'sarif' | 'markdown' | 'csv' | 'junit' | 'gitlab' | 'bitbucket';
+  format: 'json' | 'pretty' | 'summary' | 'sarif' | 'markdown' | 'csv' | 'junit' | 'gitlab' | 'bitbucket' | 'html';
   failOn?: 'high' | 'medium' | 'low';
   failConfidence?: 'high' | 'medium' | 'low';
   useBaseline: boolean;
@@ -67,6 +68,7 @@ function parseArgs(argv: string[]): CliArgs | null {
     else if (args[i] === '--junit') { flags.format = 'junit'; }
     else if (args[i] === '--gitlab') { flags.format = 'gitlab'; }
     else if (args[i] === '--bitbucket') { flags.format = 'bitbucket'; }
+    else if (args[i] === '--html') { flags.format = 'html'; }
     else if ((args[i] === '--format' || args[i].startsWith('--format=')) && (args[i].includes('=') || args[i + 1])) {
       flags.format = args[i].includes('=') ? args[i].split('=', 2)[1] : args[++i];
     }
@@ -350,6 +352,9 @@ async function runScan(args: CliArgs) {
         break;
       case 'bitbucket':
         emitOrWrite(args.outputFile, toBitbucketCodeInsights(filteredReport(report, findings)));
+        break;
+      case 'html':
+        emitOrWrite(args.outputFile, toHtmlReport(filteredReport(report, findings)));
         break;
     }
 
@@ -1009,6 +1014,7 @@ Options:
   --junit                 JUnit XML (Jenkins, CircleCI, Buildkite, …)
   --gitlab                GitLab Code Quality JSON (MR widgets)
   --bitbucket             Bitbucket Code Insights JSON
+  --html                  Standalone HTML report
   --format <name>         Same as the per-format flags above
   -o, --output <path>     Write output to a file instead of stdout
   --fail-on <level>       Exit 1 if findings >= level (high|medium|low)
@@ -1027,6 +1033,7 @@ Examples:
   npx flutter-supabase-helper scan ./my-project --pretty
   npx flutter-supabase-helper scan . --fail-on high --json
   npx flutter-supabase-helper scan . --sarif -o sast.sarif
+  npx flutter-supabase-helper scan . --html -o sast.html
   npx flutter-supabase-helper scan . --json --diff-against old.sarif
   npx flutter-supabase-helper scan . --summary --notify slack:$SLACK_WEBHOOK_URL
   npx flutter-supabase-helper scan . --pretty --max-findings 10

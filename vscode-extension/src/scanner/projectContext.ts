@@ -101,7 +101,7 @@ const IGNORED_DIRECTORIES = new Set([
 
 const SUPPORTED_EXTENSIONS = new Set([
   '.dart', '.yaml', '.yml', '.sql', '.md', '.txt', '.json',
-  '.js', '.jsx', '.ts', '.tsx', '.py', '.go', '.java'
+  '.js', '.jsx', '.ts', '.tsx', '.py', '.go', '.java', '.kt'
 ]);
 
 /** Default per-file byte cap. Files larger than this are skipped with a warning. */

@@ -103,6 +103,30 @@ async function main() {
       `numeric coercion should sanitize: ${JSON.stringify(findings)}`);
   });
 
+  await test('String.replace sanitizer regex clears taint (QW-38 / EN-14)', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, db) { const slug = req.query.slug.replace(/[^A-Za-z0-9_-]/g, ''); return db.query("WHERE slug = '" + slug + "'"); }`,
+    });
+    assert(!findings.some(f => f.severity === 'high'),
+      `sanitizing replace should clear taint: ${JSON.stringify(findings)}`);
+  });
+
+  await test('JSON.parse propagates taint (QW-39 / EN-14)', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, db) { const parsed = JSON.parse(req.body.payload); return db.query("WHERE id = " + parsed.id); }`,
+    });
+    assert(findings.some(f => f.severity === 'high'),
+      `JSON.parse(taint) should propagate taint: ${JSON.stringify(findings)}`);
+  });
+
+  await test('URLSearchParams.get literal is treated as tainted (QW-40 / EN-14)', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(db) { const params = new URLSearchParams(location.search); const id = params.get('id'); return db.query("WHERE id = " + id); }`,
+    });
+    assert(findings.some(f => f.severity === 'high'),
+      `URLSearchParams.get should be treated as tainted: ${JSON.stringify(findings)}`);
+  });
+
   await test('escape()-named function clears taint', async () => {
     const findings = await scanWith({
       'a.js': `function h(req, db) { const safe = sqlstring.escape(req.body.id); return db.query("WHERE id = " + safe); }`,
@@ -736,6 +760,108 @@ async function main() {
     }, 'dependency-confusion');
     assert.strictEqual(findings.length, 0,
       `normal dependency should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  // ── §QW-28 / §RC-25 — symlink following ────────────────────────────────
+  await test('symlink-following: fs.readFile(req.query.path) flagged (QW-28 / RC-25)', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, fs) { return fs.readFile(req.query.path, 'utf8'); }`,
+    }, 'symlink-following');
+    assert(findings.some(f => f.cwe === 'CWE-59'),
+      `user-controlled fs path should flag symlink following: ${JSON.stringify(findings)}`);
+  });
+
+  await test('symlink-following: guarded realpath read is fine', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, fs) { const safe = fs.realpathSync(req.query.path); return fs.readFile(safe, 'utf8'); }`,
+    }, 'symlink-following');
+    assert.strictEqual(findings.length, 0,
+      `realpath-guarded read should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  // ── §QW-33 / §SF-2 — Supabase realtime scoping ─────────────────────────
+  await test('unscoped-realtime-channel: public table channel without filter flagged (QW-33 / SF-2)', async () => {
+    const findings = await scanWith({
+      'lib/main.dart': `void f(supabase) { supabase.channel('public:posts').onPostgresChanges(schema: 'public', table: 'posts', callback: (_) {}).subscribe(); }`,
+    }, 'unscoped-realtime-channel');
+    assert(findings.some(f => f.cwe === 'CWE-639'),
+      `unscoped realtime channel should flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('unscoped-realtime-channel: user_id filter is fine', async () => {
+    const findings = await scanWith({
+      'lib/main.dart': `void f(supabase, userId) { supabase.channel('public:posts').eq('user_id', userId).subscribe(); }`,
+    }, 'unscoped-realtime-channel');
+    assert.strictEqual(findings.length, 0,
+      `user-scoped realtime channel should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  // ── §QW-34 / §SF-25 — Realtime subscription cleanup ────────────────────
+  await test('realtime-subscription-leak: assigned subscription without cleanup flagged (QW-34 / SF-25)', async () => {
+    const findings = await scanWith({
+      'lib/main.dart': `void f(supabase) { final subscription = supabase.channel('public:posts').subscribe(); }`,
+    }, 'realtime-subscription-leak');
+    assert(findings.some(f => f.cwe === 'CWE-772'),
+      `missing unsubscribe should flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('realtime-subscription-leak: unsubscribe cleanup is fine', async () => {
+    const findings = await scanWith({
+      'lib/main.dart': `void f(supabase) { final subscription = supabase.channel('public:posts').subscribe(); subscription.unsubscribe(); }`,
+    }, 'realtime-subscription-leak');
+    assert.strictEqual(findings.length, 0,
+      `subscription cleanup should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  // ── §QW-35 / §SF-12 — secure storage then logging ──────────────────────
+  await test('secure-storage-logging: secure storage token logged (QW-35 / SF-12)', async () => {
+    const findings = await scanWith({
+      'lib/main.dart': `import 'package:flutter_secure_storage/flutter_secure_storage.dart'; Future<void> f(storage) async { final token = await storage.read(key: 'access_token'); print(token); }`,
+    }, 'secure-storage-logging');
+    assert(findings.some(f => f.cwe === 'CWE-532'),
+      `secure storage log should flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('secure-storage-logging: non-sensitive secure read not logged is fine', async () => {
+    const findings = await scanWith({
+      'lib/main.dart': `import 'package:flutter_secure_storage/flutter_secure_storage.dart'; Future<void> f(storage) async { final theme = await storage.read(key: 'theme'); print('loaded'); }`,
+    }, 'secure-storage-logging');
+    assert.strictEqual(findings.length, 0,
+      `non-sensitive read without logging value should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  // ── §QW-36 / §SF-13 — Android WebView JS bridge ────────────────────────
+  await test('android-webview-js-interface: native bridge exposure flagged (QW-36 / SF-13)', async () => {
+    const findings = await scanWith({
+      'android/app/src/main/java/App.java': `class App { void f(WebView w, Object bridge) { w.addJavascriptInterface(bridge, "Native"); } }`,
+    }, 'android-webview-js-interface');
+    assert(findings.some(f => f.cwe === 'CWE-749'),
+      `addJavascriptInterface should flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('android-webview-js-interface: commented bridge is ignored', async () => {
+    const findings = await scanWith({
+      'android/app/src/main/java/App.java': `class App { void f(WebView w, Object bridge) { // w.addJavascriptInterface(bridge, "Native");\n } }`,
+    }, 'android-webview-js-interface');
+    assert.strictEqual(findings.length, 0,
+      `commented addJavascriptInterface should not flag: ${JSON.stringify(findings)}`);
+  });
+
+  // ── §QW-44 / §RC-27 — Python format-string injection ───────────────────
+  await test('python-format-injection: SQL percent-format with request arg flagged (QW-44 / RC-27)', async () => {
+    const findings = await scanWith({
+      'app.py': `def h(request, cursor):\n    cursor.execute("SELECT * FROM users WHERE name = '%s'" % request.args.get('name'))`,
+    }, 'python-format-injection');
+    assert(findings.some(f => f.cwe === 'CWE-134' && f.severity === 'high'),
+      `Python percent-format SQL should flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('python-format-injection: parameterized SQL is fine', async () => {
+    const findings = await scanWith({
+      'app.py': `def h(request, cursor):\n    cursor.execute("SELECT * FROM users WHERE name = %s", (request.args.get('name'),))`,
+    }, 'python-format-injection');
+    assert.strictEqual(findings.length, 0,
+      `parameterized SQL should not flag format injection: ${JSON.stringify(findings)}`);
   });
 
   await test('improper-cert-validation: comment lines are ignored', async () => {

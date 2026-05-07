@@ -87,6 +87,8 @@ interface ScopeState {
   taintedProperties: Map<string, Set<string>>;
   /** Objects mutated from a tainted Object.assign source. */
   objectAssignTainted: Set<string>;
+  /** Symbols known to hold URLSearchParams instances. */
+  urlSearchParamsSymbols: Set<string>;
   /**
    * Names that are assigned inside a conditional block (if/else/switch/loop/try/ternary).
    * For these we refuse to trust sanitization because the sanitizing assignment
@@ -622,6 +624,7 @@ export class IntraProceduralTaintTracker {
       literalProperties: new Map<string, Set<string>>(),
       taintedProperties: new Map<string, Set<string>>(),
       objectAssignTainted: new Set<string>(),
+      urlSearchParamsSymbols: new Set<string>(),
       conditionallyAssigned,
       provenance,
     };
@@ -680,6 +683,7 @@ export class IntraProceduralTaintTracker {
     const augmented = isAugmentedAssignment(node);
     const literalProperties = value ? this._literalPropertyNames(value) : null;
     const taintedProperties = value ? this._literalTaintedPropertyNames(value, state) : new Set<string>();
+    const isUrlSearchParams = value ? this._isUrlSearchParamsExpression(value) : false;
 
     for (const target of targets) {
       const isConditional = state.conditionallyAssigned.has(target);
@@ -696,6 +700,12 @@ export class IntraProceduralTaintTracker {
           state.taintedProperties.set(target, taintedProperties);
         } else {
           state.taintedProperties.delete(target);
+        }
+
+        if (isUrlSearchParams) {
+          state.urlSearchParamsSymbols.add(target);
+        } else {
+          state.urlSearchParamsSymbols.delete(target);
         }
       }
 
@@ -896,6 +906,11 @@ export class IntraProceduralTaintTracker {
     // Indirect symbol taint.
     if (symbol && state.weakTainted.has(symbol)) { return 'indirect'; }
 
+    // Sanitizer/validator call — trusted output regardless of args. This must
+    // run before direct-source recognition so method sanitizers such as
+    // `req.query.name.replace(/[^a-z0-9_-]/g, '')` can clear taint.
+    if (this._isSanitizedExpression(node, state)) { return false; }
+
     // Recognized direct source expressions (req.body.x, request.args.get(), etc.)
     if (this._isDirectSourceExpression(node)) { return 'direct'; }
 
@@ -907,8 +922,8 @@ export class IntraProceduralTaintTracker {
     // Symbol is a base object with tainted properties (e.g. `cfg` when `cfg.id` is tainted).
     if (symbol && this._isObjectTainted(symbol, state)) { return 'indirect'; }
 
-    // Sanitizer/validator call — trusted output regardless of args.
-    if (this._isSanitizedExpression(node, state)) { return false; }
+    const builtinStrength = this._builtinCallTaintStrength(node, state);
+    if (builtinStrength !== null) { return builtinStrength; }
 
     // Object/array literals: tainted children downgrade strength by one level
     // because the object wraps the taint rather than being the direct source.
@@ -1096,6 +1111,7 @@ export class IntraProceduralTaintTracker {
 
     if (isFunctionCall(node)) {
       const name = getCallName(node);
+      if (this._isSanitizingReplaceCall(node, name)) { return true; }
       if (SANITIZER_NAME_PATTERN.test(name) ||
           VALIDATION_NAME_PATTERN.test(name) ||
           NUMERIC_COERCION_PATTERN.test(name)) {
@@ -1133,6 +1149,65 @@ export class IntraProceduralTaintTracker {
       />>>\s*0\s*$/.test(stripped);
   }
 
+  private _builtinCallTaintStrength(node: SyntaxNode, state: ScopeState): ChainStrength | false | null {
+    if (!isFunctionCall(node)) { return null; }
+    const name = getCallName(node).replace(/\s+/g, '');
+    const args = getCallArguments(node);
+
+    if (/^(?:JSON\.)?(?:parse|stringify)$/i.test(name) ||
+        /^(?:Buffer\.)?from$/i.test(name)) {
+      return this._strongestTaint(args, state);
+    }
+
+    if (/(?:^|\.)get$/i.test(name) && this._isUrlSearchParamsGet(name, node, state)) {
+      return 'direct';
+    }
+
+    return null;
+  }
+
+  private _strongestTaint(nodes: SyntaxNode[], state: ScopeState): ChainStrength | false {
+    let best: ChainStrength | false = false;
+    for (const arg of nodes) {
+      const s = this._expressionTaintStrength(arg, state);
+      if (s === 'direct') { return 'direct'; }
+      if (s === 'indirect') { best = 'indirect'; }
+    }
+    return best;
+  }
+
+  private _isUrlSearchParamsExpression(node: SyntaxNode): boolean {
+    const compact = node.text.replace(/\s+/g, '');
+    return /\bnewURLSearchParams\(/.test(compact) ||
+      /\.searchParams\b/.test(compact) ||
+      /\bURLSearchParams\(/.test(compact);
+  }
+
+  private _isUrlSearchParamsGet(callName: string, node: SyntaxNode, state: ScopeState): boolean {
+    const receivers = [
+      callName.replace(/\.get$/i, ''),
+      node.text.replace(/\s+/g, '').replace(/\.get\([\s\S]*$/i, ''),
+    ].filter(Boolean);
+    for (const receiver of receivers) {
+      if (/URLSearchParams|\.searchParams$/i.test(receiver)) { return true; }
+      const symbol = this._normalizeSymbol(receiver);
+      if (symbol != null && state.urlSearchParamsSymbols.has(symbol)) { return true; }
+    }
+    return false;
+  }
+
+  private _isSanitizingReplaceCall(node: SyntaxNode, callName: string): boolean {
+    if (!/(?:^|\.)replace$/i.test(callName)) { return false; }
+    const args = getCallArguments(node);
+    if (args.length < 2) { return false; }
+    const pattern = args[0].text.trim();
+    const replacement = args[1].text.trim();
+    if (!/^['"`]{2}$/.test(replacement)) { return false; }
+    return /^\/\\D\/[gimyus]*$/.test(pattern) ||
+      /^\/\[\^[A-Za-z0-9_\\\-\s]+\]\/[gimyus]*$/.test(pattern) ||
+      /^\/\[\^\\w[\\.\-\s]*\]\/[gimyus]*$/.test(pattern);
+  }
+
   private _isDirectSourceExpression(node: SyntaxNode): boolean {
     // Strip whitespace and treat optional-chaining (`?.`) the same as a
     // plain dot — `req?.query?.id` should be tracked just like `req.query.id`.
@@ -1149,6 +1224,9 @@ export class IntraProceduralTaintTracker {
       return true;
     }
     if (/^process\.env(?:\.|\[|$)/.test(compact)) {
+      return true;
+    }
+    if (/^(?:params|searchParams|urlParams|queryParams)\.get\(/i.test(compact)) {
       return true;
     }
     if (/^(?:process\.)?stdin(?:\.|\[|$)/i.test(compact)) {
