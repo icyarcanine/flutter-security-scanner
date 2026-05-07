@@ -57,7 +57,7 @@ read the deeper files.
 
 - **Effort:** **S** (1 day).
 
-## §QW-11 — `crypto.randomBytes` with small `n` ([04-precision.md §PR-18](04-precision.md))
+## §QW-11 — Numeric coercion sanitizers ([04-precision.md §PR-18](04-precision.md)) ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Effort:** **S** (1 day).
 - Add `Number`, `+`, `~~`, `| 0`, `>>> 0` as numeric coercion.
@@ -93,11 +93,11 @@ read the deeper files.
 
 - **Effort:** **S** (1 day).
 
-## §QW-19 — `--diff-against=<sarif>` mode ([06-integrations.md §IN-27](06-integrations.md))
+## §QW-19 — `--diff-against=<sarif>` mode ([06-integrations.md §IN-27](06-integrations.md)) ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Effort:** **S** (2 days, but the second day is tests).
 
-## §QW-20 — Confidence-based fail flag (`--fail-confidence`) ([06-integrations.md §IN-28](06-integrations.md))
+## §QW-20 — Confidence-based fail flag (`--fail-confidence`) ([06-integrations.md §IN-28](06-integrations.md)) ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Effort:** **S** (1 day).
 
@@ -111,26 +111,26 @@ read the deeper files.
 - **Effort:** **S** (1 day).
 - Helps users notice noisy rules.
 
-## §QW-23 — JWT algorithm confusion (RS256→HS256 with public key) ([03-rule-coverage.md §RC-60](03-rule-coverage.md))
+## §QW-23 — JWT algorithm confusion (RS256→HS256 with public key) ([03-rule-coverage.md §RC-60](03-rule-coverage.md)) ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Effort:** **M** (3 days).
 - New jwt-misuse pattern. CVE-2018-0114 class.
 
-## §QW-24 — `process.env.SECRET` written to log ([03-rule-coverage.md §RC-3](03-rule-coverage.md))
+## §QW-24 — `process.env.SECRET` written to log ([03-rule-coverage.md §RC-3](03-rule-coverage.md)) ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Effort:** **S** (1 day).
 - Already partial via `sensitive-logging`; extend the patterns.
 
-## §QW-25 — `eval(`taint`)` regex prefilter exit-fast ([05-scale.md §SC-3](05-scale.md))
+## §QW-25 — `eval(`taint`)` regex prefilter exit-fast ([05-scale.md §SC-3](05-scale.md)) ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Effort:** **S** (1 day).
 - Today every file is checked. Add a `.includes('eval(')` short-circuit before AST parse.
 
-## §QW-26 — JSON Schema for config files ([06-integrations.md §IN-30](06-integrations.md))
+## §QW-26 — JSON Schema for config files ([06-integrations.md §IN-30](06-integrations.md)) ✅ DONE — sha f2d31ad (2026-05-07)
 
 - **Effort:** **S** (1 day).
 
-## §QW-27 — Path traversal: `path.join(__dirname, taint)` flag ([03-rule-coverage.md §RC-24](03-rule-coverage.md))
+## §QW-27 — Path traversal: `path.join(__dirname, taint)` flag ([03-rule-coverage.md §RC-24](03-rule-coverage.md)) ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Effort:** **S** (1 day).
 
@@ -171,7 +171,7 @@ read the deeper files.
 
 - **Effort:** **S** (1 day).
 
-## §QW-37 — Auto-detect typosquats in `package.json` ([03-rule-coverage.md §RC-35](03-rule-coverage.md))
+## §QW-37 — Auto-detect typosquats in `package.json` ([03-rule-coverage.md §RC-35](03-rule-coverage.md)) ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Effort:** **S** (1 day).
 - Static list.
@@ -193,7 +193,7 @@ read the deeper files.
 - **Effort:** **S** (1 day post §EN-4).
 - A simple inversion of §PR-1's logic.
 
-## §QW-42 — Telemetry for scan duration distribution ([05-scale.md §SC-16](05-scale.md))
+## §QW-42 — Telemetry for scan duration distribution ([05-scale.md §SC-16](05-scale.md)) ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Effort:** **S** (1 day).
 
@@ -205,7 +205,7 @@ read the deeper files.
 
 - **Effort:** **S** (1 day).
 
-## §QW-45 — `setTimeout(taint)` (string-form code execution) — already handled, verify ([00-engine.md](00-engine.md))
+## §QW-45 — `setTimeout(taint)` (string-form code execution) — already handled, verify ([00-engine.md](00-engine.md)) ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Effort:** **S** (audit only).
 
@@ -217,15 +217,15 @@ read the deeper files.
 
 - **Effort:** **M** (4 days). Bigger; included because the value is high.
 
-## §QW-48 — `pre-commit-config.yaml` snippet in README ([06-integrations.md §IN-22](06-integrations.md))
+## §QW-48 — `pre-commit-config.yaml` snippet in README ([06-integrations.md §IN-22](06-integrations.md)) ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Effort:** **S** (1 day, mostly docs).
 
-## §QW-49 — `.github/workflows/sast.yml` example ([06-integrations.md §IN-24](06-integrations.md))
+## §QW-49 — `.github/workflows/sast.yml` example ([06-integrations.md §IN-24](06-integrations.md)) ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Effort:** **S** (1 day, mostly docs).
 
-## §QW-50 — Slack notification ([06-integrations.md §IN-19](06-integrations.md))
+## §QW-50 — Slack notification ([06-integrations.md §IN-19](06-integrations.md)) ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Effort:** **S** (1 day).
 

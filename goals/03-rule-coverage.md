@@ -64,6 +64,9 @@ For shape and registration steps, mirror existing rules under
 - **Current state:** `sensitive-logging` flags logging of secrets but
   not log injection (writing tainted data through `\n` / `\r` into log
   records).
+- **Progress:** §QW-24 landed the `process.env.SECRET` logging subcase
+  in `sensitive-logging` at sha `e330ed4` (2026-05-07). The full CRLF log
+  injection taint rule remains open.
 - **Target state:** New rule `log-injection`. Detect tainted strings
   reaching `console.log/warn/error/info`, Winston `logger.info(taint)`,
   Pino, Bunyan, etc. — without `\r` / `\n` stripping.
@@ -297,7 +300,7 @@ For shape and registration steps, mirror existing rules under
 
 - **Current state:** ✅ Done.
 
-## §RC-24 — Path traversal variants (CWE-22)
+## §RC-24 — Path traversal variants (CWE-22) ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Current state:** Dart side has `path-traversal` rule. JS side
   doesn't have a dedicated rule but covers it via `injection-flaw`
@@ -306,6 +309,12 @@ For shape and registration steps, mirror existing rules under
   recognizes `path.join(__dirname, taint)` as traversal-prone unless
   guarded.
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - Added JS/TS rule `path-traversal-js`.
+  - Flags tainted values flowing into `path.join(...)`,
+    `path.resolve(...)`, and matching `node:path` aliases.
+  - Keeps safe literal path construction clean and covers common
+    `req.query` / `req.params` sources.
 
 ## §RC-25 — Symlink following (CWE-59)
 
@@ -373,12 +382,18 @@ For shape and registration steps, mirror existing rules under
 - **Target state:** Per-route CORS where one route is misconfigured.
 - **Effort:** **S** (1 day).
 
-## §RC-35 — Misleading-progress / dependency-confusion (CWE-1357)
+## §RC-35 — Misleading-progress / dependency-confusion (CWE-1357) ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Target state:** Flag npm package names that match common typosquats.
 - **Approach:** Static list of typosquats; check `package.json`
   dependencies.
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - Added `dependency-confusion` rule for `package.json`.
+  - Checks dependencies/devDependencies/peerDependencies/optionalDependencies
+    against a high-signal typosquat map.
+  - Emits package-manager scoped findings with suggested canonical package
+    names.
 
 ## §RC-36 — Server-side template injection deepening (CWE-1336)
 
@@ -572,9 +587,13 @@ For shape and registration steps, mirror existing rules under
 
 - **Effort:** **L** (~1 week).
 
-## §RC-60 — JWT algorithm confusion (RS256→HS256 with public key)
+## §RC-60 — JWT algorithm confusion (RS256→HS256 with public key) ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Effort:** **M** (3 days).
+- **Implementation notes:**
+  - Extended `jwt-misuse` to flag `jwt.verify(...)` calls that allow
+    `HS256` while using public-key shaped verification material.
+  - Covers PEM public-key literals and public-key named variables.
 
 ---
 

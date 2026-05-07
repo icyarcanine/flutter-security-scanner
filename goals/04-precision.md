@@ -298,7 +298,7 @@ that supports them lives in [00-engine.md §EN-4](00-engine.md).
   see it.
 - **Effort:** **M** post §EN-13.
 
-## §PR-18 — Mathematical operations as sanitizers (numeric only)
+## §PR-18 — Mathematical operations as sanitizers (numeric only) ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Why:** `x | 0`, `x >>> 0`, `~~x`, `+x`, `Number(x)` are all numeric
   coercion idioms.
@@ -307,6 +307,10 @@ that supports them lives in [00-engine.md §EN-4](00-engine.md).
   coercion. All with the same sink-kind applicability as parseInt
   (§PR-6).
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - Extended the JS/TS taint sanitizer model to trust `Number(...)`,
+    unary `+`, `~~`, `| 0`, and `>>> 0` numeric coercion.
+  - Added regression coverage proving these coercions clear injection taint.
 
 ## §PR-19 — Per-finding rationale: cite the code
 

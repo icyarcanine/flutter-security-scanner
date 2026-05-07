@@ -196,11 +196,16 @@ upside for adoption.
   on save.
 - **Effort:** **M** (1 week).
 
-## §IN-19 — Slack notification on findings
+## §IN-19 — Slack notification on findings ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Target state:** `--notify=slack:<webhook>` posts a summary
   message after scan.
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - Added `--notify slack:<webhook-url>` / `--notify=slack:<webhook-url>`.
+  - Posts a Slack-compatible JSON summary after scan output and before CI
+    threshold exit.
+  - Notification failures warn on stderr but do not fail the scan.
 
 ## §IN-20 — Email notification
 
@@ -213,7 +218,7 @@ upside for adoption.
   ticket per HIGH finding.
 - **Effort:** **L** (~1 week per provider).
 
-## §IN-22 — pre-commit hook integration
+## §IN-22 — pre-commit hook integration ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Why:** Stop bad code at the developer's machine.
 - **Target state:** A documented `.pre-commit-config.yaml` snippet that
@@ -221,17 +226,24 @@ upside for adoption.
 - **Approach:** Document; add `--changed-since=HEAD~0` mode that
   scans only `git diff --staged`.
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - Added a `.pre-commit-config.yaml` local-hook snippet to README using
+    `--changed-since HEAD`, `--fail-on high`, and `--fail-confidence high`.
 
 ## §IN-23 — Husky / lint-staged integration
 
 - **Effort:** **S** (1 day, mostly docs).
 
-## §IN-24 — GitHub Actions reusable workflow
+## §IN-24 — GitHub Actions reusable workflow ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Why:** Drop-in copy-paste workflow for users.
 - **Target state:** `.github/workflows/sast.yml` example in the repo
   README, calling our action.
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - Added `.github/workflows/sast.yml` with checkout, Node setup, local
+    scanner compile, SARIF generation, confidence-gated failure, and SARIF
+    upload.
 
 ## §IN-25 — Public GitHub Action
 
@@ -250,21 +262,31 @@ upside for adoption.
 - **Approach:** SQLite-backed, single-binary, opt-in.
 - **Effort:** **XL** (~6 weeks).
 
-## §IN-27 — Compare-with-baseline visual diff
+## §IN-27 — Compare-with-baseline visual diff ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Why:** PRs need to show "this PR introduced 3 new findings, fixed 2."
 - **Target state:** A `--diff-against=<sarif-file>` mode that emits
   only new findings vs an older SARIF.
 - **Approach:** Match by partialFingerprints (already in SARIF output).
 - **Effort:** **S** (2 days).
+- **Implementation notes:**
+  - Added `--diff-against <sarif>` / `--diff-against=<sarif>`.
+  - Matches prior SARIF `partialFingerprints` and falls back to
+    rule/path/line keys for third-party SARIF.
+  - Applies before output formatting so JSON/SARIF/Markdown/etc. all show
+    only new findings.
 
-## §IN-28 — Confidence-based filter in CI
+## §IN-28 — Confidence-based filter in CI ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Why:** Some teams only want HIGH-confidence findings to fail CI.
 - **Current state:** `--fail-on=high|medium|low` exists.
 - **Target state:** Add `--fail-confidence=high` (separate from
   severity).
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - Added `--fail-confidence high|medium|low`.
+  - Combines with `--fail-on` when both are present, e.g. HIGH severity and
+    HIGH confidence only.
 
 ## §IN-29 — Configuration file precedence
 

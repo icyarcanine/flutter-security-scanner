@@ -34,18 +34,32 @@ items (§00 engine, §05 scale) come after the quick wins are exhausted.
 | 10 | §QW-8 / §RC-20 | Weak crypto on JS side | ✅ | new rule `weak-crypto-js`; mirrors Dart rule for crypto/CryptoJS/SubtleCrypto |
 | 11 | §QW-9 / §RC-21 | Vendor token shapes (Stripe/Twilio/…) | ✅ | 7 vendor regexes (Stripe/Twilio/SendGrid/OpenAI/Anthropic/GitHub/Slack), HIGH conf |
 | 12 | §QW-10 / §RC-4 | Header injection (CRLF) | ✅ | new SinkKind `header`; CWE-113; res.setHeader/cookie/location/writeHead/append covered |
-| 13 | §QW-14 / §IN-10 | Markdown report output | ✅ | `output/markdown.ts`; `--markdown` |
-| 14 | §QW-15 / §IN-11 | CSV export | ✅ | `output/csv.ts`; RFC 4180 quoting; `--csv` |
-| 15 | §QW-16 / §IN-8 | JUnit XML output | ✅ | `output/junit.ts`; one testcase/finding; `--junit` |
-| 16 | §QW-17 / §IN-4 | GitLab Code Quality output | ✅ | `output/gitlab.ts`; sha-1 fingerprints; `--gitlab` |
-| 17 | §QW-18 / §IN-6 | Bitbucket Code Insights output | ✅ | `output/bitbucket.ts`; annotations array; `--bitbucket` |
-| 18 | §QW-22 / §PR-15 | Suppression-comment count surfacing | ✅ | `report.suppressionsByRule`; >=5 suppressions warns on stderr; merged across multi-root |
-| 19 | §QW-29 / §RC-48 | Deprecated TLS/SSL protocols | ✅ | `weak-crypto-js`; flags SSLv3/TLSv1.0/TLSv1.1 pinning |
-| 20 | §QW-30 / §RC-55 | Credentials in web storage | ✅ | new rule `insecure-web-storage`; sensitive keys in local/sessionStorage |
-| 21 | §QW-31 / §RC-45 | Broad cookie domain | ✅ | `insecure-cookie`; leading-dot domain blast-radius warning |
-| 22 | §QW-32 / §RC-44 | `crypto.createCipher` insecure mode | ✅ | `weak-crypto-js`; deprecated no-IV/EVP_BytesToKey API |
-| 23 | §QW-43 / §RC-18 | Error information disclosure | ✅ | new rule `error-info-disclosure`; stack/raw error HIGH, message MEDIUM |
-| 24 | §QW-46 / §RC-56 | JS clipboard exposure | ✅ | new rule `clipboard-exposure`; sensitive identifiers copied to clipboard |
+| 13 | §QW-11 / §PR-18 | Numeric coercion sanitizers | ✅ | `Number`, unary `+`, `~~`, `| 0`, `>>> 0` clear numeric injection taint |
+| 14 | §QW-14 / §IN-10 | Markdown report output | ✅ | `output/markdown.ts`; `--markdown` |
+| 15 | §QW-15 / §IN-11 | CSV export | ✅ | `output/csv.ts`; RFC 4180 quoting; `--csv` |
+| 16 | §QW-16 / §IN-8 | JUnit XML output | ✅ | `output/junit.ts`; one testcase/finding; `--junit` |
+| 17 | §QW-17 / §IN-4 | GitLab Code Quality output | ✅ | `output/gitlab.ts`; sha-1 fingerprints; `--gitlab` |
+| 18 | §QW-18 / §IN-6 | Bitbucket Code Insights output | ✅ | `output/bitbucket.ts`; annotations array; `--bitbucket` |
+| 19 | §QW-19 / §IN-27 | SARIF baseline diff | ✅ | `--diff-against`; fingerprint matching with rule/path/line fallback |
+| 20 | §QW-20 / §IN-28 | Confidence-based fail flag | ✅ | `--fail-confidence`; combines with `--fail-on` |
+| 21 | §QW-22 / §PR-15 | Suppression-comment count surfacing | ✅ | `report.suppressionsByRule`; >=5 suppressions warns on stderr; merged across multi-root |
+| 22 | §QW-23 / §RC-60 | JWT algorithm confusion | ✅ | `jwt-misuse`; HS256 allowed with public-key-shaped verification material |
+| 23 | §QW-24 / §RC-3 | `process.env.SECRET` logging | ✅ | `sensitive-logging`; env secret logging subcase only, full CRLF log injection remains open |
+| 24 | §QW-25 / §SC-3 | Eval prefilter / setTimeout audit | ✅ | code sink audit; string-form `setTimeout(taint)` covered, callback false-positive fixed |
+| 25 | §QW-26 / §IN-30 | Config schema duplicate | ✅ | already covered by §QW-21 / config schema work |
+| 26 | §QW-27 / §RC-24 | JS path traversal | ✅ | new rule `path-traversal-js`; tainted `path.join` / `path.resolve` |
+| 27 | §QW-29 / §RC-48 | Deprecated TLS/SSL protocols | ✅ | `weak-crypto-js`; flags SSLv3/TLSv1.0/TLSv1.1 pinning |
+| 28 | §QW-30 / §RC-55 | Credentials in web storage | ✅ | new rule `insecure-web-storage`; sensitive keys in local/sessionStorage |
+| 29 | §QW-31 / §RC-45 | Broad cookie domain | ✅ | `insecure-cookie`; leading-dot domain blast-radius warning |
+| 30 | §QW-32 / §RC-44 | `crypto.createCipher` insecure mode | ✅ | `weak-crypto-js`; deprecated no-IV/EVP_BytesToKey API |
+| 31 | §QW-37 / §RC-35 | Dependency typosquats | ✅ | new `dependency-confusion` rule for package.json dependency maps |
+| 32 | §QW-42 / §SC-16 | Scan duration telemetry | ✅ | per-stage durations in report JSON and local telemetry |
+| 33 | §QW-43 / §RC-18 | Error information disclosure | ✅ | new rule `error-info-disclosure`; stack/raw error HIGH, message MEDIUM |
+| 34 | §QW-45 | `setTimeout(taint)` audit | ✅ | string-form code execution verified; callback form stays clean |
+| 35 | §QW-46 / §RC-56 | JS clipboard exposure | ✅ | new rule `clipboard-exposure`; sensitive identifiers copied to clipboard |
+| 36 | §QW-48 / §IN-22 | pre-commit docs | ✅ | README includes local pre-commit snippet |
+| 37 | §QW-49 / §IN-24 | GitHub Actions workflow | ✅ | `.github/workflows/sast.yml`; SARIF upload + confidence-gated failure |
+| 38 | §QW-50 / §IN-19 | Slack notification | ✅ | `--notify slack:<webhook>` posts scan summary; failures warn only |
 
 ## Session log
 
@@ -99,6 +113,34 @@ Verification:
 
 Next obvious moves:
 - §QW-1 once §PR-5 lands.
-- §QW-23 / §RC-60 — JWT alg confusion, M-effort.
-- Move into §00-engine.md (cross-file taint, async tracking) — these
-  are the L/XL items the differentiation strategy turns on.
+- Remaining unblocked quick wins: §QW-28, §QW-33, §QW-34, §QW-35,
+  §QW-36, §QW-38, §QW-39, §QW-40, §QW-44, §QW-47.
+- Move into §00-engine.md (cross-file taint, async tracking) after the
+  quick-win backlog is exhausted — these are the L/XL items the
+  differentiation strategy turns on.
+
+### 2026-05-07 — integration + coverage quick-win batch
+
+Pushed the prior clean state first, then landed the next independent batch in
+`e330ed4`:
+
+| SHA | Task |
+|-----|------|
+| `e330ed4` | §QW-11 / §PR-18 — numeric coercion sanitizers |
+| `e330ed4` | §QW-19 / §IN-27 — SARIF baseline diff with `--diff-against` |
+| `e330ed4` | §QW-20 / §IN-28 — confidence-gated CI failure |
+| `e330ed4` | §QW-23 / §RC-60 — JWT algorithm confusion |
+| `e330ed4` | §QW-24 / §RC-3 — `process.env.SECRET` logging subcase |
+| `e330ed4` | §QW-25 / §QW-45 — code-sink audit for eval / `setTimeout` |
+| `e330ed4` | §QW-27 / §RC-24 — JS path traversal |
+| `e330ed4` | §QW-37 / §RC-35 — npm typosquat dependency names |
+| `e330ed4` | §QW-42 / §SC-16 — scan duration telemetry |
+| `e330ed4` | §QW-48 / §IN-22 — pre-commit README snippet |
+| `e330ed4` | §QW-49 / §IN-24 — GitHub Actions SAST workflow |
+| `e330ed4` | §QW-50 / §IN-19 — Slack notification |
+
+Verification:
+- `npm test` passes.
+- `HOME=/tmp dart run tool/smoke_test.dart` passes.
+- `dart analyze lib bin tool` exits 0 with existing info-level lints only.
+- `git diff --check` passes before commit.

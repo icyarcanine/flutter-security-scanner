@@ -230,13 +230,18 @@ See [00-engine.md §EN-8](00-engine.md).
 - **Dependencies:** §SC-5.
 - **Effort:** **M** (3 days post §SC-5).
 
-## §SC-16 — Telemetry for scan duration distribution
+## §SC-16 — Telemetry for scan duration distribution ✅ DONE — sha e330ed4 (2026-05-07)
 
 - **Why:** We don't know if scans are getting slower over time.
 - **Target state:** Per-scan: total duration, per-stage duration, per-
   file p50/p95/p99 durations stored in local telemetry.
 - **Approach:** Extend `_telemetryFilePath` payload.
 - **Effort:** **S** (1 day).
+- **Implementation notes:**
+  - `ProjectScanReport` now exposes `stageDurationsMs`.
+  - The scanner records `loading`, `fast`, `ast`, and `taint` stage
+    timings and persists the same distribution in local telemetry.
+  - JSON output includes the stage timing block under `stats`.
 
 ## §SC-17 — GC-friendly intermediate data structures
 
