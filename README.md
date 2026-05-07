@@ -108,16 +108,25 @@ following properties:
     `$accumulator` operators — `CWE-943`.
   - Template/SSTI — `render_template_string`, Jinja `from_string` — `CWE-1336`.
   - LDAP/XPath — `ldap.search`, `xpath.evaluate` — `CWE-89` family.
-- **Sanitizers**:
-  - Name-pattern: `sanitize/escape*/encodeURI*/dompurify.sanitize/encodeHTML/clean/normalize/validator.escape`.
-  - Validators: `validate/assertValid/ensureSafe/schema.parse/safeParse/...`.
-  - Numeric coercion: `parseInt`, `parseFloat`, `Number.parseInt`,
-    `Number.parseFloat`, `Number`, unary `+`, `~~`, `| 0`, `>>> 0` —
-    separated into a documented bucket because the return type (number)
-    cannot carry SQL/shell/template payloads.
-  - String replacement sanitizers: `.replace(/[^A-Za-z0-9_-]/g, '')`,
-    `.replace(/\D/g, '')`, and similar allowlist-stripping forms.
-  - Parameterized queries — recognized at the call level (second arg is
+- **Sanitizers** (per-sink kind — §QW-1 / §PR-6):
+  - **Full-spectrum** (clear taint for every sink kind):
+    - Numeric coercion: `parseInt`, `parseFloat`, `Number.parseInt`,
+      `Number.parseFloat`, `Number`, unary `+`, `~~`, `| 0`, `>>> 0`.
+      Return type is a number — cannot carry payloads.
+    - Validators: `validate/assertValid/ensureSafe/schema.parse/safeParse/...`.
+    - Generic catch-all: `sanitize/clean/normalize/escape` when no more
+      specific name matches.
+    - Allowlist-stripping replace: `.replace(/[^A-Za-z0-9_-]/g, '')`,
+      `.replace(/\D/g, '')`, etc.
+  - **Sink-specific** (only suppress matching sink kinds):
+    - HTML: `escapeHtml`, `encodeHTML`, `sanitizeHtml`,
+      `dompurify.sanitize`, `validator.escape`.
+    - URL / redirect / header: `encodeURI`, `encodeURIComponent`.
+    - SQL: `escapeSql`, `sqlstring.escape`, `mysql.escape`, `pg.escape`.
+    - Command: `escapeShell`, `shellEscape`.
+  - `escapeHtml(taint)` flowing into a SQL sink still flags HIGH;
+    `sqlstring.escape(taint)` into a SQL sink correctly suppresses.
+  - Parameterized queries recognized at the call level (second arg is
     `[…]`/`{…}`/`(…)` or matches `params/values/bindings/parameters`).
 - **Precision controls**:
   - Clean reassignment (`x = 42`) clears taint; augmented assignment
@@ -125,6 +134,15 @@ following properties:
   - Conditional sanitization (`if (cond) x = sanitize(...)`) does **not**
     promote a variable to sanitized — the engine refuses to trust a
     sanitization that may not execute on every path.
+  - **Negate-guard recognition** (§QW-41 / §PR-1):
+    `if (!ALLOW.has(x)) return;` (and `.includes`, `.test`,
+    `.indexOf(...) === -1`, `!ALLOW[x]` shapes with early `return` /
+    `throw` / `continue` / `break`) clears taint on `x` for code past
+    the guard.
+  - **`instanceof` receiver narrowing** (§QW-2 / §EN-12): inside an
+    `if (handle instanceof Pool) { ... }` branch the SQL receiver check
+    treats `handle` as DB-shaped if `Pool` / `PrismaClient` /
+    `Sequelize` / `Database` / etc. tokenize to a known DB keyword.
   - Alias chains beyond depth 3 degrade to *weak taint* (reported at MEDIUM
     confidence).
   - `Object.assign(target, src)` marks `target` as weakly tainted —
@@ -460,9 +478,13 @@ values fall through to a safer default.
   modeling. Virtual dispatch resolves by last-name only.
 - Python, Go, Java have AST grammars but limited source/sink coverage and
   no taint models.
-- Non-Dart languages: no CFG-based path-sensitive analysis (conditional
-  sanitization is conservatively *not* trusted, which biases toward false
-  positives over false negatives).
+- Non-Dart languages: no full CFG-based path-sensitive analysis. Top-level
+  negate-guard barriers and dominating `instanceof` narrowing are
+  recognized via AST pre-passes (§QW-41 / §QW-2); positive
+  `if (allow.has(x)) sink(x)` guards and nested-block guards still defer
+  to the §EN-4 work. Conditional reassignment to a sanitizer is
+  conservatively *not* trusted, which biases toward false positives over
+  false negatives.
 - Framework coverage limited to Express.js (`req.body/query/params`).
 - Entropy detection is probabilistic — some benign strings flagged at LOW.
 - Comment-based suppression can be added by anyone with commit access;
@@ -477,9 +499,10 @@ npm run compile && npm test
 Runs in order:
 1. `precision-self-test.js` — end-to-end fixture sweep covering 17 rule
    interactions across JS / Dart / Python / test-path noise.
-2. `taint-engine.test.js` — 99 unit-style invariants for the
-   `IntraProceduralTaintTracker` (source seeding, sanitizer recognition,
-   receiver heuristic, sink kinds, reassignment, parameterization, all
+2. `taint-engine.test.js` — 112 unit-style invariants for the
+   `IntraProceduralTaintTracker` (source seeding, sink-specific
+   sanitizer recognition, receiver heuristic incl. instanceof narrowing,
+   sink kinds, reassignment, parameterization, negate-guard, all
    CWE-tagged rule quick wins, comment immunity, git porcelain regression,
    `Promise.all` concurrency stability).
 3. `test-ast.js` — AST grammar load smoke test.

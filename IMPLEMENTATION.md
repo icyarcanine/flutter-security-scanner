@@ -199,18 +199,54 @@ optional-chaining (`?.`) treated like `.`.
 
 ### Sanitizers
 
-Three patterns, all symbol-side (mark the LHS as sanitized so subsequent
+Sanitization is split into **full-spectrum** sanitizers (clear taint for
+every modeled sink kind) and **sink-specific** sanitizers (clear taint
+only for the kinds they actually defend against — §QW-1 / §PR-6).
+
+Full-spectrum, all symbol-side (mark the LHS as sanitized so subsequent
 references are clean):
 
-- **`SANITIZER_NAME_PATTERN`** — `sanitize`, `escape`, `escapeHtml`,
-  `escapeSql`, `escapeShell`, `dompurify.sanitize`, `encodeURI*`,
-  `validator.escape`, etc.
-- **`VALIDATION_NAME_PATTERN`** — `validate`, `validated`, `assertValid`,
-  `assertSafe`, `ensureValid`, `safeParse`, `schema.parse`, etc.
 - **`NUMERIC_COERCION_PATTERN`** — `parseInt`, `parseFloat`,
-  `Number.parseInt`, `Number.parseFloat`. Output is a `number` and can't
-  carry SQL/shell/template payloads. Documented as a separate bucket so
-  per-sink gating is a one-line change if precision data ever motivates it.
+  `Number`, `Number.parseInt`, `Number.parseFloat`, plus the unary `+x`,
+  `~~x`, `x | 0`, `x >>> 0` idioms. Output is a `number` and can't carry
+  SQL / shell / template / HTML payloads.
+- **`VALIDATION_NAME_PATTERN`** — `validate`, `validated`, `assertValid`,
+  `assertSafe`, `ensureValid`, `safeParse`, `schema.parse`, etc. Treated
+  as full sanitizers because validation typically asserts structure.
+- **`SANITIZER_NAME_PATTERN`** generic catch-all — `sanitize`, `escape`,
+  `clean`, `normalize` (when none of the more-specific patterns below
+  match). Treated conservatively as full coverage to avoid regressing
+  user-defined `sanitize` helpers.
+- **Sanitizing-replace recognizer** — `x.replace(/[^a-z0-9_-]/g, '')`-shape
+  allowlist-stripping calls; output drops any chars outside the literal
+  whitelist class.
+
+Sink-specific (`SINK_SPECIFIC_SANITIZERS` registry, ordered most-specific-
+first so generic patterns don't shadow them):
+
+| Pattern | `sanitizesFor` |
+|---------|----------------|
+| `escapeHtml` / `encodeHTML` / `sanitizeHtml` | `html` |
+| `dompurify.sanitize` | `html` |
+| `validator.escape` | `html` |
+| `encodeURI` / `encodeURIComponent` | `url`, `redirect`, `header` |
+| `escapeSql` | `sql` |
+| `sqlstring.escape` / `mysql.escape` / `pg.escape` | `sql` |
+| `escapeShell` / `shellEscape` | `command` |
+
+Two state slots track per-symbol coverage on assignment:
+
+- **`state.sanitized: Set<string>`** — fully sanitized; sink check at any
+  kind sees it as clean. `_expressionTaintStrength` short-circuits on
+  this set.
+- **`state.sanitizedFor: Map<string, Set<SinkKind>>`** — partial coverage.
+  Does **not** short-circuit `_expressionTaintStrength` (so a partial
+  sanitizer flowing into a mismatched sink still flags); consulted by
+  `_isSanitizedSinkCall` at sink time, which walks compound args
+  (`"WHERE id=" + safe`) leaf-by-leaf and only suppresses when every
+  tainted leaf is sanitized for the actual sink kind. `escapeHtml(taint)`
+  flowing into `db.query` flags HIGH; `sqlstring.escape(taint)` flowing
+  into the same sink suppresses correctly.
 
 Parameterized SQL queries are recognized at the call level —
 `db.query("…", [args])` is treated as sanitized regardless of the
@@ -255,11 +291,41 @@ Examples that match: `db.query`, `myDb.query`, `dbClient.query`,
 Examples that don't (correct rejections): `analytics.query(event)`,
 `description.query()`.
 
-When the receiver doesn't match, a fallback heuristic walks the first
-argument looking for a SQL keyword (`SELECT`, `INSERT INTO`,
-`UPDATE`, `DELETE FROM`, `CREATE TABLE`, `DROP TABLE`, `ALTER TABLE`,
-`MERGE`, `TRUNCATE`) — covers the case `query("SELECT ..." + x)` where
-the receiver is generic but the SQL is unambiguous.
+When the receiver doesn't match, two fallbacks fire:
+
+1. The first argument is walked looking for a SQL keyword (`SELECT`,
+   `INSERT INTO`, `UPDATE`, `DELETE FROM`, `CREATE TABLE`, `DROP TABLE`,
+   `ALTER TABLE`, `MERGE`, `TRUNCATE`) — covers `query("SELECT ..." + x)`
+   where the receiver is generic but the SQL is unambiguous.
+2. **§QW-2 / §EN-12** — `_findEnclosingInstanceofNarrowings` walks
+   parents from the call looking for an `if (receiver instanceof T)`
+   guard whose consequence contains the call (and joined `&&` clauses).
+   When `T` tokenizes to a `DB_RECEIVER_KEYWORDS` entry — `Pool`,
+   `PgPool`, `PrismaClient`, `Sequelize`, `Database`, `MariaDBConnection`,
+   etc. — the call resolves as `sql` even when the receiver name itself
+   doesn't match. Approximates the dominator-aware narrowing §EN-4
+   would provide. Else-branch / `||` joinings are intentionally
+   excluded — they don't establish the narrowing for the main branch.
+
+### Negate-guard recognition (§QW-41 / §PR-1)
+
+`_collectNegateGuards(scope)` runs as a pre-pass during scope seeding.
+It walks the function body's top-level statements (siblings of the body
+block; nested blocks defer to §EN-4's CFG) looking for early-exit
+allowlist barriers:
+
+- `if (!ALLOW.has(x)) return;` / `throw` / `continue` / `break`
+- `if (!validHosts.includes(x)) ...` (and the `.indexOf(x) === -1` shape)
+- `if (!regex.test(x)) ...`
+- `if (!ALLOW.hasOwnProperty(x)) ...`
+- `if (!ALLOW[x]) ...` (object-key negation)
+
+Recognized symbols populate `ScopeState.negateGuardedAfter:
+Map<symbol, line>`, where `line` is the first guaranteed-clean line past
+the if-statement's end. Both `_expressionTaintStrength` and the sink-call
+leaf walk (`_allTaintedLeavesSanitizedForKind`) treat the symbol as
+fully sanitized when the consuming node's line is past the guard. Sinks
+**before** the guard (or inside the guard's body) still fire.
 
 ### Confidence model
 

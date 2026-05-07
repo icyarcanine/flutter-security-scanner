@@ -6,7 +6,7 @@ verification used to confirm the change works. Code-level details live in
 [IMPLEMENTATION.md](IMPLEMENTATION.md); the user-facing feature list lives
 in [README.md](README.md).
 
-Items are grouped into four passes that produced today's state:
+Items are grouped into five passes that produced today's state:
 
 1. **Audit** — initial gap analysis identifying 70+ issues vs CodeQL/Semgrep.
 2. **Production fixes** — 23 changes addressing correctness, output, UX,
@@ -15,6 +15,10 @@ Items are grouped into four passes that produced today's state:
    production fixes themselves.
 4. **Final pass** — 13 architecture/coverage items to ship production-ready,
    plus dead-code and placeholder cleanup.
+5. **Quick-win sweep** — 48 of 50 items from `goals/11-quick-wins.md`
+   landed across rule coverage, output formats, CI integration, and the
+   final three engine-precision items (sink-specific sanitizers,
+   instanceof receiver narrowing, negate-guard recognition).
 
 ---
 
@@ -231,6 +235,84 @@ real bugs in the new code surfaced and were corrected:
 
 ---
 
+## Pass 5 — Quick-win sweep
+
+The `goals/` folder formalised every remaining gap into 50 small tasks
+under [goals/11-quick-wins.md](goals/11-quick-wins.md). 48 of 50 landed
+in this pass; the two remaining (§QW-2 inheritance / §QW-41 nested
+guards) defer to the multi-week §EN-4 CFG work tracked in
+[goals/00-engine.md](goals/00-engine.md). Headline groupings:
+
+### Rule-coverage adds (sha `f2d31ad`, `e330ed4`, `d0af6b4`)
+
+`hardcoded-ip`, `improper-cert-validation`, `tabnabbing`,
+`cleartext-http`, `weak-crypto-js`, `insecure-web-storage`,
+`error-info-disclosure`, `clipboard-exposure`, `path-traversal-js`,
+`dependency-confusion`, `symlink-following`,
+`unscoped-realtime-channel`, `realtime-subscription-leak`,
+`secure-storage-logging`, `android-webview-js-interface`,
+`python-format-injection`. Existing rules also extended:
+`generic-secret` adds Stripe / Twilio / SendGrid / OpenAI / Anthropic /
+GitHub / Slack token shapes; `injection-flaw` gains `header` and `code`
+sink kinds (CWE-113 + CWE-95 dynamic `import()`); `weak-crypto-js`
+covers TLS / SSL deprecated protocols and `crypto.createCipher`;
+`insecure-cookie` flags broad-domain cookies; `jwt-misuse` flags
+algorithm confusion (HS256 with public-key-shaped material);
+`sensitive-logging` flags `process.env.SECRET` writes.
+
+### Output / integration formats
+
+Markdown table, CSV (RFC-4180 quoting), JUnit XML, GitLab Code Quality,
+Bitbucket Code Insights, standalone HTML report (severity / rule / file
+filterable), Slack notifier (`--notify slack:<webhook>`),
+GitHub Actions SAST workflow, pre-commit snippet in
+[README.md](README.md), `.fshrc.yaml` JSON Schema for VS Code's
+`yamlValidation` / `jsonValidation`.
+
+### Engine knobs / scale
+
+`--rule-timeout` (30s default; aborts emit `scanner-internal-error`),
+`--max-file-size` (1 MB default; `report.skippedFiles[]`),
+`--diff-against=<sarif>` for SARIF baseline diff, `--fail-confidence`
+combined with `--fail-on`, `report.suppressionsByRule` surfaced
+(stderr warning at ≥ 5 suppressions per rule), per-stage scan
+duration in telemetry + report JSON, `eval(`-prefilter exit-fast.
+
+### Engine precision (Pass 5 tail — the three QW items previously gated)
+
+- **§QW-1 / §PR-6** (sha `5c27117`) — sink-specific sanitizer
+  applicability. New `SINK_SPECIFIC_SANITIZERS` registry maps each
+  sanitizer pattern to the `Set<SinkKind>` it actually defends against.
+  `ScopeState.sanitizedFor: Map<symbol, Set<SinkKind>>` tracks
+  per-symbol partial coverage across assignments. `_isSanitizedSinkCall`
+  walks compound args (`"WHERE id=" + safe`) leaf-by-leaf and only
+  suppresses when **every** tainted leaf is sanitized for the actual
+  sink kind. Result: `escapeHtml(taint)` flowing into SQL flags HIGH;
+  `sqlstring.escape(taint)` into the same sink suppresses. Numeric
+  coercion / generic validators / sanitizing replace stay full-spectrum.
+  `_expressionTaintStrength` only short-circuits on FULL sanitization
+  so partial sanitizer calls propagate inner taint to the per-kind
+  sink decision.
+- **§QW-2 / §EN-12** (sha `5c27117`) — `_findEnclosingInstanceofNarrowings`
+  walks parents from a sink call site looking for `if (x instanceof T)`
+  guards (and `&&`-conjoined variants) whose consequence dominates the
+  call. SQL receiver resolution treats the receiver as DB-shaped if `T`
+  tokenizes to a `DB_RECEIVER_KEYWORDS` entry — `Pool`, `PrismaClient`,
+  `Sequelize`, `Database`, etc. Approximates the dominator-aware
+  narrowing that §EN-4 will provide.
+- **§QW-41 / §PR-1** (sha `5c27117`) — `_collectNegateGuards` pre-pass
+  walks each scope's top-level statements for early-exit allowlist
+  barriers: `if (!ALLOW.has(x)) return/throw/continue/break;` and the
+  `.includes`, `.test`, `.indexOf(...) === -1`, `!ALLOW[x]` shapes.
+  Recognized symbols populate `ScopeState.negateGuardedAfter:
+  Map<symbol, line>`; sink checks past that line treat the symbol as
+  fully sanitized. Positive guards and nested-block guards still wait
+  on §EN-4.
+
+12 new fixtures in `scripts/taint-engine.test.js` (99 → 112 tests).
+
+---
+
 ## Verification
 
 After every pass, the test suite ran clean:
@@ -239,8 +321,11 @@ After every pass, the test suite ran clean:
 $ npm run compile     # tsc strict, zero warnings
 $ npm test
   Precision self-test passed.                (17 fixture assertions)
-  14 passed, 0 failed                        (taint engine invariants)
+  112 passed, 0 failed                       (taint engine invariants)
   AST Engine Validation Passed! ✔             (grammar smoke test)
+  IFDS self-test passed.                     (7 Dart taint findings)
+  rule-timeout / file-size-budget / output-formats / suppression-stats /
+  cli-filters self-tests: PASS
 ```
 
 End-to-end smoke test on a four-vulnerability fixture confirms:
@@ -249,6 +334,9 @@ End-to-end smoke test on a four-vulnerability fixture confirms:
 - `--disable injection-flaw,insecure-random` correctly filters from 5 → 3.
 - Baseline v2 entries carry `contextHash`.
 - `.gitignore` skips `generated/` directories.
+- `escapeHtml(taint)` → SQL flags HIGH; `sqlstring.escape(taint)` → SQL
+  suppresses; `if (handle instanceof Pool) handle.query(taint)` flags
+  HIGH; `if (!ALLOW.has(x)) return;` clears taint past the guard.
 
 ---
 
@@ -256,11 +344,17 @@ End-to-end smoke test on a four-vulnerability fixture confirms:
 
 These need design review and multi-day effort, not a fix-pass:
 
-- **Inter-procedural taint** — the simple "function summary" mechanism
-  catches `function f(x) { return x.body.id; }` but not callbacks,
-  cross-file flows, or async/event boundaries.
-- **CFG-based path-sensitive analysis** — conditional sanitization is
-  conservatively NOT trusted; biases toward FPs.
+- **Inter-procedural taint (§EN-1 — L)** — the simple "function summary"
+  mechanism catches `function f(x) { return x.body.id; }` but not
+  callbacks, cross-file flows, or async/event boundaries. Unlocks §PR-5
+  (origin-resolved sanitizer allowlist) once it lands.
+- **CFG-based path-sensitive analysis (§EN-4 — XL, 4–8 weeks)** — the
+  single biggest precision win still on the table. Conditional
+  sanitization is conservatively NOT trusted; positive allowlist guards
+  (`if (allow.has(x)) sink(x)`) and nested-block negate-guards both
+  wait on §EN-4. Pass 5 ships approximations for the most common
+  shapes (top-level negate-guard, dominating instanceof) without the
+  lattice.
 - **Custom YAML/JSON rules** — today, project-specific patterns require
   forking and editing TypeScript.
 - **Dart vs TS strategy** — both implementations exist and are maintained.
