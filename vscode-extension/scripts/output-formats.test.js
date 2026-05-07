@@ -165,6 +165,71 @@ async function testSarifSnippets() {
   }
 }
 
+async function testSarifTaxonomyAndAutomation() {
+  // §IN-1 deepening: every result carries kind/rank, the run carries
+  // automationDetails, and any rule with a CWE produces a taxonomies block
+  // plus rule.relationships pointing into it.
+  const { report, root } = await buildReportWithRoot();
+  try {
+    const sarif = toSarif(report, root, { automationId: 'unit-test/run-42' });
+    const run = sarif.runs[0];
+
+    assert.ok(run.automationDetails, 'run.automationDetails must be present');
+    assert.strictEqual(run.automationDetails.id, 'unit-test/run-42');
+    assert.ok(run.automationDetails.description?.text, 'automationDetails.description.text required');
+
+    for (const r of run.results) {
+      assert.ok(['fail', 'review'].includes(r.kind), `bad kind on result: ${r.kind}`);
+      assert.ok(typeof r.rank === 'number' && r.rank >= 0 && r.rank <= 100,
+        `rank must be a 0-100 number; got ${r.rank}`);
+    }
+
+    const ruleWithCwe = run.tool.driver.rules.find(rule =>
+      rule.properties?.cwe && rule.properties.cwe.length > 0);
+    if (ruleWithCwe) {
+      assert.ok(Array.isArray(run.taxonomies) && run.taxonomies.length > 0,
+        'taxonomies block missing despite CWE-tagged rule');
+      const cwe = run.taxonomies.find(t => t.name === 'CWE');
+      assert.ok(cwe, 'CWE taxonomy missing from run.taxonomies');
+      assert.ok(cwe.taxa && cwe.taxa.length > 0, 'CWE taxonomy has no taxa');
+      assert.ok(Array.isArray(ruleWithCwe.relationships) && ruleWithCwe.relationships.length > 0,
+        'CWE-tagged rule has no relationships block');
+      assert.strictEqual(ruleWithCwe.relationships[0].target.toolComponent.name, 'CWE');
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+async function testSarifBaselineState() {
+  // §IN-1 deepening: baselineFingerprints set => results stamped 'unchanged'
+  // (matched) or 'new' (unmatched). Without the set, the field is omitted.
+  const { report, root } = await buildReportWithRoot();
+  try {
+    const noBaseline = toSarif(report, root);
+    for (const r of noBaseline.runs[0].results) {
+      assert.strictEqual(r.baselineState, undefined,
+        'baselineState must be omitted when no baseline supplied');
+    }
+
+    const fps = new Set(noBaseline.runs[0].results.map(r =>
+      r.partialFingerprints.primaryLocationLineHash));
+    const all = toSarif(report, root, { baselineFingerprints: fps });
+    for (const r of all.runs[0].results) {
+      assert.strictEqual(r.baselineState, 'unchanged',
+        `expected unchanged for matching fingerprint; got ${r.baselineState}`);
+    }
+
+    const empty = toSarif(report, root, { baselineFingerprints: new Set() });
+    for (const r of empty.runs[0].results) {
+      assert.strictEqual(r.baselineState, 'new',
+        `expected new for empty baseline; got ${r.baselineState}`);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
 (async function main() {
   await testMarkdown();
   await testCsv();
@@ -173,6 +238,8 @@ async function testSarifSnippets() {
   await testBitbucket();
   await testHtml();
   await testSarifSnippets();
+  await testSarifTaxonomyAndAutomation();
+  await testSarifBaselineState();
   console.log('output-formats self-test: PASS');
 })().catch(err => {
   console.error('output-formats self-test: FAIL');

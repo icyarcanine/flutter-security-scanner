@@ -286,6 +286,36 @@ repos:
 `pass_filenames: false` is intentional: the scanner already computes changed
 files via git, which keeps path handling consistent with CI.
 
+### Husky + lint-staged
+
+Same intent as pre-commit, expressed in the npm-native toolchain. After
+`npx husky init`, drop this in `.husky/pre-commit`:
+
+```sh
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+npx lint-staged
+```
+
+…and configure `lint-staged` in `package.json`:
+
+```jsonc
+{
+  "lint-staged": {
+    // Run the SAST scan once per commit, ignoring filenames — the scanner
+    // computes changed files itself and bails early when none are touched.
+    // The trailing `[]` makes lint-staged skip its default per-file fan-out.
+    "*": "bash -c 'npx flutter-supabase-helper scan . --changed-since HEAD --fail-on high --fail-confidence high --summary' --"
+  }
+}
+```
+
+Why `--changed-since HEAD`: lint-staged is invoked once per commit, but the
+scanner is a project-wide tool. Letting it ask git for the staged diff
+matches both the pre-commit and CI flows above and keeps the answer to
+"what changed?" in one place.
+
 ### Baseline (suppress known issues)
 
 ```bash

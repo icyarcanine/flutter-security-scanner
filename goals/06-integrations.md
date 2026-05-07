@@ -13,35 +13,41 @@ upside for adoption.
 
 Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
-- ✅ §IN-2, §IN-4, §IN-6, §IN-8, §IN-9, §IN-10, §IN-11, §IN-19, §IN-22,
-  §IN-24, §IN-27, §IN-28, §IN-30
-- 🟡 §IN-1 (SARIF 2.1.0 base output landed: codeFlows, partialFingerprints,
-  per-rule CWE, SRCROOT base IDs; deepening tasks — taxonomies,
-  baselineState, kind/rank, automationDetails — still pending)
+- ✅ §IN-1, §IN-2, §IN-4, §IN-6, §IN-8, §IN-9, §IN-10, §IN-11, §IN-19,
+  §IN-22, §IN-23, §IN-24, §IN-27, §IN-28, §IN-30
 - ⏳ §IN-3, §IN-5, §IN-7, §IN-12, §IN-13, §IN-14, §IN-15, §IN-16,
-  §IN-17, §IN-18, §IN-20, §IN-21, §IN-23, §IN-25, §IN-26, §IN-29, §IN-31, §IN-32
+  §IN-17, §IN-18, §IN-20, §IN-21, §IN-25, §IN-26, §IN-29, §IN-31, §IN-32
 
 ---
 
-## §IN-1 — SARIF 2.1.0 — already shipped, deepen 🟡 PARTIAL — sha b060cc8
+## §IN-1 — SARIF 2.1.0 — already shipped, deepen ✅ DONE — 2026-05-07
 
 - **Current state:** ✅ `vscode-extension/src/output/sarif.ts` emits
   `codeFlows`, per-rule CWE aggregation, partialFingerprints, SRCROOT
   base IDs.
-- **Target state:** Add SARIF features CodeQL ships:
-  - `taxonomies` block linking each rule to CWE / OWASP / NIST taxonomies
-    (we have CWE per-rule but not the formal taxonomy section)
-  - `relatedLocations` per result (sources + propagation steps as
-    related, not just the sink)
-  - `kind` field per result (`fail` / `pass` / `review`)
-  - `baselineState` field for findings present in baseline
-  - `rank` / `priority` based on severity + confidence
-  - `automationDetails` block with run timestamp + scanner version
+- **Target state:** Add SARIF features CodeQL ships — DELIVERED:
+  - ✅ `taxonomies` block — every CWE referenced by any rule appears in
+    `runs[].taxonomies[].taxa`; rules carry `relationships` linking
+    rule.id → CWE entry.
+  - ✅ `relatedLocations` per result — source + propagation steps from
+    the code-flow chain are emitted as related (the sink remains the
+    primary location).
+  - ✅ `kind` field per result — `fail` for HIGH/MEDIUM-confidence
+    findings, `review` for LOW confidence.
+  - ✅ `baselineState` field — opt-in via the new
+    `toSarif(report, rootPath, { baselineFingerprints })` parameter;
+    matched findings get `'unchanged'`, unmatched get `'new'`. Field
+    is omitted when no baseline is supplied.
+  - ✅ `rank` (0-100) — derived from severity (high=80 / medium=50 /
+    low=25) + confidence boost (+15 high, +5 medium).
+  - ✅ `automationDetails` — every run carries an `id` (override via the
+    `automationId` option) and a `description.text`.
 - **Approach:** Extend `output/sarif.ts`. Each addition is small.
 - **Dependencies:** None.
 - **Effort:** **M** (4 days).
-- **Tests:** Validate output against the official SARIF schema. Use
-  `sarif-multitool validate` (Microsoft tool).
+- **Tests:** `testSarifTaxonomyAndAutomation` and `testSarifBaselineState`
+  in `vscode-extension/scripts/output-formats.test.js` cover every new
+  field.
 
 ## §IN-2 — SARIF: include source code snippets in `physicalLocation` ✅ DONE — 2026-05-07
 
@@ -263,9 +269,14 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
   - Added a `.pre-commit-config.yaml` local-hook snippet to README using
     `--changed-since HEAD`, `--fail-on high`, and `--fail-confidence high`.
 
-## §IN-23 — Husky / lint-staged integration
+## §IN-23 — Husky / lint-staged integration ✅ DONE — 2026-05-07
 
 - **Effort:** **S** (1 day, mostly docs).
+- **Implementation notes:** README "Husky + lint-staged" section
+  documents the `.husky/pre-commit` hook + `package.json#lint-staged`
+  block. Reuses the same `--changed-since HEAD --fail-on high
+  --fail-confidence high --summary` invocation as the pre-commit /
+  CI flows so all three entry points stay in sync.
 
 ## §IN-24 — GitHub Actions reusable workflow ✅ DONE — sha e330ed4 (2026-05-07)
 
