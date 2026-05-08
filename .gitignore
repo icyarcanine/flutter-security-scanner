@@ -27,4 +27,11 @@ vscode-extension/schemas/
 engine/target/
 engine/Cargo.lock
 
+# engine-cli binaries bundled into the .vsix at packaging time. Built
+# locally via `vscode-extension/scripts/bundle-engine.sh` (host-only by
+# default), or per-release by `.github/workflows/release-binaries.yml`
+# for all three supported triples. Not tracked in git because they're
+# 4 MB each and cargo-built artifacts shouldn't live in version control.
+vscode-extension/bin/
+
 

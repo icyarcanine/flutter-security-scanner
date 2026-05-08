@@ -1,0 +1,103 @@
+name: release-binaries
+
+# Builds the engine-cli sidecar for darwin-arm64, darwin-x64, and linux-x64
+# on each platform's native GitHub runner, then uploads the binaries as a
+# workflow artifact and (on tagged release) attaches them to the GitHub
+# Release.
+#
+# Run modes:
+#   - workflow_dispatch: any time, produces a `engine-cli-binaries` artifact.
+#   - push tag matching `engine-v*`: cuts a Release with the binaries attached.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'engine-v*'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            artifact_name: engine-cli-darwin-arm64
+          - runner: macos-13
+            target: x86_64-apple-darwin
+            artifact_name: engine-cli-darwin-x64
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: engine-cli-linux-x64
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        working-directory: engine
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.85.0'
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'engine -> target'
+          key: release-${{ matrix.target }}
+
+      - name: cargo build --release
+        run: cargo build --release --target ${{ matrix.target }} -p engine-cli
+
+      - name: Stage binary
+        shell: bash
+        run: |
+          mkdir -p ../staging
+          cp "target/${{ matrix.target }}/release/engine-cli" "../staging/${{ matrix.artifact_name }}"
+          chmod +x "../staging/${{ matrix.artifact_name }}"
+
+      - name: Smoke test
+        shell: bash
+        # Only run on the host platform's binary — cross-compiled artifacts
+        # for other OSes obviously won't execute on this runner.
+        if: ${{ matrix.target == 'aarch64-apple-darwin' || matrix.target == 'x86_64-apple-darwin' || matrix.target == 'x86_64-unknown-linux-gnu' }}
+        run: |
+          mkdir -p /tmp/smoke
+          cat > /tmp/smoke/vuln.dart <<'EOF'
+          void handler(request) {
+            database.rawQuery(request.body.id);
+          }
+          EOF
+          ../staging/${{ matrix.artifact_name }} /tmp/smoke \
+            --rules ../vscode-extension/rules/dart-sql-injection.yaml \
+            --format json | tee /tmp/findings.json
+          grep -q 'dart.security.sql-injection' /tmp/findings.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: staging/${{ matrix.artifact_name }}
+          retention-days: 14
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/engine-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Flatten artifact tree
+        run: |
+          mkdir -p release
+          find dist -type f -exec cp {} release/ \;
+          ls -la release/
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true

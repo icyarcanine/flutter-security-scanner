@@ -55,7 +55,12 @@ struct Args {
 }
 
 fn main() -> Result<()> {
+    // Send tracing output to stderr so stdout stays clean for the
+    // JSON / SARIF payload that parents (TS extension, Dart scanner)
+    // parse. Default subscribers go to stdout, which contaminates the
+    // adapter's JSON.parse path.
     tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| "engine_cli=info,engine_core=info".into()),

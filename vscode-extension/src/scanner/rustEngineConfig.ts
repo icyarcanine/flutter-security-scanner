@@ -5,6 +5,7 @@ import { resolveEngineBinary } from './engineResolver';
 export const BUILTIN_RUST_ENGINE_RULES = [
   'rules/dart-sql-injection.yaml',
   'rules/dart-command-injection.yaml',
+  'rules/dart-xss.yaml',
 ];
 
 export interface RustEngineRuntime {

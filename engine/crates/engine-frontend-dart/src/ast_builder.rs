@@ -165,17 +165,27 @@ impl<'g, 's> AstBuilder<'g, 's> {
                 let mut arg_cursor = args.walk();
                 let mut arg_slot: u16 = 2;
                 for arg_child in args.children(&mut arg_cursor) {
-                    if !arg_child.is_named() || arg_child.kind() != "argument" {
+                    if !arg_child.is_named() {
                         continue;
                     }
-                    // Each `argument` node in tree-sitter-dart wraps the
-                    // actual expression. Recurse into the wrapped child.
+                    // tree-sitter-dart wraps positional args as `argument`
+                    // and named args (`name: value`) as `named_argument`,
+                    // each containing the actual expression as a named
+                    // child. For `named_argument`, the first named child
+                    // is the `label` (e.g. `data:`); skip it and recurse
+                    // into the value.
                     let mut inner_cursor = arg_child.walk();
-                    let inner: Option<TNode> =
-                        arg_child.children(&mut inner_cursor).find(|c| c.is_named());
-                    if let Some(inner_expr) = inner {
-                        if let Some(arg_id) = self.visit_node(inner_expr, Some(level_id), arg_slot)
-                        {
+                    let inner_expr: Option<TNode> = match arg_child.kind() {
+                        "argument" => arg_child
+                            .children(&mut inner_cursor)
+                            .find(|c| c.is_named()),
+                        "named_argument" => arg_child
+                            .children(&mut inner_cursor)
+                            .find(|c| c.is_named() && c.kind() != "label"),
+                        _ => continue,
+                    };
+                    if let Some(expr) = inner_expr {
+                        if let Some(arg_id) = self.visit_node(expr, Some(level_id), arg_slot) {
                             // `visit_node` already attached the AST edge
                             // when parent is Some — nothing else to do.
                             let _ = arg_id;

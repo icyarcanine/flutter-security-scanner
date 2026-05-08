@@ -482,14 +482,47 @@ impl PatternCompiler {
             return NodePredicate::And(predicates);
         }
 
-        // Pattern: `foo($ARGS)` (bare function call)
+        // Pattern: `foo($ARGS)` (bare function call or constructor)
+        //
+        // The Dart frontend lowers every selector chain to `MethodCall`,
+        // including no-receiver constructor calls like `Html(data: …)`.
+        // Match either kind so YAML rules can omit the `$X.` receiver
+        // prefix when targeting bare invocations and constructors.
         if let Some(paren) = pat.find('(') {
             let func_name = &pat[..paren];
             if !func_name.starts_with('$') && !func_name.is_empty() {
-                return NodePredicate::And(vec![
+                let mut args_predicates = Vec::new();
+                args_predicates.push(NodePredicate::Or(vec![
                     NodePredicate::KindIs(NodeKind::Call),
-                    NodePredicate::SymbolEndsWith(func_name.to_string()),
-                ]);
+                    NodePredicate::KindIs(NodeKind::MethodCall),
+                    NodePredicate::KindIs(NodeKind::ConstructorCall),
+                    NodePredicate::KindIs(NodeKind::StaticCall),
+                ]));
+                args_predicates.push(NodePredicate::SymbolEndsWith(func_name.to_string()));
+
+                // Capture each argument at slot 2+ to support metavariable
+                // bindings like `Html(data: $ARG)`. Same indexing as the
+                // method-call path: slot 0 = recv, 1 = selector, 2+ = args.
+                let args_part = &pat[paren + 1..pat.len().saturating_sub(1)];
+                for (i, arg) in args_part.split(',').enumerate() {
+                    let arg = arg.trim();
+                    if arg == "..." || arg.is_empty() {
+                        continue;
+                    }
+                    // Strip Dart-style named-argument labels
+                    // (`data: $ARG` → `$ARG`) before compiling the capture.
+                    let value_part = arg
+                        .find(':')
+                        .map(|colon| arg[colon + 1..].trim())
+                        .unwrap_or(arg);
+                    let arg_pred = self.compile_capture(value_part);
+                    args_predicates.push(NodePredicate::HasChild {
+                        slot: (i as u16) + 2,
+                        inner: Box::new(arg_pred),
+                    });
+                }
+
+                return NodePredicate::And(args_predicates);
             }
         }
 

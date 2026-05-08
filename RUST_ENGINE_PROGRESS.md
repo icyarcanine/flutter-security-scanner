@@ -21,12 +21,112 @@
 | P2  Workspace + frontends | ✅ | 2026-05-08 | 2026-05-08 | All 4 crates build; 14/14 tests pass |
 | P3  CLI binary | ✅ | 2026-05-08 | 2026-05-08 | Smoke test fires end-to-end (`request.body.id` → `database.rawQuery(...)`); unused-source FP filter added in `a7892cc` |
 | P4  CI workflow | ✅ | 2026-05-08 | 2026-05-08 | GitHub Actions engine workflow green on run `25552936823` |
-| P5  TS sidecar integration | 🟡 | 2026-05-08 | — | Runner, rule wrapper, package entries, SQL/command YAML rules, and tests pass; release binaries still pending |
+| P5  TS sidecar integration | ✅ | 2026-05-08 | 2026-05-08 | XSS YAML registered, named-argument lowering + bare-call pattern compiler fix landed, tracing→stderr, host darwin binaries built, end-to-end TS adapter verified, release-binaries CI workflow added |
 | P6  Deprecate TS IFDS | ✅ | 2026-05-08 | 2026-05-08 | Legacy engine marked deprecated; fallback now skips when Rust runtime is available |
 | P7  Dart sidecar integration | ⬜ | — | — | — |
 | P8  Z3 SMT correlator | ⬜ | — | — | (deferrable) |
 | P9  Remove TS IFDS | ⬜ | — | — | — |
 | P10 Acceptance gates | ⬜ | — | — | — |
+
+---
+
+## Phase 5 — TS sidecar integration completed (2026-05-08, post-Codex)
+
+Codex's earlier commit (`f773805`) landed the TS-side scaffolding:
+`vscode-extension/src/scanner/{engineResolver,rustEngineConfig,rustEngine}.ts`,
+`rules/security/rustEngineTaintRule.ts`, `rules/{dart-sql,dart-command,dart-xss}.yaml`,
+plus `package.json` entries and a `bundle-engine.sh` skeleton. Three concrete
+gaps remained, all closed in the follow-up pass:
+
+### 1. XSS rule was never reaching the registry
+
+`BUILTIN_RUST_ENGINE_RULES` in `rustEngineConfig.ts` only listed
+`dart-sql-injection.yaml` and `dart-command-injection.yaml`. Added
+`dart-xss.yaml` so all three Phase-5 YAML rules ship.
+
+### 2. XSS pattern didn't fire even after registration
+
+Two engine bugs blocked it; both are fixed:
+
+- **Named-argument lowering.** `Html(data: request.body.html)` parses as a
+  `member_access` whose argument is wrapped in `named_argument` (with a
+  `label` child for `data:`), not a plain `argument`. The Dart frontend's
+  `lower_member_access` only walked `argument` kinds, so the source
+  `request.body.html` was orphaned. Extended the args loop to also
+  handle `named_argument`, skipping the `label` child and recursing into
+  the value expression.
+- **Bare-call pattern compilation.** Patterns like `Html(data: $ARG)`
+  compiled to `KindIs(Call) + SymbolEndsWith("Html")`. But the Dart
+  frontend lowers every selector chain — including no-receiver
+  constructor calls — to `MethodCall`, so the pattern never matched.
+  Updated `compile_pattern` to emit `Or(Call, MethodCall, ConstructorCall,
+  StaticCall)` for bare-invocation patterns, plus argument-slot HasChild
+  predicates that strip Dart's `name:` label so `data: $ARG` binds
+  `$ARG` to the value expression.
+
+After both fixes, the dart-xss rule fires on:
+```dart
+final widget = Html(data: request.body.html);
+```
+
+### 3. tracing went to stdout, contaminating JSON output
+
+`tracing_subscriber::fmt()` defaults to stdout. The TS adapter's
+`runRustEngine` parses stdout as JSON, so INFO logs broke
+`JSON.parse`. Forced the subscriber to stderr via
+`.with_writer(std::io::stderr)`. Logs are still visible to humans, JSON
+payload is now clean for parents.
+
+### 4. Verified end-to-end
+
+A throwaway smoke script that resolves the binary, invokes it, and
+parses the output produced 3 findings on a regression fixture:
+
+```
+resolution.status = found
+resolution.path  = /…/vscode-extension/bin/engine-cli-darwin-arm64
+findings count: 3
+  dart.security.sql-injection      @ vuln.dart:2:3 [high]
+  dart.security.command-injection  @ vuln.dart:3:3 [high]
+  dart.security.xss-html-widget    @ vuln.dart:4:3 [medium]
+```
+
+### 5. Binary distribution
+
+- Built `engine-cli-darwin-arm64` (4.0 MB) and `engine-cli-darwin-x64`
+  (4.3 MB) locally; both are Mach-O and match the architecture they
+  target. `linux-x64` requires a Linux cross-toolchain not on the local
+  machine — added to the new release CI workflow instead.
+- Improved `vscode-extension/scripts/bundle-engine.sh` with three modes:
+  `--host` (default, builds whatever the developer's running on),
+  `--target <triple>` (one specific triple), `--all` (every supported
+  triple — only realistic on a multi-platform CI runner).
+- Added `.github/workflows/release-binaries.yml`. A matrix of three
+  native runners (`macos-14`, `macos-13`, `ubuntu-latest`) builds each
+  triple natively, smoke-tests the host's own binary, and uploads the
+  result as a workflow artifact. Tag pushes matching `engine-v*`
+  trigger a Release with the binaries attached.
+- `.gitignore` now excludes `vscode-extension/bin/` — 4 MB binaries
+  don't belong in git history. The `package.json` `files` array still
+  lists `bin/engine-cli-*` so vsce packaging picks them up at .vsix
+  build time, regardless of whether the working tree has them.
+
+### Verified after the pass
+
+- `cargo build --workspace --release` → 0 warnings ✓
+- `cargo test --workspace` → 14/14 pass ✓
+- `engine-cli` smoke (3 rules in one fixture) → 3 findings, all correct ✓
+- TS adapter end-to-end via the resolver → 3 findings, all correct ✓
+- TS extension `npm run compile` clean ✓
+
+### Open Phase-5 items (deferred to Phase 6 / 7 / acceptance)
+
+- Linux x64 binary — produced only by CI; need a tag push or manual
+  workflow_dispatch to land one in releases.
+- Windows x64 binary — out of scope for v1; TS resolver already handles
+  the missing-binary case with a precise install hint.
+- PDG-aware variable indirection (the var-indirection FN documented in
+  the FP filter section) — Phase 5+ work.
 
 ---
 
