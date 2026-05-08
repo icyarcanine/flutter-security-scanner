@@ -1,0 +1,4 @@
+name: security_definer_rpc_app
+
+dependencies:
+  supabase_flutter: ^2.0.0

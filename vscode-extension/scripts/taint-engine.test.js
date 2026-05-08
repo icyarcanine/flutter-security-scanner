@@ -880,13 +880,45 @@ async function main() {
       `wildcard alone is intentional for public APIs: ${JSON.stringify(f)}`);
   });
 
+  await test('prototype-pollution: request-controlled object key write flags', async () => {
+    const findings = await scanWith({
+      'a.js': `function patch(req, target) { target[req.body.key] = req.body.value; }`,
+    }, 'prototype-pollution');
+    assert(findings.some(f => f.cwe === 'CWE-1321' && f.severity === 'high'),
+      `request-controlled key write should flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('prototype-pollution: explicit __proto__ write flags', async () => {
+    const findings = await scanWith({
+      'a.js': `function poison(obj, key, value) { obj["__proto__"][key] = value; }`,
+    }, 'prototype-pollution');
+    assert(findings.some(f => f.cwe === 'CWE-1321' && f.severity === 'high'),
+      `explicit proto write should flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('redos: nested regex quantifier flags', async () => {
+    const findings = await scanWith({
+      'a.js': `function valid(s) { return /^(a+)+$/.test(s); }`,
+    }, 'redos');
+    assert(findings.some(f => f.cwe === 'CWE-1333' && f.severity === 'high'),
+      `nested quantifier should flag: ${JSON.stringify(findings)}`);
+  });
+
+  await test('redos: simple anchored regex is fine', async () => {
+    const findings = await scanWith({
+      'a.js': `function valid(s) { return /^[a-z]+$/.test(s); }`,
+    }, 'redos');
+    assert.strictEqual(findings.length, 0,
+      `simple regex should not flag: ${JSON.stringify(findings)}`);
+  });
+
   // ── Comment-line FP guard for new rules ─────────────────────────────────
 
   await test('new rules ignore commented-out vulnerabilities', async () => {
-    const allCodes = ['insecure-random', 'jwt-misuse', 'insecure-cookie', 'cors-misconfig'];
+    const allCodes = ['insecure-random', 'jwt-misuse', 'insecure-cookie', 'cors-misconfig', 'prototype-pollution', 'redos'];
     for (const code of allCodes) {
       const f = await scanWith({
-        'a.js': `// const tok = Math.random();\n// jwt.decode(req.body);\n// res.cookie('s', v, { httpOnly: false });\n// res.setHeader("Access-Control-Allow-Origin", "*"); res.setHeader("Access-Control-Allow-Credentials", "true");`,
+        'a.js': `// const tok = Math.random();\n// jwt.decode(req.body);\n// res.cookie('s', v, { httpOnly: false });\n// res.setHeader("Access-Control-Allow-Origin", "*"); res.setHeader("Access-Control-Allow-Credentials", "true");\n// obj["__proto__"][key] = value;\n// /^(a+)+$/.test(s);`,
       }, code);
       assert(f.length === 0, `${code} should ignore comments: ${JSON.stringify(f)}`);
     }
@@ -965,6 +997,27 @@ async function main() {
     });
     assert(!findings.some(f => f.severity === 'high'),
       `sqlstring.escape covers SQL; should suppress: ${JSON.stringify(findings)}`);
+  });
+
+  await test('reflected-xss: res.send request data flags as HTML sink', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, res) {
+        res.send("<h1>" + req.query.name + "</h1>");
+      }`,
+    });
+    assert(findings.some(f => f.severity === 'high' && f.cwe === 'CWE-79'),
+      `res.send tainted HTML should flag CWE-79: ${JSON.stringify(findings)}`);
+  });
+
+  await test('reflected-xss: escapeHtml suppresses res.send HTML sink', async () => {
+    const findings = await scanWith({
+      'a.js': `function h(req, res) {
+        const name = escapeHtml(req.query.name);
+        res.send("<h1>" + name + "</h1>");
+      }`,
+    });
+    assert(!findings.some(f => f.severity === 'high'),
+      `escapeHtml should cover response HTML sinks: ${JSON.stringify(findings)}`);
   });
 
   await test('QW-1: parseInt() (numeric coercion) still suppresses every sink', async () => {

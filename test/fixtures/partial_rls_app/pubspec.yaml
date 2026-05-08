@@ -1,0 +1,4 @@
+name: partial_rls_app
+
+dependencies:
+  supabase_flutter: ^2.0.0

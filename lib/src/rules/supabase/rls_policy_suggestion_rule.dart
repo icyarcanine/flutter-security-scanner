@@ -16,11 +16,16 @@ class RlsPolicySuggestionRule extends Rule {
   @override
   List<Finding> evaluate(ProjectContext context) {
     final findings = <Finding>[];
-    final seenTables = <String>{};
+    final seenOperations = <String>{};
 
     for (final access in context.tableAccesses) {
       final normalized = access.table.toLowerCase();
-      if (!seenTables.add(normalized)) {
+      final operation = access.operation.toLowerCase();
+      if (!seenOperations.add('$normalized|$operation')) {
+        continue;
+      }
+
+      if (context.ddlMetadata.hasPolicyForOperation(normalized, operation)) {
         continue;
       }
 
@@ -45,7 +50,7 @@ class RlsPolicySuggestionRule extends Rule {
           confidence: confidence,
           code: code,
           message:
-              "Heuristic RLS suggestion for table '${access.table}' "
+              "Heuristic RLS suggestion for `${access.operation}` on '${access.table}' "
               '(${confidence.label} confidence — verify against your schema)',
           fix:
               'Consider: `$policy`  — this is a heuristic; confirm column names match your actual schema before applying.',

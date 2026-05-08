@@ -81,6 +81,30 @@ void main() {
   );
 
   _runCase(
+    name: 'partial_rls_app',
+    includeSuggestions: false,
+    expectedCodes: {'missing-rls-awareness', 'table-ownership-filter'},
+    expectedIssueCount: 2,
+    failures: failures,
+  );
+
+  _runCase(
+    name: 'rls_select_only_update_app',
+    includeSuggestions: false,
+    expectedCodes: {'missing-rls-awareness'},
+    expectedIssueCount: 1,
+    failures: failures,
+  );
+
+  _runCase(
+    name: 'security_definer_rpc_app',
+    includeSuggestions: false,
+    expectedCodes: {'supabase-rpc-injection'},
+    expectedIssueCount: 1,
+    failures: failures,
+  );
+
+  _runCase(
     name: 'exact_path_gitignore_app',
     includeSuggestions: false,
     expectedCodes: const {},
@@ -523,9 +547,8 @@ void _runCase({
   }
 
   if (expectedIssueCount != null) {
-    final issueCount = report.findings
-        .where((finding) => !finding.isSuggestion)
-        .length;
+    final issueCount =
+        report.findings.where((finding) => !finding.isSuggestion).length;
     if (issueCount != expectedIssueCount) {
       failures.add(
         '$name expected $expectedIssueCount issue(s) but found $issueCount.',
@@ -534,9 +557,8 @@ void _runCase({
   }
 
   if (expectedIssueCount == 0) {
-    final issueCount = report.findings
-        .where((finding) => !finding.isSuggestion)
-        .length;
+    final issueCount =
+        report.findings.where((finding) => !finding.isSuggestion).length;
     if (issueCount != 0) {
       failures.add('$name should be clean but produced:');
       for (final finding in report.findings) {
@@ -681,8 +703,7 @@ void _runConfigCase(List<String> failures) {
         'config_file_app: `rls-policy-suggestion` should be disabled.',
       );
     }
-    if (config.severityFor('supabase-signed-url-ttl') !=
-        FindingSeverity.low) {
+    if (config.severityFor('supabase-signed-url-ttl') != FindingSeverity.low) {
       failures.add(
         'config_file_app: signed-url-ttl severity override was not read.',
       );
@@ -712,9 +733,8 @@ void _runConfigCase(List<String> failures) {
       );
     }
 
-    final suggestionCount = report.findings
-        .where((f) => f.code == 'rls-policy-suggestion')
-        .length;
+    final suggestionCount =
+        report.findings.where((f) => f.code == 'rls-policy-suggestion').length;
     if (suggestionCount != 0) {
       failures.add(
         'config_file_app: disabled suggestion rule still produced '
@@ -723,9 +743,8 @@ void _runConfigCase(List<String> failures) {
     }
 
     // Simulate the CLI's exit-code computation with effectiveFailOn=HIGH.
-    final hasFail = report.findings
-        .where((f) => !f.isSuggestion)
-        .any((f) => (f.severity?.sortOrder ?? 3) <= FindingSeverity.high.sortOrder);
+    final hasFail = report.findings.where((f) => !f.isSuggestion).any(
+        (f) => (f.severity?.sortOrder ?? 3) <= FindingSeverity.high.sortOrder);
     if (hasFail) {
       failures.add(
         'config_file_app: LOW finding should not trip fail_on=high.',
@@ -814,8 +833,10 @@ void _runBaselineCase(List<String> failures) {
       filePath: 'supabase/functions/hello/index.ts',
       line: 999,
     );
-    final withSynthetic = reloaded.filter(<Finding>[...report.findings, synthetic]);
-    if (withSynthetic.length != 1 || withSynthetic.first.message != synthetic.message) {
+    final withSynthetic =
+        reloaded.filter(<Finding>[...report.findings, synthetic]);
+    if (withSynthetic.length != 1 ||
+        withSynthetic.first.message != synthetic.message) {
       failures.add(
         'baseline smoke case: synthetic new finding should pass through, '
         'got ${withSynthetic.map((f) => f.message).toList()}.',
@@ -867,9 +888,8 @@ void _runMalformedEncodingCase(List<String> failures) {
       final report = const ProjectScanner(
         includeSuggestions: false,
       ).scan(tempRoot.path);
-      final issueCount = report.findings
-          .where((finding) => !finding.isSuggestion)
-          .length;
+      final issueCount =
+          report.findings.where((finding) => !finding.isSuggestion).length;
       if (issueCount != 0) {
         failures.add(
           'malformed_encoding_app should not crash or produce issues, but found $issueCount issue(s).',

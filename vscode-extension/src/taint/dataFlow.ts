@@ -1749,6 +1749,15 @@ export class IntraProceduralTaintTracker {
       return { name: fullName, kind: 'html' };
     }
 
+    // Server response HTML sinks. Keep this intentionally narrow: Express
+    // `res.send` / `res.write` / `res.end` and Fastify `reply.send` are the
+    // common places where tainted request data becomes reflected XSS. Do not
+    // include `res.json` here; JSON responses have different client-side risk.
+    if (/^(?:res|response)\.(?:send|write|end)$/.test(lowerFull) ||
+        lowerFull === 'reply.send') {
+      return { name: fullName, kind: 'html' };
+    }
+
     // SSRF — outbound HTTP / network sinks. Tainted URLs reaching these can
     // cause server-side request forgery, allowing attackers to probe internal
     // services. We only flag full taint flow (HIGH) — dynamic URLs alone are

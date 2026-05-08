@@ -39,6 +39,8 @@ import { SymlinkFollowingRule } from './security/symlinkFollowingRule';
 import { SecureStorageLoggingRule } from './security/secureStorageLoggingRule';
 import { AndroidWebViewJsInterfaceRule } from './security/androidWebViewJsInterfaceRule';
 import { PythonFormatInjectionRule } from './security/pythonFormatInjectionRule';
+import { PrototypePollutionRule } from './security/prototypePollutionRule';
+import { RedosRule } from './security/redosRule';
 import { UnscopedRealtimeChannelRule } from './supabase/unscopedRealtimeChannelRule';
 import { RealtimeSubscriptionLeakRule } from './supabase/realtimeSubscriptionLeakRule';
 
@@ -68,6 +70,8 @@ export function buildDefaultRules(includeSuggestions: boolean): Rule[] {
     new SecureStorageLoggingRule(),
     new AndroidWebViewJsInterfaceRule(),
     new PythonFormatInjectionRule(),
+    new PrototypePollutionRule(),
+    new RedosRule(),
     new UnscopedRealtimeChannelRule(),
     new RealtimeSubscriptionLeakRule(),
 

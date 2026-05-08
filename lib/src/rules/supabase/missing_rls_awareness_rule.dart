@@ -2,15 +2,11 @@ import '../../models/finding.dart';
 import '../../models/project_context.dart';
 import '../../rule.dart';
 
-/// Flags projects that query Supabase tables but show no evidence of RLS setup.
+/// Flags Supabase table operations that are not backed by committed RLS DDL.
 ///
-/// Severity and confidence are tiered based on the quality of RLS evidence:
-///
-/// * **No evidence**  → HIGH severity, HIGH confidence (clear gap).
-/// * **Weak evidence** (informal text mention, no SQL DDL) → LOW severity,
-///   LOW confidence (might be in progress; human review needed).
-/// * **Strong evidence** (CREATE POLICY / ENABLE ROW LEVEL SECURITY DDL, or
-///   `auth.uid()` in Dart source) → no finding emitted.
+/// This is intentionally table/operation-specific: one policy elsewhere in
+/// the project, or a README comment saying "add RLS later", must not suppress
+/// a finding for the table the app actually queries.
 class MissingRlsAwarenessRule extends Rule {
   const MissingRlsAwarenessRule();
 
@@ -23,52 +19,93 @@ class MissingRlsAwarenessRule extends Rule {
       return const [];
     }
 
+    final findings = <Finding>[];
+    final seen = <String>{};
     final level = context.rlsEvidenceLevel;
 
-    // Strong evidence → the project has DDL or auth.uid() usage; trust it.
-    if (level == RlsEvidenceLevel.strong) {
-      return const [];
+    for (final access in context.tableAccesses) {
+      final table = access.table.toLowerCase();
+      final operation = access.operation.toLowerCase();
+      if (!seen.add('$table|$operation')) {
+        continue;
+      }
+
+      if (!context.ddlMetadata.hasRlsEvidenceForTable(table)) {
+        findings.add(_missingTableRlsFinding(access, level));
+        continue;
+      }
+
+      if (!context.ddlMetadata.hasRlsEnabled(table)) {
+        findings.add(_policyWithoutEnableFinding(access));
+        continue;
+      }
+
+      if (!context.ddlMetadata.hasPolicyForOperation(table, operation)) {
+        findings.add(_missingOperationPolicyFinding(access));
+      }
     }
 
-    final firstAccess = context.tableAccesses.first;
+    return findings;
+  }
 
-    if (level == RlsEvidenceLevel.weak) {
-      // Weak evidence: downgrade to LOW severity.  The developer may have
-      // RLS in place on the Supabase side but hasn't committed SQL migrations.
-      return [
-        Finding(
-          severity: FindingSeverity.low,
-          confidence: FindingConfidence.low,
-          category: FindingCategory.supabase,
-          code: code,
-          message:
-              'Only informal RLS mentions found — no CREATE POLICY or ENABLE ROW LEVEL SECURITY detected',
-          fix:
-              'Commit your RLS migration SQL (or check that supabase/migrations/ is included in the scan) so the access model is reviewable locally.',
-          risk:
-              'Without verifiable RLS policies, it is impossible to audit row-level access control from the source code alone.',
-          filePath: firstAccess.file.relativePath,
-          line: firstAccess.line,
-        ),
-      ];
-    }
+  Finding _missingTableRlsFinding(
+    TableAccess access,
+    RlsEvidenceLevel projectEvidence,
+  ) {
+    final hasOnlyWeakProjectEvidence = projectEvidence == RlsEvidenceLevel.weak;
+    return Finding(
+      severity: FindingSeverity.high,
+      confidence: hasOnlyWeakProjectEvidence
+          ? FindingConfidence.medium
+          : FindingConfidence.high,
+      detectionMethod: FindingDetectionMethod.config,
+      category: FindingCategory.supabase,
+      code: code,
+      message: hasOnlyWeakProjectEvidence
+          ? "No verifiable table-level RLS DDL found for '${access.table}'"
+          : "Supabase table '${access.table}' is queried but has no committed RLS DDL",
+      fix:
+          'Commit a migration that enables Row Level Security for `${access.table}` and adds policies for the app operations that touch it.',
+      risk:
+          'Without table-level RLS, any authenticated or anonymous client allowed by the project API key may read or mutate rows outside its authority.',
+      filePath: access.file.relativePath,
+      line: access.line,
+    );
+  }
 
-    // No evidence at all → HIGH severity.
-    return [
-      Finding(
-        severity: FindingSeverity.high,
-        confidence: FindingConfidence.high,
-        category: FindingCategory.supabase,
-        code: code,
-        message:
-            'Supabase table queries found but no RLS setup detected anywhere in the project',
-        fix:
-            'Enable Row Level Security for every table the app touches and commit the policies or migration SQL so the access model is reviewable.',
-        risk:
-            'Without RLS, any authenticated (or unauthenticated) user can read or mutate data they do not own.',
-        filePath: firstAccess.file.relativePath,
-        line: firstAccess.line,
-      ),
-    ];
+  Finding _policyWithoutEnableFinding(TableAccess access) {
+    return Finding(
+      severity: FindingSeverity.high,
+      confidence: FindingConfidence.medium,
+      detectionMethod: FindingDetectionMethod.config,
+      category: FindingCategory.supabase,
+      code: code,
+      message:
+          "RLS policies exist for '${access.table}', but no committed `ENABLE ROW LEVEL SECURITY` was found",
+      fix:
+          'Add `alter table ${access.table} enable row level security;` to the committed migration that defines the table policies.',
+      risk:
+          'Postgres policies do not protect a table while RLS is disabled; the app may be relying on policies that are never enforced.',
+      filePath: access.file.relativePath,
+      line: access.line,
+    );
+  }
+
+  Finding _missingOperationPolicyFinding(TableAccess access) {
+    return Finding(
+      severity: FindingSeverity.medium,
+      confidence: FindingConfidence.medium,
+      detectionMethod: FindingDetectionMethod.config,
+      category: FindingCategory.supabase,
+      code: code,
+      message:
+          "No committed RLS policy for `${access.operation}` on '${access.table}'",
+      fix:
+          'Add a `${access.operation}` policy for `${access.table}` or commit the migration that already defines it. Use `FOR ALL` only when the same rule is correct for every operation.',
+      risk:
+          'RLS is enabled, but this app operation is not backed by a reviewable policy; it may fail at runtime or rely on an out-of-repo dashboard policy.',
+      filePath: access.file.relativePath,
+      line: access.line,
+    );
   }
 }

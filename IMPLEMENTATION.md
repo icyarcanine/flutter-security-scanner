@@ -405,8 +405,10 @@ producing `ScannedFile[]`:
 
 Lazy properties on `ProjectContext` cache expensive computed sets:
 `envEntries`, `tableAccesses`, `storageBucketUses`, `uploadCalls`,
-`supabaseClientLocations`, `rlsEvidenceLevel`. Each is computed once on
-first read.
+`supabaseClientLocations`, `ddlMetadata`, `rlsEvidenceLevel`. `ddlMetadata`
+parses committed SQL migrations for owner columns, per-table RLS enablement,
+and `CREATE POLICY ... FOR <operation>` coverage. Each property is computed
+once on first read.
 
 ---
 

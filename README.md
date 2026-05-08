@@ -7,11 +7,11 @@ finding codes but run different engines:
 | Component | Location | Engine | When to use it |
 |-----------|----------|--------|----------------|
 | **VS Code extension** | `vscode-extension/` | Regex **+** tree-sitter AST **+** taint tracking — intra-procedural for JS/TS, **inter-procedural IFDS for Dart** (TypeScript, Node.js, `web-tree-sitter@0.21.0`) | Day-to-day authoring — inline quick fixes, AST/REGEX badges, taint-confirmed findings |
-| **Dart CLI** | `bin/fluttersupabasehelper.dart` | Regex-only, Flutter-/Supabase-specific rules (Dart) | CI gating on Flutter apps, headless scans, local `dart run` |
+| **Dart CLI** | `bin/fluttersupabasehelper.dart` | Regex/structural Flutter + Supabase rules with committed SQL DDL awareness (Dart) | CI gating on Flutter apps, headless scans, local `dart run` |
 
 The Dart CLI deliberately **does not** use tree-sitter or taint tracking. It is a
 fast, zero-dependency lint pass that complements `dart analyze` with Flutter- and
-Supabase-specific checks (missing RLS awareness, committed `.env`, unobscured
+Supabase-specific checks (table/operation-level RLS DDL coverage, committed `.env`, unobscured
 password fields, weak platform manifests, etc.). Everything under "Analysis
 Pipeline", "Taint Model", and "Confidence Levels" below describes the **VS Code
 extension engine**, not the CLI.
@@ -43,7 +43,8 @@ Dart, and 99 unit-tested taint engine invariants.
   broad cookie domains, sensitive web storage, clipboard exposure,
   symlink-following filesystem reads, deprecated TLS protocol pinning,
   weak crypto APIs, typosquatted packages
-- **Supabase misconfigurations** — missing RLS, insecure storage rules,
+- **Supabase misconfigurations** — missing table/operation-level RLS DDL,
+  policies without enabled RLS, insecure storage rules,
   committed `.env` files, public buckets, unscoped realtime channels,
   leaked realtime subscriptions, multiple clients, improper init
 - **Mobile/WebView risks** — Android `addJavascriptInterface` bridges and

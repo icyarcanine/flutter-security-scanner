@@ -42,25 +42,52 @@ class SupabaseRpcInjectionRule extends Rule {
     final findings = <Finding>[];
 
     for (final file in context.supabaseCandidateDartFiles) {
-      findings.addAll(_scanRpc(file));
+      findings.addAll(_scanRpc(file, context));
       findings.addAll(_scanFilters(file));
     }
 
     return findings;
   }
 
-  Iterable<Finding> _scanRpc(ScannedFile file) sync* {
+  Iterable<Finding> _scanRpc(ScannedFile file, ProjectContext context) sync* {
     for (final match in _rpcCallPattern.allMatches(file.content)) {
       final argStart = match.end;
-      if (argStart >= file.content.length) continue;
+      if (argStart >= file.content.length) {
+        continue;
+      }
 
       final line = file.lineForOffset(match.start);
       if (isOffsetCommented(file, match.start) ||
-          isCommentLine(file.lines[line - 1])) continue;
+          isCommentLine(file.lines[line - 1])) {
+        continue;
+      }
 
-      final classification = _classifyFirstArg(file.content, argStart);
-      switch (classification) {
+      final firstArg = _classifyFirstArg(file.content, argStart);
+      switch (firstArg.kind) {
         case _RpcArgKind.cleanLiteral:
+          final literal = firstArg.literal;
+          final functionName =
+              literal == null ? null : _rootFunctionName(literal);
+          if (functionName != null &&
+              context.ddlMetadata.isUnsafeSecurityDefinerFunction(
+                functionName,
+              )) {
+            yield Finding(
+              severity: FindingSeverity.high,
+              confidence: FindingConfidence.high,
+              detectionMethod: FindingDetectionMethod.config,
+              category: FindingCategory.supabase,
+              code: code,
+              message:
+                  'Client calls SECURITY DEFINER RPC `$functionName` with no committed auth guard',
+              fix:
+                  'Add an explicit auth check inside `$functionName` (for example `auth.uid()` / JWT-claim validation), move privileged work behind a verified Edge Function, or revoke direct client execution of the function.',
+              risk:
+                  'Supabase RPC exposes public SQL functions through PostgREST. A SECURITY DEFINER function without its own auth guard can bypass Row Level Security and run privileged reads or writes for any client that can call it.',
+              filePath: file.relativePath,
+              line: line,
+            );
+          }
           continue;
         case _RpcArgKind.interpolatedLiteral:
           yield Finding(
@@ -122,7 +149,9 @@ class SupabaseRpcInjectionRule extends Rule {
 
       final line = file.lineForOffset(match.start);
       if (isOffsetCommented(file, match.start) ||
-          isCommentLine(file.lines[line - 1])) continue;
+          isCommentLine(file.lines[line - 1])) {
+        continue;
+      }
 
       final method = match.group(1)!;
       yield Finding(
@@ -142,19 +171,30 @@ class SupabaseRpcInjectionRule extends Rule {
     }
   }
 
-  _RpcArgKind _classifyFirstArg(String content, int start) {
+  _RpcFirstArg _classifyFirstArg(String content, int start) {
     final ch = content[start];
     if (ch == "'" || ch == '"') {
       final closeIndex = _findStringClose(content, start);
-      if (closeIndex == -1) return _RpcArgKind.cleanLiteral;
+      if (closeIndex == -1) return const _RpcFirstArg(_RpcArgKind.cleanLiteral);
       final literal = content.substring(start + 1, closeIndex);
       return _hasInterpolation(literal)
-          ? _RpcArgKind.interpolatedLiteral
-          : _RpcArgKind.cleanLiteral;
+          ? _RpcFirstArg(_RpcArgKind.interpolatedLiteral, literal: literal)
+          : _RpcFirstArg(_RpcArgKind.cleanLiteral, literal: literal);
     }
     // Anything else starting at a non-quote character — an identifier, a
     // call, `const`, `this.`, etc. — is a non-literal first argument.
-    return _RpcArgKind.nonLiteral;
+    return const _RpcFirstArg(_RpcArgKind.nonLiteral);
+  }
+
+  String? _rootFunctionName(String literal) {
+    final trimmed = literal.trim();
+    if (trimmed.isEmpty) return null;
+    final withoutSchema =
+        trimmed.contains('.') ? trimmed.split('.').last : trimmed;
+    final normalized = withoutSchema.toLowerCase();
+    return RegExp(r'^[a-z_][a-z0-9_]*$').hasMatch(normalized)
+        ? normalized
+        : null;
   }
 
   /// Finds the matching close-quote for the string literal whose opening
@@ -282,9 +322,9 @@ class SupabaseRpcInjectionRule extends Rule {
     if (!identifier.hasMatch(trimmed)) return false;
 
     final bindingPattern = RegExp(
-      '(?:final|var|const|String|String\\?|dynamic)\\s+' +
-          RegExp.escape(trimmed) +
-          r'\s*=\s*([^;]*);',
+      '(?:final|var|const|String|String\\?|dynamic)\\s+'
+      '${RegExp.escape(trimmed)}'
+      r'\s*=\s*([^;]*);',
     );
     final match = bindingPattern.firstMatch(fileContent);
     if (match == null) return false;
@@ -293,3 +333,10 @@ class SupabaseRpcInjectionRule extends Rule {
 }
 
 enum _RpcArgKind { cleanLiteral, interpolatedLiteral, nonLiteral }
+
+class _RpcFirstArg {
+  const _RpcFirstArg(this.kind, {this.literal});
+
+  final _RpcArgKind kind;
+  final String? literal;
+}
