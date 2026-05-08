@@ -68,12 +68,11 @@ this rule.
 
 These facts were captured before the first resurrection implementation pass.
 They explain why the phases below exist and what not to re-break. Current
-status is tracked in [RUST_ENGINE_PROGRESS.md](RUST_ENGINE_PROGRESS.md); as
-of the latest Codex verification, `cargo test --workspace` passes 14
-engine-core tests with warnings, but the P3 smoke-test Semgrep rule still
-matches 0 findings. If this table contradicts the working tree or the progress
-tracker, **trust the working tree**, update the tracker, then update this
-baseline note.
+status is tracked in [RUST_ENGINE_PROGRESS.md](RUST_ENGINE_PROGRESS.md); the
+current engine builds without warnings in default and full-feature build paths,
+and direct SQL/command smoke rules fire through `engine-cli`. If this table
+contradicts the working tree or the progress tracker, **trust the working
+tree**, update the tracker, then update this baseline note.
 
 | Component | Path | LOC | Compiles today? | Why or why not |
 |-----------|------|-----|-----------------|----------------|

@@ -1,0 +1,22 @@
+id: dart.security.command-injection
+message: "User-controlled value flows into a command execution sink. Avoid shell execution or pass validated allowlisted arguments."
+severity: ERROR
+languages: [dart]
+mode: taint
+
+pattern-sources:
+  - pattern: "request.body.$FIELD"
+  - pattern: "request.query.$FIELD"
+  - pattern: "request.params.$FIELD"
+  - pattern: "context.request.$FIELD"
+
+pattern-sinks:
+  - pattern: "Process.run($ARG)"
+  - pattern: "Process.start($ARG)"
+  - pattern: "$PROC.run($ARG)"
+  - pattern: "$PROC.start($ARG)"
+
+pattern-sanitizers:
+  - pattern: "validateCommand($ARG)"
+  - pattern: "allowlistedCommand($ARG)"
+  - pattern: "sanitizeShellArg($ARG)"

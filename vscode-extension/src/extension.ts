@@ -6,6 +6,7 @@ import { scanFile } from './commands/scanFile';
 import { runSecurityChecks } from './commands/runSecurityChecks';
 import { PanelProvider } from './webview/panelProvider';
 import { SastCodeActionProvider } from './codeActions';
+import { resolveEngineBinary } from './scanner/engineResolver';
 
 export function activate(context: vscode.ExtensionContext) {
   try {
@@ -81,6 +82,16 @@ export function activate(context: vscode.ExtensionContext) {
     // one-click button hard to find for new developers.
     if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
       statusBar.show();
+
+      const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
+      const engineResolution = resolveEngineBinary({
+        extensionPath: context.extensionPath,
+        workspaceRoot,
+      });
+      void context.workspaceState.update(
+        'flutterSupabaseHelper.engineCliPath',
+        engineResolution.status === 'found' ? engineResolution.path : undefined,
+      );
 
       // Auto-scan on open if configured
       const config = vscode.workspace.getConfiguration('flutterSupabaseHelper');

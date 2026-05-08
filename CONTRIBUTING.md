@@ -74,13 +74,12 @@ This runs the Dart scanner against `test/fixtures/` to prevent regressions. To s
 ```bash
 cd engine
 cargo test --workspace
-cargo build -p engine-core
+cargo build --workspace --release
 ```
 
-The end-to-end `engine-cli --rules ...` smoke test is not yet green: the CLI
-runs, but the current Semgrep pattern compiler produces 0 findings on the
-five-line SQL fixture. See [RUST_ENGINE_PROGRESS.md](RUST_ENGINE_PROGRESS.md)
-Phase 3 before trusting Rust engine findings.
+The end-to-end direct SQL/command `engine-cli --rules ...` smoke path is green.
+Before relying on a new YAML rule, verify it with a minimal fixture because the
+Rust Semgrep compiler is still intentionally limited.
 
 ## Adding a rule
 
@@ -88,11 +87,11 @@ Decide which engine the rule should live in:
 
 | Rule kind | Where it lives | Why |
 |-----------|----------------|-----|
-| Inter-procedural taint flow (sql, command, xss, ssrf) | `vscode-extension/rules/*.yaml` (planned Phase 5A Semgrep YAML, consumed by the Rust engine) | High precision, cross-file capable |
+| Inter-procedural taint flow (sql, command, xss, ssrf) | `vscode-extension/rules/*.yaml` (Semgrep YAML, consumed by the Rust engine) | High precision once covered by the current compiler/frontend |
 | Regex-based (hardcoded secrets, debug code, file structure) | `vscode-extension/src/rules/` (TS) or `lib/src/rules/` (Dart) | Fast pre-filter, file-local |
 | Supabase-specific (RLS, RPC, signed URLs) | `lib/src/rules/supabase/` (Dart) | Cross-references DDL parsed from migrations |
 
-For the YAML format, use the [BLUEPRINT_RUST_ENGINE.md](BLUEPRINT_RUST_ENGINE.md) Phase 5A-6 notes until `vscode-extension/rules/` is created.
+For the YAML format, use the existing examples in `vscode-extension/rules/` plus the [BLUEPRINT_RUST_ENGINE.md](BLUEPRINT_RUST_ENGINE.md) Phase 5A-6 notes.
 
 For Dart/TS regex rules, follow the existing patterns in adjacent rule files. Add a fixture to `test/fixtures/<your_app>/` and register an expectation in `tool/smoke_test.dart`.
 

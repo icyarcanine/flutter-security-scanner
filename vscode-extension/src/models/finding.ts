@@ -177,6 +177,8 @@ export interface FindingOptions {
    * "Source → Sink" chain under the finding.
    */
   pathSteps?: PathStep[];
+  /** Internal source engine marker for telemetry/debugging. */
+  engine?: 'ts' | 'rust';
 }
 
 /**
@@ -208,6 +210,7 @@ export class Finding {
   readonly astUsed?: boolean;
   readonly cwe?: string | string[];
   readonly pathSteps?: PathStep[];
+  readonly engine?: 'ts' | 'rust';
 
   constructor(opts: FindingOptions) {
     this.severity = opts.severity;
@@ -226,6 +229,32 @@ export class Finding {
     this.astUsed = opts.astUsed;
     this.cwe = opts.cwe;
     this.pathSteps = opts.pathSteps;
+    this.engine = opts.engine;
+  }
+
+  static fromRustEngine(o: {
+    filePath: string;
+    line: number;
+    column: number;
+    ruleCode: string;
+    message: string;
+    severity: FindingSeverity;
+  }): Finding {
+    return new Finding({
+      category: FindingCategory.security,
+      code: o.ruleCode,
+      severity: o.severity,
+      confidence: FindingConfidence.high,
+      detectionMethod: DetectionMethod.taint,
+      filePath: o.filePath,
+      line: o.line,
+      column: o.column,
+      message: o.message,
+      fix: 'Use parameterized APIs or pass only validated, sanitized values to the sink.',
+      risk: 'High-confidence taint flow detected by the Rust analysis kernel.',
+      astUsed: true,
+      engine: 'rust',
+    });
   }
 
   get isSuggestion(): boolean {

@@ -82,7 +82,7 @@ exact bugs the blueprint already identifies and fixes.
 
 | Codebase | Path | Purpose | Language |
 |----------|------|---------|----------|
-| **Rust engine** | [`engine/`](engine/) | Future canonical analysis kernel — IFDS solver, CPG, Semgrep YAML compiler, Z3 SMT correlator. Experimental: workspace tests currently pass, but the smoke-test rule still produces 0 findings; see [`RUST_ENGINE_PROGRESS.md`](RUST_ENGINE_PROGRESS.md). | Rust |
+| **Rust engine** | [`engine/`](engine/) | Future canonical analysis kernel — IFDS solver, CPG, Semgrep YAML compiler, Z3 SMT correlator. Experimental: direct SQL/command smoke flows work, but PDG-aware variable tracking and named-argument constructor coverage are still incomplete; see [`RUST_ENGINE_PROGRESS.md`](RUST_ENGINE_PROGRESS.md). | Rust |
 | **TS VS Code extension** | [`vscode-extension/`](vscode-extension/) | Current shipping scanner — 42 rules, intra-procedural taint engine in [`dataFlow.ts`](vscode-extension/src/taint/dataFlow.ts), Dart-only IFDS in [`ifdsEngine.ts`](vscode-extension/src/taint/ifdsEngine.ts). | TypeScript |
 | **Dart `lib/` scanner** | [`lib/`](lib/) | Standalone Dart scanner — 38 rules, primitive AST taint tracker in [`taint_engine.dart`](lib/src/taint/taint_engine.dart). | Dart |
 
@@ -116,7 +116,7 @@ Run this once per session to verify your mental model matches reality:
 
 ```bash
 # Confirm working tree composition (not git ls-files)
-find . -name '*.rs' -not -path '*/target/*' | wc -l            # ~19 Rust files in engine/
+find . -name '*.rs' -not -path '*/target/*' | wc -l            # ~21 Rust files in engine/
 find vscode-extension/src -name '*.ts' | wc -l                  # ~80 TS files
 find lib -name '*.dart' | wc -l                                 # ~40 Dart files
 

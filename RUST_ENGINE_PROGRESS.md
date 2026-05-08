@@ -19,10 +19,10 @@
 | P0  Toolchain + un-gitignore | ✅ | 2026-05-08 | 2026-05-08 | Rust 1.85 + brew deps (cmake/llvm/rocksdb/z3) installed; engine source committed in `ea074e7` |
 | P1  Make engine-core compile | ✅ | 2026-05-08 | 2026-05-08 | Default + full-feature builds both pass |
 | P2  Workspace + frontends | ✅ | 2026-05-08 | 2026-05-08 | All 4 crates build; 14/14 tests pass |
-| P3  CLI binary | ✅ | 2026-05-08 | 2026-05-08 | Smoke test fires end-to-end (`request.body.id` → `database.rawQuery(...)`). FP precision is a Phase 5+ concern. |
+| P3  CLI binary | ✅ | 2026-05-08 | 2026-05-08 | Smoke test fires end-to-end (`request.body.id` → `database.rawQuery(...)`); unused-source FP filter added in `a7892cc` |
 | P4  CI workflow | 🟡 | 2026-05-08 | — | `.github/workflows/engine.yml` written; awaits push to verify on GitHub |
-| P5  TS sidecar integration | ⬜ | — | — | — |
-| P6  Deprecate TS IFDS | ⬜ | — | — | — |
+| P5  TS sidecar integration | 🟡 | 2026-05-08 | — | Runner, rule wrapper, package entries, SQL/command YAML rules, and tests pass; release binaries still pending |
+| P6  Deprecate TS IFDS | ✅ | 2026-05-08 | 2026-05-08 | Legacy engine marked deprecated; fallback now skips when Rust runtime is available |
 | P7  Dart sidecar integration | ⬜ | — | — | — |
 | P8  Z3 SMT correlator | ⬜ | — | — | (deferrable) |
 | P9  Remove TS IFDS | ⬜ | — | — | — |
@@ -225,6 +225,9 @@ Specific edits beyond the original sweep:
 - `engine/crates/engine-core/src/frontend/dart_analyzer.rs` — added
   module-level `#![allow(missing_docs)]` (feature-gated), `#[allow(dead_code)]`
   on the `BridgeCommand` enum reserved for the upcoming wire protocol.
+- `engine/crates/engine-core/src/cpg/reactive_builder.rs` — removed a
+  test-only unused `CfgEdge` import after `cargo test --workspace` surfaced
+  one remaining warning.
 
 ---
 
@@ -241,13 +244,18 @@ Specific edits beyond the original sweep:
 
 ### Local-build gotcha (documented for contributors)
 
-`cargo build --features "engine-core/full"` on macOS with brew cmake 4.x fails because z3-sys's vendored CMakeLists.txt uses `cmake_minimum_required(VERSION 2.8)` which CMake 4 rejects. Workarounds:
+The original local failure was z3-sys trying to build its vendored Z3 with
+brew CMake 4.x. That path is now avoided: `engine/.cargo/config.toml` forces
+`LIBZ3_SYS_USE_PKG_CONFIG=1` and adds the brew include/library paths.
 
-- Use `LIBZ3_SYS_USE_PKG_CONFIG=1` plus `brew install z3 pkg-config` and a per-shell `PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig` — currently NOT verified working locally; needs further investigation. CI uses Linux apt where this works cleanly.
-- Or install an older cmake (`brew install cmake@3`) and `export PATH=/opt/homebrew/opt/cmake@3/bin:$PATH`.
-- Or skip the feature locally — default builds work fine. The Z3 SMT correlator is exercised in CI via the `build-full` job.
+Verified locally after the fix:
 
-This is a Z3 ecosystem issue (z3-sys 0.8 vs CMake 4), not an engine bug.
+- `cargo build --workspace --release --features "engine-core/full"` succeeds
+  with zero warnings.
+- `cargo test --features full` still hits a macOS arm64 RocksDB test-linker
+  quirk around compression libraries. CI uses Ubuntu `librocksdb-dev`, where
+  this path is expected to link cleanly. Treat that as a platform-linker quirk,
+  not engine logic.
 
 ---
 
@@ -264,7 +272,6 @@ This is a Z3 ecosystem issue (z3-sys 0.8 vs CMake 4), not an engine bug.
 - [x] **P0-1** macOS deps via brew (`cmake llvm rocksdb z3`) — installed 2026-05-08
 - [x] **P0-2** Delete `engine/` from `.gitignore` (replaced with narrower `engine/target/` + `engine/Cargo.lock` exclusions)
 - [x] **P0-2** `git add engine/ .gitignore` — committed in `ea074e7` (2026-05-08, Codex)
-- [ ] **P0-2** `git add engine/ .gitignore` / commit (deferred until owner approves)
 
 ### Diary
 
@@ -280,7 +287,7 @@ This is a Z3 ecosystem issue (z3-sys 0.8 vs CMake 4), not an engine bug.
 
 ## Phase 1 — Make `engine-core` compile in isolation
 
-**Status:** 🟡 default path verified — full-feature build still pending system deps.
+**Status:** ✅ done — default and full-feature builds verified.
 
 **Goal:** `cargo build -p engine-core` and `cargo build -p engine-core --features full` both exit 0.
 
@@ -291,7 +298,7 @@ This is a Z3 ecosystem issue (z3-sys 0.8 vs CMake 4), not an engine bug.
 - [x] **P1-3** Wrap `engine-core/src/supabase/smt.rs` Z3-using parts in `#[cfg(feature = "smt-proofs")]` + stub for the disabled case
 - [x] **P1-4** Standardise `rustc-hash` rename in three crate `Cargo.toml`s (CLI Cargo.toml is replaced wholesale in P3-3)
 - [x] **P1-5** `cargo build -p engine-core` exits 0
-- [ ] **P1-5** `cargo build -p engine-core --features full` exits 0 — *pending brew/system deps*
+- [x] **P1-5** `cargo build -p engine-core --features full` exits 0
 - [x] **P1-5** `cargo test -p engine-core` ≥ 7 unit tests pass (`cargo test --workspace` ran 14 engine-core tests)
 
 ### Diary
@@ -300,7 +307,8 @@ This is a Z3 ecosystem issue (z3-sys 0.8 vs CMake 4), not an engine bug.
 - 2026-05-08 09:12: P1-2 done. Module `dart_analyzer` now gated behind `analyzer-bridge`.
 - 2026-05-08 09:18: P1-3 done. **Smaller change than blueprint suggested** — the file already had `#[cfg(target_arch = "wasm32")]` gates around the Z3-using `mod native` and the WASM stub. I just swapped them to `#[cfg(feature = "smt-proofs")]` and `#[cfg(not(feature = "smt-proofs"))]` respectively. Data types (CorrelationQuery, DartClientModel, etc.) live above the gate so they always compile. Far cleaner than the blueprint's `mod imp` wrapping plan.
 - 2026-05-08 09:20: P1-4 done. Three `Cargo.toml`s updated. CLI Cargo.toml is rewritten in P3-3 with the canonical form already.
-- 2026-05-08 10:41: Codex verified `cargo build -p engine-core` exits 0 with warnings. `cargo test --workspace` exits 0 and runs 14 engine-core tests. Full-feature build still needs the Z3/RocksDB system dependency decision.
+- 2026-05-08 10:41: Codex verified `cargo build -p engine-core` exits 0 with warnings. `cargo test --workspace` exits 0 and runs 14 engine-core tests.
+- 2026-05-08: Quirk pass verified default and full-feature release builds with zero warnings after Z3/RocksDB env fixes.
 
 ### Deviations from blueprint
 
@@ -351,7 +359,7 @@ This is a Z3 ecosystem issue (z3-sys 0.8 vs CMake 4), not an engine bug.
 
 ## Phase 3 — CLI binary
 
-**Status:** 🟡 partial — workspace builds, all 14 tests pass, CLI runs end-to-end, but smoke-test rule doesn't match yet.
+**Status:** ✅ done — workspace builds, all 14 tests pass, and direct SQL smoke fires.
 
 **Goal:** End-to-end smoke test from blueprint P3-4 produces the expected finding line.
 
@@ -361,7 +369,7 @@ This is a Z3 ecosystem issue (z3-sys 0.8 vs CMake 4), not an engine bug.
 - [x] **P3-2** Add `pub fn flow(&self) -> &FF` and `pub fn graph(&self) -> &CodeGraph` accessors on `IfdsSolver`
 - [x] **P3-2** Add `pub fn source_node_ids/sink_node_ids/sanitizer_node_ids` accessors on `SemgrepFlowFunctions` (returning `impl Iterator<Item = NodeId>` because the underlying storage is `HashMap<NodeId, _>` not `Vec<Match>`)
 - [x] **P3-3** Replace `engine/crates/engine-cli/Cargo.toml`
-- [⚠️] **P3-4** Smoke test: engine runs (CPG built: 35 nodes/34 edges, IFDS executed in 0.4ms), **but rule produces 0 findings instead of 1**. Pattern matcher does not currently fire on the fixture. Engine binary works; rule semantics don't yet. Tracked as Phase 5+ work.
+- [x] **P3-4** Smoke test: direct `request.body.id` inside `database.rawQuery(...)` produces the expected finding. Unused-source FP is suppressed by the byte-range containment filter. Var-indirection remains a documented false negative.
 
 ### Diary
 
@@ -379,57 +387,73 @@ This is a Z3 ecosystem issue (z3-sys 0.8 vs CMake 4), not an engine bug.
 
 ## Phase 4 — CI workflow
 
-**Status:** ⬜ pending
+**Status:** 🟡 written; awaits push to verify on GitHub.
 
 **Goal:** PR push to a branch with engine changes triggers green CI.
 
 ### Checklist
 
-- [ ] **P4-1** Create `.github/workflows/engine.yml`
-- [ ] **P4-2** Create `engine/rust-toolchain.toml`
+- [x] **P4-1** Create `.github/workflows/engine.yml`
+- [x] **P4-2** Create `engine/rust-toolchain.toml`
 
 ### Diary
 
-(none yet)
+- 2026-05-08: Engine CI workflow and pinned Rust toolchain file are present
+  in the committed Phase 4 work. GitHub-side verification is still pending
+  because the branch is ahead of `origin/main` and has not been pushed in this
+  session.
 
 ---
 
 ## Phase 5 — TS sidecar integration (Path A)
 
-**Status:** ⬜ pending
+**Status:** 🟡 in progress — code wired and extension tests pass; release
+binary artifacts still need to be produced for packaging.
 
 ### Checklist
 
-- [ ] **P5A-1** Create `vscode-extension/src/scanner/rustEngine.ts`
-- [ ] **P5A-2** Add `Finding.fromRustEngine` to `vscode-extension/src/models/finding.ts`
-- [ ] **P5A-3** Bundle binaries in `.vsix` via `vscode-extension/scripts/bundle-engine.sh`
-- [ ] **P5A-3** Add `bin/engine-cli-*` entries to `vscode-extension/package.json` `files` array
-- [ ] **P5A-4** Add `resolveEngineBinary` helper to `vscode-extension/src/extension.ts`
-- [ ] **P5A-5** Create `vscode-extension/src/rules/security/rustEngineTaintRule.ts`
-- [ ] **P5A-5** Register the new rule in `vscode-extension/src/rules/index.ts`
-- [ ] **P5A-6** Create `vscode-extension/rules/dart-sql-injection.yaml`
-- [ ] **P5A-6** Create `vscode-extension/rules/dart-command-injection.yaml`
-- [ ] **P5A-6** Create `vscode-extension/rules/dart-xss.yaml`
+- [x] **P5A-1** Create `vscode-extension/src/scanner/rustEngine.ts`
+- [x] **P5A-2** Add `Finding.fromRustEngine` to `vscode-extension/src/models/finding.ts`
+- [x] **P5A-3** Add bundle script at `vscode-extension/scripts/bundle-engine.sh`
+- [ ] **P5A-3** Produce/copy prebuilt `bin/engine-cli-*` artifacts for release packaging
+- [x] **P5A-3** Add `bin/engine-cli-*` entries to `vscode-extension/package.json` `files` array
+- [x] **P5A-4** Resolve binary during activation using existing `vscode-extension/src/scanner/engineResolver.ts`; store path in workspaceState
+- [x] **P5A-5** Create `vscode-extension/src/rules/security/rustEngineTaintRule.ts`
+- [x] **P5A-5** Register the new rule in `vscode-extension/src/rules/index.ts`
+- [x] **P5A-6** Create `vscode-extension/rules/dart-sql-injection.yaml`
+- [x] **P5A-6** Create `vscode-extension/rules/dart-command-injection.yaml`
+- [x] **P5A-6** Create `vscode-extension/rules/dart-xss.yaml` (created but excluded from built-ins pending named-argument frontend support)
 
 ### Diary
 
-(none yet)
+- 2026-05-08: Added TS sidecar runner (`scanner/rustEngine.ts`) that invokes `engine-cli` once per YAML rule, parses JSON output, maps severities, and converts absolute engine paths back to project-relative finding paths.
+- 2026-05-08: Added `Finding.fromRustEngine()` and `engine: 'rust'` marker so Rust findings keep the same output pipeline as native TS findings while remaining distinguishable in tests/debug output.
+- 2026-05-08: Reused existing `scanner/engineResolver.ts` rather than duplicating resolver logic in `extension.ts`. Activation now stores the resolved path in workspaceState; the rule runtime resolves directly because `ProjectContext` does not carry VS Code extension context.
+- 2026-05-08: Created SQL, command, and XSS YAML files. Verified SQL and command direct-flow rules with `engine-cli`. XSS remains present as the Phase 5A file but is not in `BUILTIN_RUST_ENGINE_RULES` because `Html(data: ...)` currently lacks named-argument lowering and an earlier broad sink shape caused false positives.
+- 2026-05-08: Verified TS sidecar path with `ENGINE_CLI=... node ... ProjectScanner(false)`: direct SQL fixture emits `dart.security.sql-injection` with `engine: "rust"`; unused-source clean fixture emits no Rust finding.
+- 2026-05-08: `npm run compile` and full `npm test` pass in
+  `vscode-extension/`. The IFDS self-test still passes because it runs in a
+  fixture context without a Rust runtime and therefore exercises the fallback.
+- 2026-05-08: Re-ran sidecar smoke through `ProjectScanner` with
+  `ENGINE_CLI=engine/target/release/engine-cli`. Direct SQL and direct
+  command fixtures both emit Rust findings; the unused-source SQL fixture
+  emits `[]`.
 
 ---
 
 ## Phase 6 — Deprecate TS IFDS
 
-**Status:** ⬜ pending
+**Status:** ✅ done — safe deprecation/fallback behavior implemented; full removal remains Phase 9.
 
 ### Checklist
 
-- [ ] **P6-1** Add `@deprecated` JSDoc header to `vscode-extension/src/taint/ifdsEngine.ts`
-- [ ] **P6-2** Conditionally register `IfdsTaintRule` only when Rust binary missing
-- [ ] **P6-3** Verify `dataFlow.ts` is untouched
+- [x] **P6-1** Add `@deprecated` JSDoc header to `vscode-extension/src/taint/ifdsEngine.ts`
+- [x] **P6-2** Conditionally run `IfdsTaintRule` only when Rust binary missing
+- [x] **P6-3** Verify `dataFlow.ts` is untouched
 
 ### Diary
 
-(none yet)
+- 2026-05-08: `buildDefaultRules(includeSuggestions)` cannot make the Rust-vs-TS fallback decision because it has no workspace root or extension path. Implemented the same behavior at evaluation time: `IfdsTaintRule.evaluate()` returns `[]` when `rustEngineCanRun(context.rootPath)` is true; otherwise it runs the legacy TS IFDS engine unchanged.
 
 ---
 
@@ -517,13 +541,14 @@ This is a Z3 ecosystem issue (z3-sys 0.8 vs CMake 4), not an engine bug.
 | Missing `hashbrown` dep on engine-core | P1-5 | ✅ resolved | Added to engine-core Cargo.toml (was in workspace root only). |
 | `tracing!(%expr.field)` syntax | P1-5 | ✅ resolved | sed-rewrote 12 occurrences from `%sym.0` → `sym_id = sym.0` in reactive_builder.rs. |
 | Service-role test fails without smt-proofs | P1-5 | ✅ resolved | Stub now preserves syntactic service_role short-circuit (matches Z3 implementation's fast path). |
-| `tree-sitter-dart 0.0.4` may misparse Dart 3 syntax | P3-4 | 🟡 partial | Engine parses fine (35 nodes built), but pattern matcher doesn't fire — **could be tree-sitter grammar OR pattern compiler bug**. Needs investigation. |
-| Semgrep compiler vs reality (the big one) | P3-4 | ⛔ active | Smoke test produces 0 findings. **The Semgrep YAML pattern compiler at `semgrep_compiler.rs:526` does not currently match any node on the fixture.** Has to be investigated before Phase 5. Possible causes: (a) source pattern `request.body.$FIELD` doesn't compile to a predicate that matches the Dart `MethodCall` node, (b) the Dart frontend doesn't attach `symbol` to identifier nodes (the pattern compiler relies on `SymbolEndsWith`), (c) AST-child slot indexing differs between compiler expectation and frontend output. |
+| `tree-sitter-dart 0.0.4` may misparse Dart 3 syntax | P3-4/P5 | 🟡 partial | Direct member-access chains now lower well enough for SQL/command smoke tests. Named constructor arguments such as `Html(data: ...)` are still not lowered into usable argument edges. |
+| Semgrep compiler vs reality (the big one) | P3-4 | ✅ resolved for direct SQL/command | Direct `request.body.id` inside `database.rawQuery(...)` and `Process.run(...)` now match. PDG-aware var-indirection remains a precision/recall trade-off tracked separately. |
 | `tree-sitter-rust 0.21` API may differ | P2-3 | ✅ resolved | Compiles fine. |
-| RocksDB binary bloat | P5A-3 | ⬜ unknown | Measure `engine-cli` size; ship without `persist` if > 30 MB |
+| RocksDB binary bloat | P5A-3 | ✅ acceptable for default sidecar | Local default `engine-cli` release binary is ~4.1 MB because `persist/full` is not enabled for the sidecar build. |
 | `dart_analyzer` helper script doesn't exist | (P1-2 gated off) | ⏭️ skipped | Build without `analyzer-bridge` for v1 |
 | Reactive Dependency Graph "3.4×" claim unverified | P5+ | ⬜ unknown | RDG built 0 anchors on smoke test (expected — no reactive code in the fixture). Benchmark on real Riverpod app needed. |
 | Cross-compilation darwin-from-linux | P5A-3 | ⬜ unknown | Use macos-latest CI runners for darwin |
+| Rust XSS YAML rule unsupported named args | P5A-6 | 🟡 active | `vscode-extension/rules/dart-xss.yaml` exists per blueprint, but is excluded from `BUILTIN_RUST_ENGINE_RULES` until the Dart frontend lowers named arguments for constructor/function calls without FPs. |
 
 ---
 
@@ -545,7 +570,7 @@ After Phase 3 (engine compiles + runs), four pieces of user-facing infrastructur
 (track decisions that need owner sign-off)
 
 1. ~~OK to install Rust toolchain via official `rustup` script?~~ ✅ Approved + installed. Bumped from blueprint's 1.75 → 1.85 because indexmap 2.14 requires `edition2024` (stabilized in 1.85). All Cargo.tomls + bootstrap script + engine_resolver.dart updated.
-2. **OK to install macOS system deps via brew (`cmake llvm rocksdb z3`)?** Needed only for `--features "engine-core/full"` builds. Phase 1 default build doesn't need them.
-3. **Which CI provider?** Blueprint assumes GitHub Actions. Confirm before P4.
-4. **Commit cadence?** Default assumption: single commit per phase, await user approval before pushing. Currently ~17 files modified across all phases — would form one large commit or several smaller phase-shaped commits.
-5. **Smoke-test rule miss is a real gap.** The Semgrep YAML compiler does not currently match the `request.body.$FIELD` → `$DB.rawQuery($ARG)` source/sink pair on the smoke fixture. Three suspects (frontend doesn't attach symbols / pattern compiler bug / AST slot indexing differs). Investigation order TBD — owner should weigh in on whether to debug now (delays Phase 5) or move to Phase 5 first and use the gap as the first real-world Semgrep rule debug case.
+2. ~~OK to install macOS system deps via brew (`cmake llvm rocksdb z3`)?~~ ✅ Installed; default + full-feature builds pass locally after `.cargo/config.toml` env fixes.
+3. ~~Which CI provider?~~ ✅ GitHub Actions workflow added in `.github/workflows/engine.yml`.
+4. **Commit cadence?** Current local branch is ahead of `origin/main`; push cadence is owner-directed.
+5. **Rust XSS named-argument support.** `dart-xss.yaml` exists but is intentionally not part of the default Rust sidecar rule set until constructor/named-argument lowering is precise enough to avoid FPs.

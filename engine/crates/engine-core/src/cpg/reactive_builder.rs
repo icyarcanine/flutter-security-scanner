@@ -625,7 +625,7 @@ impl<'g, 't> BuilderContext<'g, 't> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cpg::{AstEdge, CfgEdge};
+    use crate::cpg::AstEdge;
     use crate::frontend::types::DartTypeDesc;
 
     /// Build a minimal CPG with a StreamController.add() → stream.listen()

@@ -1,4 +1,10 @@
 /**
+ * @deprecated Superseded by the Rust engine sidecar (`engine-cli`) once the
+ * runtime is available. Kept as the fallback path for unsupported platforms,
+ * missing binaries, and test fixtures that intentionally exercise the legacy
+ * TypeScript IFDS implementation. New taint rules should be authored as
+ * Semgrep YAML in `vscode-extension/rules/`, not by editing this engine.
+ *
  * IFDS taint engine orchestrator.
  *
  * Takes a set of parsed Dart files, builds a single CodeGraph spanning all of

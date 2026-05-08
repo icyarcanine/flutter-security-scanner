@@ -49,6 +49,10 @@
   "files": [
     "out/**/*.js",
     "out/**/*.d.ts",
+    "rules/**/*.yaml",
+    "bin/engine-cli-darwin-arm64",
+    "bin/engine-cli-darwin-x64",
+    "bin/engine-cli-linux-x64",
     "media/**/*",
     "schemas/**/*",
     "README.md",
@@ -133,6 +137,7 @@
     "compile": "tsc -p ./",
     "test": "npm run compile && node scripts/precision-self-test.js && node scripts/taint-engine.test.js && node scripts/test-ast.js && node scripts/ifds-self-test.js && node scripts/rule-timeout.test.js && node scripts/file-size-budget.test.js && node scripts/output-formats.test.js && node scripts/suppression-stats.test.js && node scripts/cli-filters.test.js && node scripts/hover-provider.test.js",
     "test:taint": "npm run compile && node scripts/taint-engine.test.js",
+    "bundle:engine": "bash scripts/bundle-engine.sh",
     "watch": "tsc -watch -p ./",
     "stage-docs": "node -e \"const fs=require('fs');const path=require('path');for(const f of ['README.md','LICENSE'])fs.copyFileSync('../'+f,f);fs.mkdirSync('schemas',{recursive:true});fs.copyFileSync('../schemas/fshrc.schema.json','schemas/fshrc.schema.json');\"",
     "vscode:prepublish": "npm run stage-docs && npm run compile",

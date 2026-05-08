@@ -500,8 +500,9 @@ This repo ships **three** independent components — each can be built standalon
 ### 1. Rust analysis kernel (`engine/`)
 
 The high-precision IFDS taint solver. It is currently experimental: the Rust
-workspace builds and tests pass, but the Semgrep smoke-test rule still needs
-work before this becomes the default scanner path.
+workspace builds and tests pass, and direct SQL/command taint smoke flows work.
+PDG-aware variable tracking and some Dart syntax coverage, such as named
+constructor arguments, are still in progress.
 
 ```bash
 # One-shot setup (detects + installs missing tools, with confirmation prompts)
@@ -517,8 +518,9 @@ The binary lands at `engine/target/release/engine-cli`. Resolver helpers for
 the TS extension and Dart `lib/` scanner live at
 [vscode-extension/src/scanner/engineResolver.ts](vscode-extension/src/scanner/engineResolver.ts)
 and [lib/src/engine/engine_resolver.dart](lib/src/engine/engine_resolver.dart);
-full sidecar integration is still tracked in
-[RUST_ENGINE_PROGRESS.md](RUST_ENGINE_PROGRESS.md) Phases 5 and 7.
+TS sidecar integration is tracked in
+[RUST_ENGINE_PROGRESS.md](RUST_ENGINE_PROGRESS.md) Phase 5; Dart `lib/`
+sidecar integration remains Phase 7.
 
 The intended runtime behavior is a precise install hint when the binary is
 missing, rather than a silent failure.
@@ -533,10 +535,10 @@ npm install
 npm run compile
 ```
 
-Target release behavior after the Rust sidecar is wired: published `.vsix`
-builds will include a prebuilt `engine-cli` binary, so end users do not need a
-Rust toolchain. Until Phase 5 lands, contributors should build the engine from
-source when testing Rust-backed analysis.
+Target release behavior after packaging artifacts are produced: published
+`.vsix` builds include a prebuilt `engine-cli` binary, so end users do not
+need a Rust toolchain. Contributors can build the engine from source when
+testing Rust-backed analysis locally.
 
 ### 3. Dart `lib/` scanner (`lib/`)
 

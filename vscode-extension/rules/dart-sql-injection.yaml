@@ -1,0 +1,26 @@
+id: dart.security.sql-injection
+message: "User-controlled value flows into a SQL sink. Use parameterized queries."
+severity: ERROR
+languages: [dart]
+mode: taint
+
+pattern-sources:
+  - pattern: "request.body.$FIELD"
+  - pattern: "request.query.$FIELD"
+  - pattern: "request.params.$FIELD"
+  - pattern: "request.uri.queryParameters.$FIELD"
+  - pattern: "context.request.$FIELD"
+
+pattern-sinks:
+  - pattern: "$DB.rawQuery($ARG)"
+  - pattern: "$DB.execute($ARG)"
+  - pattern: "$DB.rawInsert($ARG)"
+  - pattern: "$DB.rawUpdate($ARG)"
+  - pattern: "$DB.rawDelete($ARG)"
+  - pattern: "$DB.query($ARG)"
+
+pattern-sanitizers:
+  - pattern: "sanitize($ARG)"
+  - pattern: "escapeSql($ARG)"
+  - pattern: "int.parse($ARG)"
+  - pattern: "int.tryParse($ARG)"

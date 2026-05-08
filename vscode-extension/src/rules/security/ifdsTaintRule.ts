@@ -2,6 +2,7 @@ import { Rule, RuleStage } from '../rule';
 import { Finding } from '../../models/finding';
 import { ProjectContext } from '../../scanner/projectContext';
 import { IfdsEngine } from '../../taint/ifdsEngine';
+import { rustEngineCanRun } from '../../scanner/rustEngineConfig';
 
 /**
  * Stage 3 (taint) rule that runs the IFDS solver over all parsed Dart files.
@@ -13,6 +14,10 @@ export class IfdsTaintRule implements Rule {
   readonly stage = RuleStage.taint;
 
   async evaluate(context: ProjectContext): Promise<Finding[]> {
+    if (rustEngineCanRun(context.rootPath)) {
+      return [];
+    }
+
     const dartFiles = context.files.filter(f => f.isDart);
     if (dartFiles.length === 0) { return []; }
     // Force AST parsing for every Dart file before handing to the engine.
