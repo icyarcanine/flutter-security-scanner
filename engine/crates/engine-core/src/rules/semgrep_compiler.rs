@@ -416,10 +416,26 @@ impl PatternCompiler {
                 (rest, None)
             };
 
-            let mut predicates = vec![
-                NodePredicate::KindIs(NodeKind::MethodCall),
-                NodePredicate::SymbolEndsWith(format!(".{method_name}")),
-            ];
+            let mut predicates = vec![NodePredicate::KindIs(NodeKind::MethodCall)];
+
+            // Only constrain on the trailing symbol when the method name is
+            // a literal identifier. Metavariable forms like `$FIELD` are
+            // wildcards — emitting `SymbolEndsWith(".$FIELD")` would produce
+            // a predicate that never matches anything (the metavariable
+            // sigil is not part of any real symbol).
+            if !method_name.starts_with('$') && !method_name.is_empty() {
+                predicates.push(NodePredicate::SymbolEndsWith(format!(".{method_name}")));
+            } else if let Some(name) = method_name.strip_prefix("$...") {
+                // `$...METHOD` — deep capture on the method name slot. We
+                // record the binding via a fresh metavariable id; the
+                // bound node ends up being the chain root itself, which
+                // downstream rules can re-inspect.
+                let id = self.intern_metavar(name);
+                predicates.push(NodePredicate::DeepCapture(id));
+            } else if let Some(name) = method_name.strip_prefix('$') {
+                let id = self.intern_metavar(name);
+                predicates.push(NodePredicate::Capture(id));
+            }
 
             // Receiver capture.
             let recv_pred = self.compile_capture(receiver_part);

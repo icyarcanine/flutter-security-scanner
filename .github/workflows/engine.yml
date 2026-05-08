@@ -1,0 +1,123 @@
+name: engine
+
+on:
+  push:
+    paths:
+      - 'engine/**'
+      - '.github/workflows/engine.yml'
+      - 'scripts/bootstrap.sh'
+  pull_request:
+    paths:
+      - 'engine/**'
+      - '.github/workflows/engine.yml'
+      - 'scripts/bootstrap.sh'
+
+# Cancel previous runs of the same workflow on the same ref so a force-push
+# doesn't pile up wasted CI minutes.
+concurrency:
+  group: engine-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Default-feature build + tests + clippy + fmt. Fast tier (~3 min).
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: engine
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        # `engine/rust-toolchain.toml` pins the channel; this action just
+        # provides clippy + rustfmt.
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.85.0'
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'engine -> target'
+
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+      - name: cargo build --workspace --release
+        run: cargo build --workspace --release
+
+      - name: cargo test --workspace
+        run: cargo test --workspace
+
+      - name: cargo clippy
+        # `-D warnings` would be ideal but the engine still has many
+        # `missing_docs` warnings inherited from the original scaffolding.
+        # Tighten this gate as those get cleaned up.
+        run: cargo clippy --workspace --all-targets
+
+      - name: Smoke test
+        run: |
+          mkdir -p /tmp/sast-smoke
+          cat > /tmp/sast-smoke/vuln.dart <<'EOF'
+          void handler(request) {
+            database.rawQuery(request.body.id);
+          }
+          EOF
+          cat > /tmp/sast-smoke/sql.yaml <<'EOF'
+          id: dart.sql-injection
+          message: "Possible SQL injection: tainted value flows into rawQuery"
+          severity: ERROR
+          languages: [dart]
+          mode: taint
+          pattern-sources:
+            - pattern: "request.body.$FIELD"
+          pattern-sinks:
+            - pattern: "$DB.rawQuery($ARG)"
+          EOF
+          ./target/release/engine-cli /tmp/sast-smoke \
+            --rules /tmp/sast-smoke/sql.yaml \
+            --format json \
+            | tee /tmp/findings.json
+          # Smoke gate: at least one rawQuery finding must appear.
+          grep -q 'dart.sql-injection' /tmp/findings.json
+
+  # Full-feature build with Z3 + RocksDB statically linked. Slow tier
+  # (~10-15 min on a fresh runner because Z3 builds from source).
+  # Runs only on the main branch and PRs that touch engine/ to keep CI
+  # latency manageable on incidental commits.
+  build-full:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: engine
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.85.0'
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'engine -> target'
+          # Distinct cache key so the default and full builds don't collide.
+          key: full
+
+      - name: System dependencies (cmake, clang, llvm, libz3, librocksdb)
+        # `libz3-dev` + `LIBZ3_SYS_USE_PKG_CONFIG=1` lets z3-sys link the
+        # system Z3 instead of building it from source. Avoids the
+        # static-link build's CMake-4 compatibility issue (Z3 vendored in
+        # z3-sys requires `cmake_minimum_required(VERSION < 3.5)` policy).
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake clang llvm-dev libclang-dev libz3-dev librocksdb-dev pkg-config
+
+      - name: cargo build --features full
+        env:
+          LIBZ3_SYS_USE_PKG_CONFIG: '1'
+        run: cargo build --workspace --release --features "engine-core/full"
+
+      - name: cargo test --features full
+        env:
+          LIBZ3_SYS_USE_PKG_CONFIG: '1'
+        run: cargo test --workspace --features "engine-core/full"

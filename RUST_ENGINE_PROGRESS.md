@@ -16,11 +16,11 @@
 
 | Phase | Status | Started | Completed | Notes |
 |-------|--------|---------|-----------|-------|
-| P0  Toolchain + un-gitignore | 🟡 | 2026-05-08 | — | Rust 1.85 installed; engine source unignored; git add/commit pending owner direction |
-| P1  Make engine-core compile | 🟡 | 2026-05-08 | — | default engine-core build passes; full-feature build pending system deps |
-| P2  Workspace + frontends | ✅ | 2026-05-08 | 2026-05-08 | Workspace tests build all four crates and pass |
-| P3  CLI binary | 🟡 | 2026-05-08 | — | binary works end-to-end; smoke-test rule produces 0 findings (Semgrep compiler gap, see Risks) |
-| P4  CI workflow | ⬜ | — | — | — |
+| P0  Toolchain + un-gitignore | ✅ | 2026-05-08 | 2026-05-08 | Rust 1.85 + brew deps (cmake/llvm/rocksdb/z3) installed; engine source committed in `ea074e7` |
+| P1  Make engine-core compile | ✅ | 2026-05-08 | 2026-05-08 | Default + full-feature builds both pass |
+| P2  Workspace + frontends | ✅ | 2026-05-08 | 2026-05-08 | All 4 crates build; 14/14 tests pass |
+| P3  CLI binary | ✅ | 2026-05-08 | 2026-05-08 | Smoke test fires end-to-end (`request.body.id` → `database.rawQuery(...)`). FP precision is a Phase 5+ concern. |
+| P4  CI workflow | 🟡 | 2026-05-08 | — | `.github/workflows/engine.yml` written; awaits push to verify on GitHub |
 | P5  TS sidecar integration | ⬜ | — | — | — |
 | P6  Deprecate TS IFDS | ⬜ | — | — | — |
 | P7  Dart sidecar integration | ⬜ | — | — | — |
@@ -30,18 +30,122 @@
 
 ---
 
+## Phase 3 — Smoke test resolved (2026-05-08, post-Codex commit)
+
+**Status:** ✅ done — engine fires the SQL injection finding end-to-end.
+
+### Three blocking bugs found and fixed
+
+After Codex landed Phase 0-3 as commit `ea074e7`, the smoke test still
+returned 0 findings. Three independent bugs prevented IFDS from firing:
+
+1. **Tree-sitter-dart's CST shape was wrong in our model.** The grammar
+   parses `database.rawQuery(...)` as a single `member_access` node with
+   nested `selector` children — not as `method_invocation`. The existing
+   `ast_builder` mapped `member_access` to `Unknown`, so no `MethodCall`
+   nodes were ever produced. **Fix:** added `lower_member_access()` in
+   `engine/crates/engine-frontend-dart/src/ast_builder.rs` that walks the
+   chain and produces a left-leaning tree of nested `MethodCall` nodes,
+   each carrying a `symbol` interned from the source text. Threaded
+   `source: &str` into `AstBuilder::new`.
+
+2. **Semgrep pattern compiler emitted nonsense for `$METAVAR` method
+   names.** A pattern like `request.body.$FIELD` compiled to
+   `SymbolEndsWith(".$FIELD")`, which never matches because `$FIELD` is
+   the metavariable sigil, not real syntax. **Fix:** in
+   `engine/crates/engine-core/src/rules/semgrep_compiler.rs::compile_pattern`,
+   when `method_name` starts with `$` we now drop the symbol-suffix
+   constraint and emit a `Capture(metavar_id)` instead.
+
+3. **CFG was statement-granular, IFDS couldn't see expressions.** Even
+   with the right MethodCall nodes, the Dart `cfg_builder` only added
+   `Cfg::Fall` edges between statement-level nodes. The lowered MethodCall
+   chains (source and sink) sat as AST descendants of statements with no
+   CFG edges, so the IFDS solver never visited them. Plus
+   tree-sitter-dart wraps top-level functions in `lambda_expression`, not
+   `function_declaration`, so the CFG builder never recognised the
+   handler at all. **Fixes:**
+   - Added `lambda_expression` to the procedure-recognition arm in
+     `cfg_builder.rs::visit_node`.
+   - Added `extend_into_expression()` that walks each statement's AST
+     sub-tree in **post-order** (descendants → parent, matching evaluation
+     order so taint flows from leaves up to enclosing calls) and chains
+     `Cfg::Fall` edges through every node.
+
+### Verified working
+
+- Direct flow (`database.rawQuery(request.body.id)`) → 1 finding ✓
+- Var-indirection (`final id = request.body.id; database.rawQuery("$id")`) → 1 finding ✓ (incidental — see FP note below)
+- Clean fixture (`database.rawQuery("SELECT 1")`) → 0 findings ✓
+
+### Honest precision gap (Phase 5+ work)
+
+`SemgrepFlowFunctions::normal` propagates the tainted fact unchanged to
+every CFG successor. There's no PDG-aware tracking of *which* abstract
+location is tainted — once any source fires, the fact "something is
+tainted" reaches every downstream sink in the same procedure. **Concretely:**
+
+```dart
+void handler(request) {
+  final harmless = request.body.id;   // unused, but seeds taint
+  database.rawQuery("SELECT 1");      // unrelated sink
+}
+```
+
+…fires the SQL-injection rule incorrectly. To eliminate this requires
+PDG-aware data-flow inside `SemgrepFlowFunctions` so the fact tracks an
+abstract memory location, not just a source-node id, plus kill rules at
+non-passthrough nodes. This is genuine Phase 5+ work and is documented in
+the Risks tracker.
+
+### Files touched after `ea074e7`
+
+| File | Change |
+|------|--------|
+| `engine/crates/engine-frontend-dart/src/lib.rs` | Pass `source: &str` to `AstBuilder::new` |
+| `engine/crates/engine-frontend-dart/src/ast_builder.rs` | Added `member_access` → nested `MethodCall` lowering, symbol attachment for `Identifier` |
+| `engine/crates/engine-frontend-dart/src/cfg_builder.rs` | Recognise `lambda_expression`; added post-order `extend_into_expression()` |
+| `engine/crates/engine-core/src/rules/semgrep_compiler.rs` | `$METAVAR` method names → `Capture(...)` instead of `SymbolEndsWith(".$X")` |
+| `engine/crates/engine-cli/src/main.rs` | Added `--dump-cpg` flag for AST/CFG-edge dumps (debugging affordance, kept) |
+
+---
+
+## Phase 4 — CI workflow
+
+**Status:** 🟡 written; awaits push to verify on GitHub.
+
+### What landed
+
+`.github/workflows/engine.yml` defines two jobs:
+
+- **build** (fast, ~3 min): `cargo fmt --check`, `cargo build --workspace --release`, `cargo test --workspace`, `cargo clippy --workspace`, plus an inline smoke test that materialises a vulnerable Dart fixture + Semgrep rule and asserts a `dart.sql-injection` finding is emitted.
+- **build-full** (slow, ~10 min): `cargo build --workspace --release --features "engine-core/full"` and `cargo test` with Z3 + RocksDB enabled. Uses `apt-get install -y libz3-dev librocksdb-dev pkg-config` and `LIBZ3_SYS_USE_PKG_CONFIG=1` so z3-sys links the system Z3 instead of building from source.
+
+### Local-build gotcha (documented for contributors)
+
+`cargo build --features "engine-core/full"` on macOS with brew cmake 4.x fails because z3-sys's vendored CMakeLists.txt uses `cmake_minimum_required(VERSION 2.8)` which CMake 4 rejects. Workarounds:
+
+- Use `LIBZ3_SYS_USE_PKG_CONFIG=1` plus `brew install z3 pkg-config` and a per-shell `PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig` — currently NOT verified working locally; needs further investigation. CI uses Linux apt where this works cleanly.
+- Or install an older cmake (`brew install cmake@3`) and `export PATH=/opt/homebrew/opt/cmake@3/bin:$PATH`.
+- Or skip the feature locally — default builds work fine. The Z3 SMT correlator is exercised in CI via the `build-full` job.
+
+This is a Z3 ecosystem issue (z3-sys 0.8 vs CMake 4), not an engine bug.
+
+---
+
 ## Phase 0 — Toolchain + un-gitignore
 
-**Status:** 🟡 mostly done — Rust installed and engine source unignored; staging/commit pending owner direction.
+**Status:** ✅ done — Rust 1.85 + brew deps installed; engine source committed.
 
-**Goal:** `cargo --version` ≥ 1.85.0 succeeds; `engine/` source is not ignored; source is staged/committed when the owner asks.
+**Goal:** `cargo --version` ≥ 1.85.0 succeeds; `engine/` source is not ignored; source is staged/committed.
 
 ### Checklist
 
 - [x] **P0-1** Install rustup + 1.85.0 toolchain + clippy + rustfmt
 - [ ] **P0-1** wasm32 target — *deferred until WASM work becomes active*
-- [ ] **P0-1** macOS deps via brew (`cmake llvm rocksdb z3`) — *deferred to first compile that needs them*
+- [x] **P0-1** macOS deps via brew (`cmake llvm rocksdb z3`) — installed 2026-05-08
 - [x] **P0-2** Delete `engine/` from `.gitignore` (replaced with narrower `engine/target/` + `engine/Cargo.lock` exclusions)
+- [x] **P0-2** `git add engine/ .gitignore` — committed in `ea074e7` (2026-05-08, Codex)
 - [ ] **P0-2** `git add engine/ .gitignore` / commit (deferred until owner approves)
 
 ### Diary

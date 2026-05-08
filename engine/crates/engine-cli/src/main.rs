@@ -45,6 +45,13 @@ struct Args {
     /// Output format: console | json | sarif.
     #[arg(short, long, default_value = "console")]
     format: String,
+
+    /// Dump every CPG node (id, kind, file:byte-range, symbol) to stderr
+    /// after construction. Used when debugging why a Semgrep rule fails to
+    /// match — surfaces the actual node layout that the pattern compiler
+    /// is reasoning over.
+    #[arg(long)]
+    dump_cpg: bool,
 }
 
 fn main() -> Result<()> {
@@ -102,6 +109,47 @@ fn main() -> Result<()> {
         edges = graph.edge_count(),
         "CPG construction complete",
     );
+
+    if args.dump_cpg {
+        eprintln!("--- CPG nodes ---");
+        for node in graph.iter_nodes() {
+            let symbol = node
+                .symbol
+                .map(|s| graph.symbol(s).canonical.to_string())
+                .unwrap_or_default();
+            eprintln!(
+                "  #{} {:?} {}:{}..{} symbol={:?}",
+                node.id.raw(),
+                node.kind,
+                graph.file_path(node.file),
+                node.byte_range.start,
+                node.byte_range.end,
+                symbol,
+            );
+        }
+        eprintln!("--- AST edges ---");
+        for edge in graph.iter_edges() {
+            if let engine_core::cpg::EdgeKind::Ast(a) = edge.kind {
+                eprintln!(
+                    "  #{} -> #{}  Ast({:?})",
+                    edge.src.raw(),
+                    edge.dst.raw(),
+                    a,
+                );
+            }
+        }
+        eprintln!("--- CFG edges ---");
+        for edge in graph.iter_edges() {
+            if let engine_core::cpg::EdgeKind::Cfg(c) = edge.kind {
+                eprintln!(
+                    "  #{} -> #{}  Cfg({:?})",
+                    edge.src.raw(),
+                    edge.dst.raw(),
+                    c,
+                );
+            }
+        }
+    }
 
     // 3. Load and run the rule.
     let Some(rule_path) = args.rules.clone() else {

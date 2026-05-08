@@ -19,8 +19,10 @@ pub fn parse_dart(graph: &mut CodeGraph, file_id: FileId, source: &str) -> Resul
         .parse(source, None)
         .ok_or("Failed to parse Dart source")?;
 
-    // Pass 1: Build AST skeleton (1:1 CST mapping).
-    let mut ast_builder = ast_builder::AstBuilder::new(graph, file_id);
+    // Pass 1: Build AST skeleton (1:1 CST mapping). `source` is needed so
+    // the builder can attach symbols (interned source-text spans) for
+    // identifiers and lowered member-access chains.
+    let mut ast_builder = ast_builder::AstBuilder::new(graph, file_id, source);
     ast_builder.build(&tree);
     let mapping = ast_builder.mapping();
 

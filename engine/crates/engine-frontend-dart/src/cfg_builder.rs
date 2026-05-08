@@ -7,7 +7,7 @@
 use tracing::{debug, info};
 use tree_sitter::Node as TNode;
 
-use engine_core::cpg::{CfgEdge, CodeGraph, EdgeKind, NodeId, NodeKind};
+use engine_core::cpg::{AstEdge, CfgEdge, CodeGraph, EdgeKind, EdgeKindTag, NodeId, NodeKind};
 
 /// State for the CFG construction pass.
 pub struct CfgBuilder<'g> {
@@ -35,7 +35,13 @@ impl<'g> CfgBuilder<'g> {
         let ts_kind = node.kind();
 
         match ts_kind {
-            "method_declaration" | "function_declaration" => {
+            // tree-sitter-dart wraps top-level functions as `lambda_expression`
+            // (a `function_signature` + `function_body` pair). Without this
+            // arm the CFG builder never walks function bodies and IFDS gets
+            // an empty CFG to traverse.
+            "method_declaration"
+            | "function_declaration"
+            | "lambda_expression" => {
                 self.process_procedure(node);
             }
             _ => {
@@ -123,9 +129,97 @@ impl<'g> CfgBuilder<'g> {
                 }
                 self.frontier = vec![cpg_id];
 
-                // Note: We do NOT recurse here. The AST pass already built the
-                // sub-tree. Data-flow (PDG) will handle the internal dependencies.
-                // Control-flow only cares about the statement as a whole unit.
+                // Extend the CFG into the statement's expression tree by
+                // walking AST descendants in pre-order and chaining a
+                // Fall edge through each. This lets the IFDS solver visit
+                // *every* expression node — without it, source/sink
+                // detection on nested MethodCall chains never fires
+                // because IFDS only traverses CFG/RDG edges.
+                self.extend_into_expression(cpg_id, entry_id);
+            }
+        }
+    }
+
+    /// Walk the AST sub-tree rooted at `stmt_id` in **post-order**
+    /// (descendants before parent) and add `Cfg::Fall` edges along that
+    /// order. Post-order matches actual evaluation order — leaf values
+    /// are computed first and flow up to enclosing expressions — which
+    /// is what the IFDS solver needs to propagate taint from a source
+    /// (typically a leaf) to a sink (typically an enclosing call).
+    ///
+    /// After the walk `self.frontier` points at the parent statement
+    /// (`stmt_id`), since execution returns to the statement boundary
+    /// before falling through to the next statement.
+    ///
+    /// Cycle-safe via a `visited` set so pathological lowerings with
+    /// shared sub-trees do not loop.
+    fn extend_into_expression(&mut self, stmt_id: NodeId, entry_id: NodeId) {
+        let mut order: Vec<NodeId> = Vec::new();
+        let mut visited: rustc_hash::FxHashSet<NodeId> = rustc_hash::FxHashSet::default();
+        Self::collect_postorder(self.graph, stmt_id, &mut visited, &mut order);
+
+        // `order` is [descendant_leaf, …, stmt_id]. Wire Fall edges along
+        // that order, but skip the first hop because the statement→first
+        // node link is already in place (frontier was just set to
+        // [stmt_id]).
+        if order.len() <= 1 {
+            return;
+        }
+
+        // Replace frontier-edge to point at the leftmost leaf instead of
+        // stmt_id. We do this by adding a Fall stmt_id → first_leaf and
+        // then chaining through the remaining order.
+        let mut prev: Option<NodeId> = Some(stmt_id);
+        for &node in &order {
+            if node == stmt_id {
+                continue;
+            }
+            self.graph.node_mut(node).procedure.get_or_insert(entry_id);
+            if let Some(p) = prev {
+                self.graph.add_edge(p, node, EdgeKind::Cfg(CfgEdge::Fall));
+            }
+            prev = Some(node);
+        }
+
+        if let Some(last) = prev {
+            if last != stmt_id {
+                self.frontier = vec![last];
+            }
+        }
+    }
+
+    /// Iterative post-order traversal over AST children. Children are
+    /// visited in slot order before the parent.
+    fn collect_postorder(
+        graph: &CodeGraph,
+        root: NodeId,
+        visited: &mut rustc_hash::FxHashSet<NodeId>,
+        out: &mut Vec<NodeId>,
+    ) {
+        // Standard iterative post-order: push pairs (node, expanded:bool).
+        // First pop expands the children; second pop emits the node.
+        let mut stack: Vec<(NodeId, bool)> = vec![(root, false)];
+        while let Some((node, expanded)) = stack.pop() {
+            if expanded {
+                out.push(node);
+                continue;
+            }
+            if !visited.insert(node) {
+                continue;
+            }
+            stack.push((node, true));
+
+            // Collect AST children in slot order, push in reverse so they
+            // pop in slot order.
+            let mut children: Vec<(u16, NodeId)> = Vec::new();
+            for edge in graph.out_edges(node, EdgeKindTag::Ast) {
+                if let EdgeKind::Ast(AstEdge::Child { slot }) = edge.kind {
+                    children.push((slot, edge.dst));
+                }
+            }
+            children.sort_by_key(|&(s, _)| s);
+            for (_slot, child) in children.into_iter().rev() {
+                stack.push((child, false));
             }
         }
     }

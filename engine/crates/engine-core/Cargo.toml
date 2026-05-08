@@ -25,8 +25,11 @@ thiserror = "1.0"
 tracing = "0.1"
 
 # --- Optional Heavy Dependencies (Gated for Cross-Platform Sanity) ---
-rocksdb = { version = "0.22", optional = true }
-z3 = { version = "0.12", optional = true }
+# Inherit `default-features = false, features = ["static-link-z3"]` from
+# workspace.dependencies so the z3-sys build does not require a system z3.h.
+# Same idea for rocksdb so its feature flags stay consistent across builds.
+rocksdb = { workspace = true, optional = true }
+z3 = { workspace = true, optional = true }
 
 [features]
 default = []
