@@ -20,7 +20,7 @@
 | P1  Make engine-core compile | ✅ | 2026-05-08 | 2026-05-08 | Default + full-feature builds both pass |
 | P2  Workspace + frontends | ✅ | 2026-05-08 | 2026-05-08 | All 4 crates build; 14/14 tests pass |
 | P3  CLI binary | ✅ | 2026-05-08 | 2026-05-08 | Smoke test fires end-to-end (`request.body.id` → `database.rawQuery(...)`); unused-source FP filter added in `a7892cc` |
-| P4  CI workflow | 🟡 | 2026-05-08 | — | `.github/workflows/engine.yml` written; awaits push to verify on GitHub |
+| P4  CI workflow | ✅ | 2026-05-08 | 2026-05-08 | GitHub Actions engine workflow green on run `25552936823` |
 | P5  TS sidecar integration | 🟡 | 2026-05-08 | — | Runner, rule wrapper, package entries, SQL/command YAML rules, and tests pass; release binaries still pending |
 | P6  Deprecate TS IFDS | ✅ | 2026-05-08 | 2026-05-08 | Legacy engine marked deprecated; fallback now skips when Rust runtime is available |
 | P7  Dart sidecar integration | ⬜ | — | — | — |
@@ -233,7 +233,7 @@ Specific edits beyond the original sweep:
 
 ## Phase 4 — CI workflow
 
-**Status:** 🟡 written; awaits push to verify on GitHub.
+**Status:** ✅ done — GitHub Actions engine workflow is green.
 
 ### What landed
 
@@ -256,6 +256,13 @@ Verified locally after the fix:
   quirk around compression libraries. CI uses Ubuntu `librocksdb-dev`, where
   this path is expected to link cleanly. Treat that as a platform-linker quirk,
   not engine logic.
+
+Verified on GitHub Actions:
+
+- Run `25552936823` passed the fast `build` job in 44s: fmt, release build,
+  workspace tests, clippy, and smoke test.
+- Run `25552936823` passed the slow `build-full` job in 14m1s: full-feature
+  release build and full-feature tests with Z3 + RocksDB enabled.
 
 ---
 
@@ -387,7 +394,7 @@ Verified locally after the fix:
 
 ## Phase 4 — CI workflow
 
-**Status:** 🟡 written; awaits push to verify on GitHub.
+**Status:** ✅ done — GitHub Actions engine workflow is green.
 
 **Goal:** PR push to a branch with engine changes triggers green CI.
 
@@ -411,6 +418,10 @@ Verified locally after the fix:
   `matching_uid_policy_is_safe` because the test used the 50 ms production
   SMT budget and CI exceeded the wall-clock guard. The production default
   remains unchanged; the test now uses a 1 s deterministic budget.
+- 2026-05-08: Follow-up CI run (`25552936823`) passed both jobs. The fast
+  `build` job passed fmt, release build, workspace tests, clippy, and smoke
+  test. The slow `build-full` job passed full-feature release build and
+  `cargo test --features full`.
 
 ---
 
@@ -527,12 +538,12 @@ binary artifacts still need to be produced for packaging.
 
 ### Gates (from blueprint)
 
-- [ ] **G1** `cargo build --workspace --release --features "engine-core/full"` succeeds in CI
+- [x] **G1** `cargo build --workspace --release --features "engine-core/full"` succeeds in CI
 - [ ] **G2** `cargo test --workspace` passes; ≥ 5 e2e tests
-- [ ] **G3** P3-4 smoke test produces expected finding
+- [x] **G3** P3-4 smoke test produces expected finding
 - [ ] **G4** Zero new FPs on `test/fixtures/adversarial_app/` vs TS engine
 - [ ] **G5** ≥ TS engine TP count on `test/fixtures/`
-- [ ] **G6** `cargo clippy --workspace --all-targets -- -D warnings` clean
+- [x] **G6** `cargo clippy --workspace --all-targets -- -D warnings` clean
 - [ ] **G7** Linux x64 binary < 30 MB
 - [ ] **G8** Three platforms (`darwin-arm64`, `darwin-x64`, `linux-x64`) bundled in .vsix
 - [ ] **G9** Real Flutter+Supabase app scans cleanly in < 10 s
