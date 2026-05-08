@@ -406,6 +406,11 @@ Verified locally after the fix:
   job at `cargo fmt --check`. Applied `cargo fmt --all`; local
   `cargo fmt --check`, `cargo test --workspace`, and
   `cargo build --workspace --release` now pass before the follow-up push.
+- 2026-05-08: Follow-up CI run (`25552256891`) passed the fast `build` job
+  and passed `cargo build --features full`, then failed
+  `matching_uid_policy_is_safe` because the test used the 50 ms production
+  SMT budget and CI exceeded the wall-clock guard. The production default
+  remains unchanged; the test now uses a 1 s deterministic budget.
 
 ---
 

@@ -804,7 +804,9 @@ mod tests {
         let mut g = CodeGraph::new();
         let q = test_query(&mut g, /* uses_service_role = */ false);
         let correlator = SupabaseCorrelator::new();
-        let verdict = correlator.correlate(&q, DEFAULT_BUDGET).unwrap();
+        let verdict = correlator
+            .correlate(&q, std::time::Duration::from_secs(1))
+            .unwrap();
 
         // The client filters on `user_id = auth.uid()` and the RLS policy
         // enforces the same predicate → UNSAT → Safe.
