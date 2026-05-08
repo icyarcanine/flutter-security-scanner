@@ -130,23 +130,13 @@ fn main() -> Result<()> {
         eprintln!("--- AST edges ---");
         for edge in graph.iter_edges() {
             if let engine_core::cpg::EdgeKind::Ast(a) = edge.kind {
-                eprintln!(
-                    "  #{} -> #{}  Ast({:?})",
-                    edge.src.raw(),
-                    edge.dst.raw(),
-                    a,
-                );
+                eprintln!("  #{} -> #{}  Ast({:?})", edge.src.raw(), edge.dst.raw(), a,);
             }
         }
         eprintln!("--- CFG edges ---");
         for edge in graph.iter_edges() {
             if let engine_core::cpg::EdgeKind::Cfg(c) = edge.kind {
-                eprintln!(
-                    "  #{} -> #{}  Cfg({:?})",
-                    edge.src.raw(),
-                    edge.dst.raw(),
-                    c,
-                );
+                eprintln!("  #{} -> #{}  Cfg({:?})", edge.src.raw(), edge.dst.raw(), c,);
             }
         }
     }

@@ -402,6 +402,10 @@ Verified locally after the fix:
   in the committed Phase 4 work. GitHub-side verification is still pending
   because the branch is ahead of `origin/main` and has not been pushed in this
   session.
+- 2026-05-08: First pushed CI run (`25552183426`) failed in the fast `build`
+  job at `cargo fmt --check`. Applied `cargo fmt --all`; local
+  `cargo fmt --check`, `cargo test --workspace`, and
+  `cargo build --workspace --release` now pass before the follow-up push.
 
 ---
 

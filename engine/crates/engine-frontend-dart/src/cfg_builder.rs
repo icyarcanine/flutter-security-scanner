@@ -38,9 +38,7 @@ impl<'g> CfgBuilder<'g> {
             // (a `function_signature` + `function_body` pair). Without this
             // arm the CFG builder never walks function bodies and IFDS gets
             // an empty CFG to traverse.
-            "method_declaration"
-            | "function_declaration"
-            | "lambda_expression" => {
+            "method_declaration" | "function_declaration" | "lambda_expression" => {
                 self.process_procedure(node);
             }
             _ => {

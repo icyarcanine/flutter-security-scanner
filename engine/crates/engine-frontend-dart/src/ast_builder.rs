@@ -118,7 +118,10 @@ impl<'g, 's> AstBuilder<'g, 's> {
         // (typically `identifier` but could be another expression). Each
         // subsequent child is a `selector`.
         let mut cursor = node.walk();
-        let children: Vec<TNode> = node.children(&mut cursor).filter(|c| c.is_named()).collect();
+        let children: Vec<TNode> = node
+            .children(&mut cursor)
+            .filter(|c| c.is_named())
+            .collect();
         if children.is_empty() {
             return None;
         }
@@ -151,8 +154,11 @@ impl<'g, 's> AstBuilder<'g, 's> {
             self.graph.node_mut(level_id).symbol = Some(sym_id);
 
             // Slot 0: the receiver (current_id). Wire AST edge.
-            self.graph
-                .add_edge(level_id, current_id, EdgeKind::Ast(AstEdge::Child { slot: 0 }));
+            self.graph.add_edge(
+                level_id,
+                current_id,
+                EdgeKind::Ast(AstEdge::Child { slot: 0 }),
+            );
 
             // Slot 2+: arguments, if this selector is a call.
             if let Some(args) = args_node {
@@ -165,12 +171,10 @@ impl<'g, 's> AstBuilder<'g, 's> {
                     // Each `argument` node in tree-sitter-dart wraps the
                     // actual expression. Recurse into the wrapped child.
                     let mut inner_cursor = arg_child.walk();
-                    let inner: Option<TNode> = arg_child
-                        .children(&mut inner_cursor)
-                        .find(|c| c.is_named());
+                    let inner: Option<TNode> =
+                        arg_child.children(&mut inner_cursor).find(|c| c.is_named());
                     if let Some(inner_expr) = inner {
-                        if let Some(arg_id) =
-                            self.visit_node(inner_expr, Some(level_id), arg_slot)
+                        if let Some(arg_id) = self.visit_node(inner_expr, Some(level_id), arg_slot)
                         {
                             // `visit_node` already attached the AST edge
                             // when parent is Some — nothing else to do.
@@ -199,10 +203,7 @@ impl<'g, 's> AstBuilder<'g, 's> {
     /// suffix to append to the running symbol (empty for pure-call
     /// selectors that wrap only an `argument_part`) and the wrapped
     /// `arguments` node when the selector is a call.
-    fn classify_selector<'a>(
-        &self,
-        selector: TNode<'a>,
-    ) -> (String, Option<TNode<'a>>) {
+    fn classify_selector<'a>(&self, selector: TNode<'a>) -> (String, Option<TNode<'a>>) {
         let mut cursor = selector.walk();
         let mut text_suffix = String::new();
         let mut args_node: Option<TNode> = None;
