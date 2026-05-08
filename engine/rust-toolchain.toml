@@ -1,0 +1,12 @@
+# Pinned toolchain so every cargo invocation in this workspace uses the
+# same Rust version locally, in CI, and in contributor workflows.
+#
+# Bumped from 1.75 → 1.85 because indexmap 2.14+ (a transitive dep of
+# tree-sitter and others) requires the `edition2024` cargo feature, which
+# stabilised in 1.85 (Feb 2025). Older toolchains fail manifest parsing
+# during `cargo build`.
+
+[toolchain]
+channel = "1.85.0"
+components = ["clippy", "rustfmt"]
+profile = "default"

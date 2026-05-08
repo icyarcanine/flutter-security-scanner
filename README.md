@@ -493,6 +493,58 @@ values fall through to a safer default.
 - Comment-based suppression can be added by anyone with commit access;
   CI policies should review/restrict suppression patterns.
 
+## Building from source
+
+This repo ships **three** independent components — each can be built standalone:
+
+### 1. Rust analysis kernel (`engine/`)
+
+The high-precision IFDS taint solver. It is currently experimental: the Rust
+workspace builds and tests pass, but the Semgrep smoke-test rule still needs
+work before this becomes the default scanner path.
+
+```bash
+# One-shot setup (detects + installs missing tools, with confirmation prompts)
+./scripts/bootstrap.sh
+
+# Or manually:
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.85.0
+source $HOME/.cargo/env
+cd engine && cargo build --workspace --release
+```
+
+The binary lands at `engine/target/release/engine-cli`. Resolver helpers for
+the TS extension and Dart `lib/` scanner live at
+[vscode-extension/src/scanner/engineResolver.ts](vscode-extension/src/scanner/engineResolver.ts)
+and [lib/src/engine/engine_resolver.dart](lib/src/engine/engine_resolver.dart);
+full sidecar integration is still tracked in
+[RUST_ENGINE_PROGRESS.md](RUST_ENGINE_PROGRESS.md) Phases 5 and 7.
+
+The intended runtime behavior is a precise install hint when the binary is
+missing, rather than a silent failure.
+
+For build-from-source contributors: read [BLUEPRINT_RUST_ENGINE.md](BLUEPRINT_RUST_ENGINE.md) end-to-end before touching `engine/`. Track progress in [RUST_ENGINE_PROGRESS.md](RUST_ENGINE_PROGRESS.md).
+
+### 2. TypeScript VS Code extension (`vscode-extension/`)
+
+```bash
+cd vscode-extension
+npm install
+npm run compile
+```
+
+Target release behavior after the Rust sidecar is wired: published `.vsix`
+builds will include a prebuilt `engine-cli` binary, so end users do not need a
+Rust toolchain. Until Phase 5 lands, contributors should build the engine from
+source when testing Rust-backed analysis.
+
+### 3. Dart `lib/` scanner (`lib/`)
+
+```bash
+dart pub get
+dart run bin/fluttersupabasehelper.dart .
+```
+
 ## Tests
 
 ```bash

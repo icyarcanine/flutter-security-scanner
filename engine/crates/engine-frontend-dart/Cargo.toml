@@ -1,0 +1,17 @@
+[package]
+name = "engine-frontend-dart"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+
+[dependencies]
+engine-core      = { path = "../engine-core" }
+tree-sitter      = { workspace = true }
+tree-sitter-dart = { workspace = true }
+rustc-hash       = { workspace = true }
+tracing          = { workspace = true }
+smallvec         = { workspace = true }
+
+[lib]
+name = "engine_frontend_dart"
+path = "src/lib.rs"
