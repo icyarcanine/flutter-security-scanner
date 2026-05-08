@@ -1,15 +1,15 @@
 # 11 — Quick wins (< 1 day each)
 
 Read this file first. Each task in here is **less than a day** of work
-and closes a real gap. Twenty of these together cover more of the
-benchmark gap than any single hard task in [00-engine.md](00-engine.md).
+and closes a real gap. As of May 2026, the listed quick wins are marked
+complete; remaining work lives in the parent goals files.
 
-If you have a few hours, pick from here. If your scope is multi-day,
-read the deeper files.
+If new small tasks are discovered, append them here. Otherwise use the
+parent goals files for current work.
 
 ---
 
-## Status (as of 2026-05-07)
+## Status (as of 2026-05-08)
 
 Legend: ✅ DONE | ⏸ BLOCKED | ⏳ REMAINING (default). See
 [GOALS_PROGRESS.md](../GOALS_PROGRESS.md) for the canonical task table.

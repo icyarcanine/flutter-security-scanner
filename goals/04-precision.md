@@ -1,30 +1,29 @@
 # 04 — Precision: guards, sanitizers, barriers, confidence
 
 This file covers the mechanics that turn a "this looks dangerous" finding
-into a "this IS dangerous" finding. CodeQL's precision wins come from
-guard-aware data flow and barrier nodes; we have heuristics. Closing this
-gap is mostly about authoring the guard recognizers — the engine work
-that supports them lives in [00-engine.md §EN-4](00-engine.md).
+into a "this is actually dangerous" finding. Current precision relies on
+heuristics plus a few AST pre-passes; fuller guard-aware data flow depends
+on the engine work in [00-engine.md §EN-4](00-engine.md).
 
-## Status (as of 2026-05-07)
+## Status (as of 2026-05-08)
 
 Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
 - ✅ §PR-15 (suppression-comment surfacing — §QW-22, sha f2d31ad),
-  §PR-18 (numeric coercion sanitizers — §QW-11, sha e330ed4)
-- ⏳ §PR-1, §PR-2, §PR-3, §PR-4, §PR-5, §PR-6, §PR-7, §PR-8 (and any
-  others below) — guard/barrier/sanitizer-registry precision work is
-  unstarted. The 2026-05 sweep focused on rule breadth and output
-  formats, not on guard reasoning.
+  §PR-18 (numeric coercion sanitizers — §QW-11, sha e330ed4),
+  §PR-6 (sink-specific sanitizer applicability — §QW-1, sha 5c27117)
+- 🟡 §PR-1 — negate allowlist guards landed; positive and nested guards
+  still require CFG work.
+- ⏳ §PR-2, §PR-3, §PR-4, §PR-5, §PR-7, §PR-8 (and others below) remain
+  open unless their individual entries say otherwise.
 
 ---
 
 ## §PR-1 — Allowlist barrier guards (negate variant ✅ DONE — sha 5c27117 (2026-05-07) via §QW-41)
 
-- **Why:** Misses fixture 11 (SSRF allowlist). The single biggest FP
-  source on real apps.
-- **Current state:** No guard recognition. Tainted variables stay
-  tainted regardless of subsequent if-checks.
+- **Why:** Allowlist guards are a major false-positive reducer.
+- **Current state:** Top-level negated early-exit guards are recognized.
+  Positive guards and nested-block guards are still not modeled.
 - **Target state:** Inside the body of `if (allow.has(x))` /
   `if (validHosts.includes(x))` / `if (Object.keys(map).includes(x))`,
   the symbol `x` is treated as not-tainted.
@@ -39,7 +38,7 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 - **Dependencies:** §EN-4.
 - **Effort:** **M** (5 days post-§EN-4).
 - **Tests:**
-  - Re-run COMPARISON.md fixture 11 — flips from HIGH FP to no-flag.
+  - Add/re-run an SSRF allowlist fixture — flips from HIGH FP to no-flag.
   - Per-shape unit tests in `scripts/taint-engine.test.js`.
 - **Risks / gotchas:**
   - Negated guards: `if (!allow.has(x)) return;` — barrier applies
@@ -116,8 +115,7 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
   - `he.encode`
   - `xss-filters.inHTMLData`
   - Plus the existing list of "validators" but only trust them for the
-    sink kind they actually sanitize for (CodeQL has sink-specific
-    barriers).
+    sink kind they actually sanitize for.
 - **Approach:**
   1. New `vscode-extension/src/taint/sanitizers.ts` registry. Each
      entry: `{ packageOrigin: '@dompurify/...', method: 'sanitize',
@@ -129,7 +127,8 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 - **Dependencies:** §EN-1.
 - **Effort:** **M** (5 days post §EN-1).
 - **Tests:**
-  - Re-run COMPARISON.md fixture 15 — flips from no-flag to HIGH.
+  - Add/re-run a user-defined no-op sanitizer fixture — flips from
+    no-flag to HIGH.
   - User-defined `function sanitize(s) { return s; }` no longer trusted.
   - DOMPurify.sanitize correctly trusted across re-exports.
 - **Risks / gotchas:**
@@ -140,19 +139,22 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
       - { from: './lib/sec', method: 'cleanHtml', forSinks: ['html'] }
     ```
 
-## §PR-6 — Sink-specific sanitizer applicability
+## §PR-6 — Sink-specific sanitizer applicability ✅ DONE — sha 5c27117 (2026-05-07)
 
-- **Why:** `parseInt` sanitizes for SQL/command but is a no-op for
-  HTML (numbers can still be reflected). Today we apply sanitizers
-  uniformly.
-- **Current state:** A sanitized symbol is treated as safe for every
-  sink. Most sanitizers don't actually do that.
+- **Why:** Sanitizers must only suppress the sink kinds they actually
+  protect.
+- **Current state:** Implemented in the TS taint engine for modeled
+  sanitizers. `state.sanitizedFor` tracks per-symbol partial coverage and
+  sink checks verify that every tainted leaf is sanitized for the actual
+  sink kind.
 - **Target state:** Each sanitizer entry carries `sanitizesFor: Set<SinkKind>`.
   A sink check consults this rather than blanket-trusting.
-- **Approach:** Builds on §PR-5. Engine change is small once the
-  registry has the metadata.
-- **Dependencies:** §PR-5.
-- **Effort:** **S** (1 day post §PR-5).
+- **Approach:** Landed via the built-in `SINK_SPECIFIC_SANITIZERS`
+  registry. §PR-5 still tracks package-origin verification and custom
+  trusted-sanitizer configuration.
+- **Dependencies:** None for the shipped built-in registry; §PR-5 for
+  origin-verified/custom sanitizers.
+- **Effort:** Maintenance.
 - **Tests:** Sink-kind-specific sanitizer fixtures.
 - **Progress:** §QW-1 landed at sha 5c27117 (2026-05-07). The TS engine
   now ships a built-in `SINK_SPECIFIC_SANITIZERS` registry mapping

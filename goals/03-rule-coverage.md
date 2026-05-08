@@ -1,22 +1,23 @@
 # 03 — Rule coverage
 
-Every CWE class CodeQL ships a query for that we don't yet have. Each
-entry is one rule. Most are S–M effort and the gap closure scales linearly.
+Missing or partial vulnerability classes tracked as rule work. Each entry is
+one rule or one rule-family improvement. Most are S-M effort and should land
+with focused fixtures.
 
-We currently have 24 rules covering ~10 CWE classes. CodeQL's JS pack
-alone ships 250+ queries. This file walks the gap.
+Rule counts change often; use `vscode-extension/src/rules/index.ts` and the
+test suite as the live source of truth for what is actually registered.
 
 For shape and registration steps, mirror existing rules under
 [`vscode-extension/src/rules/`](../vscode-extension/src/rules/).
 
 ---
 
-## Status (as of 2026-05-07)
+## Status (as of 2026-05-08)
 
 Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
-After the 2026-05-07 quick-win sweep (sha f2d31ad / e330ed4 / d0af6b4),
-many §RC tasks landed via the §QW-* anchors that pointed back to them.
+After the 2026-05-07 quick-win sweep and the 2026-05-08 security-coverage
+patch, many §RC tasks landed via the §QW-* anchors that pointed back to them.
 See [GOALS_PROGRESS.md](../GOALS_PROGRESS.md) for the canonical mapping.
 
 - ✅ §RC-4 (CRLF header injection — §QW-10), §RC-13 (tabnabbing — §QW-6),
@@ -31,7 +32,13 @@ See [GOALS_PROGRESS.md](../GOALS_PROGRESS.md) for the canonical mapping.
   §RC-58 (hardcoded IP — §QW-4), §RC-60 (JWT alg confusion — §QW-23)
 - 🟡 §RC-3 (log injection) — env-secret-logging subcase covered (§QW-24);
   CRLF log-splitting still pending.
-- ⏳ §RC-1, §RC-2, §RC-5..§RC-12, §RC-14..§RC-17, §RC-22, §RC-23, §RC-26,
+- 🟡 §RC-1 (prototype pollution) — direct prototype writes and
+  request-controlled key writes are covered; recursive merge/lodash-style
+  object-flow cases remain.
+- 🟡 §RC-2 (ReDoS) — nested quantifier literals and simple `new RegExp`
+  string patterns are covered; full safe-regex analysis and tainted dynamic
+  regex construction remain.
+- ⏳ §RC-5..§RC-12, §RC-14..§RC-17, §RC-22, §RC-23, §RC-26,
   §RC-28..§RC-34, §RC-36..§RC-42, §RC-46, §RC-47, §RC-49, §RC-51..§RC-54,
   §RC-57, §RC-59, §RC-61, §RC-62 are unstarted.
 
@@ -40,10 +47,12 @@ mean "do this first," NOT "done."
 
 ---
 
-## §RC-1 — Prototype pollution (CWE-1321) ⏳ REMAINING (HIGH PRIORITY)
+## §RC-1 — Prototype pollution (CWE-1321) 🟡 PARTIAL — 2026-05-08
 
-- **Why:** Major Node-ecosystem vulnerability class. Misses fixture 07.
-- **Current state:** No rule.
+- **Why:** Major Node-ecosystem vulnerability class.
+- **Current state:** `prototype-pollution` exists and flags direct
+  `__proto__` / `constructor.prototype` writes plus request-controlled
+  object key writes in JS/TS.
 - **Target state:** Detect:
   1. Recursive merge / extend functions writing to `__proto__` /
      `constructor` / `prototype` keys.
@@ -51,39 +60,40 @@ mean "do this first," NOT "done."
   3. `lodash.set(obj, attackerKey, val)` patterns.
   4. Any `obj[tainted] = anything` write where `obj` is a config /
      options object.
-- **Approach:**
-  1. New rule `proto-pollution` in `rules/security/protoPollutionRule.ts`.
-  2. AST stage. Walk `assignment_expression` where the LHS is a
-     computed property write (`obj[expr] = …`) AND `expr` resolves
-     (transitively) to a tainted source.
-  3. Special-case: detect recursive merge via call to a function whose
+- **Remaining approach:**
+  1. Add AST/taint-backed computed-property writes where the key resolves
+     transitively to a tainted source.
+  2. Special-case recursive merge via call to a function whose
      parameter is shadowed and used in a recursive call. Heuristic for
      the common merge() / deepExtend() pattern.
 - **Dependencies:** §EN-15 (dynamic property write tracking) gives us
   the underlying mechanism.
 - **Effort:** **M** (3 days).
-- **Tests:** Re-run COMPARISON.md fixture 07. Add `lodash.set` test;
-  Add a Hoek-style merge test.
+- **Tests:** Existing taint-engine suite covers direct and
+  request-controlled-key cases. Add `lodash.set` and Hoek-style merge
+  tests before calling the rule complete.
 - **Risks / gotchas:** FP risk on legitimate `obj[knownLiteral] = val`.
   Restrict to tainted keys.
 
-## §RC-2 — ReDoS / catastrophic backtracking (CWE-1333) ⏳ REMAINING (HIGH PRIORITY)
+## §RC-2 — ReDoS / catastrophic backtracking (CWE-1333) 🟡 PARTIAL — 2026-05-08
 
-- **Why:** Misses fixture 08. Common in input validators.
-- **Current state:** No rule.
+- **Why:** Common in input validators.
+- **Current state:** `redos` exists and flags high-confidence nested
+  quantifier patterns in regex literals and string-literal `new RegExp(...)`
+  calls.
 - **Target state:** Detect regex literals with nested quantifiers:
   `(a+)+`, `(a*)*`, `(a|a)+`, ambiguous alternations. Flag both
   static literals AND dynamic regexes constructed from user input.
-- **Approach:**
-  1. New rule `redos`. Stage AST.
-  2. Walk `regex` literal nodes. Parse the pattern with a small NFA
+- **Remaining approach:**
+  1. Parse patterns with a small NFA
      analyser (port `safe-regex2`-style algorithm).
-  3. For dynamic regexes (`new RegExp(taint)`), flag as "potentially
+  2. For dynamic regexes (`new RegExp(taint)`), flag as "potentially
      unsafe" at MEDIUM.
 - **Dependencies:** None.
 - **Effort:** **M** (4 days).
-- **Tests:** `(a+)+`, `(a*)*$`, `(a|a)+`, plus negative tests on safe
-  regexes. Check our own code with the rule.
+- **Tests:** Existing taint-engine suite covers `(a+)+` and a safe anchored
+  regex. Add `(a*)*$`, `(a|a)+`, dynamic regex, and self-scan checks before
+  calling the rule complete.
 - **Risks / gotchas:** Keep the analyser bounded (max 200 states).
   Bail out on very large patterns.
 
@@ -638,8 +648,8 @@ mean "do this first," NOT "done."
 
 ## Summary
 
-That's 60 rules to author / strengthen. Each S = ~half a day, M = 2-5
-days, L = 1+ weeks. Total: roughly **6 engineer-months** to implement
-all rules at the listed effort budget. Combined with framework models
-([02-framework-models.md](02-framework-models.md)), this is the bulk
-of "catch up to CodeQL on rule count."
+That's 60 rules to author or strengthen. Each S = roughly half a day,
+M = 2-5 days, L = 1+ weeks. Total effort is substantial, and the exact
+schedule depends on how deep each rule's analysis needs to be. Combined
+with framework models ([02-framework-models.md](02-framework-models.md)),
+this is the bulk of the remaining rule-coverage work.

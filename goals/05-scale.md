@@ -1,9 +1,9 @@
 # 05 — Scale
 
-CodeQL handles enterprise monorepos (100k+ files, gigabytes of source)
-via incremental databases and tabulated facts. Today we load every
-supported file into RAM and re-run rules from scratch on every scan.
-This file covers the work to make us competitive on real-world repos.
+Large enterprise monorepos can contain 100k+ files and gigabytes of source.
+Today we load every supported file into RAM and re-run rules from scratch
+on every scan. This file covers the work needed to make scans practical on
+larger repos.
 
 Read [00-engine.md §EN-7 / §EN-8](00-engine.md) first — the DB layer
 is the underpinning for everything here.

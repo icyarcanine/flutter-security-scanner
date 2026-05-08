@@ -1,6 +1,6 @@
 # 02 — Framework models
 
-CodeQL's edge over us on JS/TS comes mostly from framework models. A
+JS/TS precision depends heavily on framework models. A
 "framework model" is a registry entry telling the engine: "this function
 returns user-controlled data" or "this method is an HTML sink" or "this
 object's `body` field is tainted by default".
@@ -10,13 +10,14 @@ Each framework needs source/sink/sanitizer entries. Most entries are
 across the languages we care about. **This is the highest-leverage,
 most-tractable area of the catch-up.**
 
-## Status (as of 2026-05-07)
+## Status (as of 2026-05-08)
 
 Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
-- ⏳ Every §FM-* task in this file is unstarted. The 2026-05 production pass
-  shipped Dart/Supabase rules (see [09-supabase-flutter.md](09-supabase-flutter.md))
-  rather than JS/TS framework models.
+- 🟡 §FM-1 — response-body HTML sinks for Express/Fastify-style handlers
+  are modeled (`res.send`, `res.write`, `res.end`, `reply.send`), but full
+  route registration and middleware models are still missing.
+- ⏳ Other §FM-* tasks are unstarted.
 
 ## How to add a framework
 
@@ -52,14 +53,15 @@ frameworks contribute, so unrelated patterns don't FP.
 
 ## §FM-1 — Express.js (Node)
 
-- **Why:** Most ubiquitous Node web framework. CodeQL ships an
-  Express model.
+- **Why:** Express is a common Node web framework and needs explicit
+  source/sink modeling.
 - **Current state:** We recognize `req.body/query/params/cookies/headers`
-  via the strong-source heuristic, but `res.send` / `res.redirect` /
-  `res.render` aren't sinks; routes via `app.get/post/etc.` aren't
-  detected; middleware chains aren't traced.
+  via the strong-source heuristic. Response-body HTML sinks such as
+  `res.send`, `res.write`, and `res.end` are modeled by the taint sink
+  resolver. Route registration, `res.render`, and middleware chains are
+  not traced.
 - **Target state:** Express's full source/sink set per the model shape
-  above. Fixture 10 in COMPARISON.md flips from FN to HIGH.
+  above, backed by fixtures for route handlers and middleware.
 - **Approach:** As described in "How to add a framework" above.
   Detection: presence of `import 'express'` or `require('express')` in
   the file.
@@ -151,7 +153,8 @@ frameworks contribute, so unrelated patterns don't FP.
 
 ## §FM-13 — Django (Python)
 
-- **Why:** Most-deployed Python framework. CodeQL has deep Django models.
+- **Why:** Django is a common Python framework and needs explicit
+  request, template, ORM, and redirect modeling.
 - **Current state:** Generic Python `request.X` sources work; Django ORM
   not modeled.
 - **Target state:** ORM sinks (`raw()`, `extra(where=)`), template-tag

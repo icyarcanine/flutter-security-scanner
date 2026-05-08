@@ -1,7 +1,7 @@
 # 00 — Engine fundamentals
 
-This file lists every architectural improvement the taint engine needs to
-match CodeQL's analysis depth on JavaScript / TypeScript. Dart already has
+This file lists architectural improvements needed for deeper JavaScript /
+TypeScript analysis. Dart already has
 IFDS via `vscode-extension/src/taint/ifdsEngine.ts` — for Dart-specific
 engine work see also [09-supabase-flutter.md](09-supabase-flutter.md).
 
@@ -40,9 +40,9 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
   Cross-file imports / exports are entirely opaque to the engine.
 - **Target state:** A function exported from one module is recognized as a
   source if its body returns a recognized source expression, OR as a
-  passthrough if its body returns one of its parameters. Result:
-  benchmark fixture 04 (`04-cross-file-source.js` in COMPARISON.md) flips
-  from MEDIUM to HIGH.
+  passthrough if its body returns one of its parameters. Result: a
+  cross-file source-to-sink fixture flips from MEDIUM dynamic-only to HIGH
+  taint-confirmed.
 - **Approach:**
   1. Add a `ProjectSummaryCache` populated **before** any rule runs.
      For every file, record: `Map<{exportedName, file}, FunctionSummary>`.
@@ -69,7 +69,7 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 - **Tests:**
   - Add `parallel scans share cross-file summaries` to
     `vscode-extension/scripts/taint-engine.test.js`.
-  - Re-run COMPARISON.md fixture 04 — should flip HIGH.
+  - Add/re-run a cross-file fixture — should flip HIGH.
 - **Risks / gotchas:**
   - Re-export chains (`export * from './a'`) are common; handle by
     transitively resolving until you hit a definition or hit a cycle.
@@ -115,7 +115,7 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
   - Add `Promise.then propagates taint`, `await on tainted Promise`,
     `array.map element taint`, `setTimeout function arg seeds taint` to
     `scripts/taint-engine.test.js`.
-  - Re-run COMPARISON.md fixture 05 — should flip HIGH.
+  - Add/re-run an async Promise fixture — should flip HIGH.
 - **Risks / gotchas:**
   - `Promise.all([...])` returns an array; element taints must be tracked
     component-wise (use existing `taintedProperties`).
@@ -190,14 +190,12 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
      `x instanceof T`. Inside the matching branch, `x` is a barrier;
      outside, no change.
   4. Loop bodies: be conservative — assume zero or many iterations,
-     join the body's exit lattice with the pre-loop state. This is
-     CodeQL's strategy and it works.
+     join the body's exit lattice with the pre-loop state.
 - **Dependencies:** none, but pairs naturally with §EN-2.
 - **Effort:** **XL** (4–8 weeks). This is the single biggest precision
   win and the single biggest engineering effort in this file.
 - **Tests:**
-  - Re-run COMPARISON.md fixture 11 (SSRF allowlist) — should flip from
-    HIGH to no-flag.
+  - Add/re-run an SSRF allowlist fixture — should flip from HIGH to no-flag.
   - `parseInt-on-every-path.js` — fixture 06 — should remain no-flag
     (regression).
   - 15+ guard-shape unit tests in `scripts/taint-engine.test.js`.
@@ -279,7 +277,8 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 ## §EN-7 — Whole-program data-flow database
 
 - **Why:** Re-running the full taint analysis on every scan duplicates
-  work. CodeQL builds a database once and queries are fast.
+  work. A persistent analysis database would let repeated scans reuse
+  indexed facts.
 - **Current state:** No persistent state between scans. `--baseline`
   tracks previous findings but the engine starts cold.
 - **Target state:** A `flutter-supabase-helper db build .` command
@@ -360,7 +359,8 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
   cleaner to do first.
 - **Effort:** **XL** (4–8 weeks).
 - **Tests:**
-  - All COMPARISON.md fixtures 03, 04, 05, 09 should flip to HIGH.
+  - Inter-procedural, cross-file, async, and polymorphic-dispatch fixtures
+    should produce the expected HIGH findings.
   - Existing 26 unit tests must continue passing on the IFDS path.
 - **Risks / gotchas:**
   - Dart's IFDS handles ~Class+method shapes that JS doesn't have
@@ -389,8 +389,8 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
 - **Why:** `_computeClassReceiverStates` (`dataFlow.ts:341`) injects
   constructor-tainted `this.X` props into sibling methods at MEDIUM
-  confidence. CodeQL handles this at full confidence with proper class
-  hierarchy.
+  confidence. A class hierarchy model should handle this at higher
+  confidence.
 - **Current state:** Indirect-taint only across constructor → method.
   Subclass / inheritance not modeled.
 - **Target state:** Class hierarchy walked; tainted `this.X` from a
@@ -487,11 +487,14 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 - **Risks / gotchas:** Don't aspire to 100% coverage. Pick the top 50
   Node/browser builtins by usage frequency.
 
-## §EN-15 — Dynamic property access tightening
+## §EN-15 — Dynamic property access tightening 🟡 PARTIAL — 2026-05-08
 
 - **Why:** `obj[userInput]` is a vulnerability surface (prototype
-  pollution, lookup attacks). Today we don't track this.
-- **Current state:** No detection of `[tainted]`.
+  pollution, lookup attacks).
+- **Current state:** The `prototype-pollution` fast rule flags direct
+  request-controlled key writes such as `target[req.body.key] = value`,
+  but the taint engine does not yet expose a general
+  `dynamicPropertyWrite` sink kind.
 - **Target state:** A new sink kind `dynamicPropertyWrite` that fires
   when `obj[tainted] = anything` (CWE-1321 — prototype pollution).
 - **Approach:** Add to `_sinkForAssignment`. Also add a rule
@@ -499,7 +502,8 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
   patterns.
 - **Dependencies:** None.
 - **Effort:** **S** (1 day).
-- **Tests:** Re-run COMPARISON.md fixture 07 — should flip HIGH.
+- **Tests:** Existing direct key-write tests pass. Add object-flow and
+  merge-style tests before marking complete.
 - **Risks / gotchas:** Heavy FP risk if applied to every `obj[x]`.
   Restrict to `obj[x] = …` writes initially.
 
@@ -521,7 +525,6 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 ## §EN-17 — Engine telemetry for self-improvement
 
 - **Why:** We don't know which rules over- or under-fire in the wild.
-  CodeQL has years of telemetry.
 - **Current state:** Local telemetry per scan
   (`_telemetryFilePath`) but no aggregate analysis.
 - **Target state:** Opt-in upload of anonymous statistics: rule-fire

@@ -1,24 +1,23 @@
-# goals/ — what it takes to leave CodeQL in the dust
+# goals/ — SAST roadmap
 
-This folder is the master TODO for catching up to (and beating) CodeQL on
-the dimensions that matter for SAST. It exists so that **a single LLM agent
-can pick up one file and work on it without needing to load the others**.
+This folder is the project roadmap for improving the scanner. It exists so
+that a contributor or agent can pick up one file and work on it without
+loading the entire repo history.
 
 ## Honest framing
 
-The phrase "leave CodeQL in the dust" needs caveats. CodeQL is the product
-of GitHub Security Lab + Semmle + 15+ years of research. They ship 250+
-queries on JavaScript alone, points-to analysis, a Datalog-style query
-language, and run as the engine behind GitHub Code Scanning. Matching them
-on every dimension is **roughly 100+ engineer-years** of work.
+Do not use these docs to claim CodeQL parity or superiority. CodeQL is a
+mature whole-program analysis system; this project is a lightweight hybrid
+scanner with useful Flutter/Supabase/Dart coverage and a growing JS/TS rule
+set. Comparative claims need a reproducible benchmark that is not currently
+checked into this repo.
 
 There are two viable strategies:
 
 1. **Head-to-head match** — close every gap in [§00–§07](.). Years of work.
-2. **Differentiation** — be 10× better on a smaller surface CodeQL doesn't
-   serve well: zero-config setup, mobile (Dart/Flutter/Swift/Kotlin),
-   Supabase/edge platforms, AI-assisted autofixes, real-time IDE feedback,
-   incremental rescan. Months of work. **This is where we can actually win.**
+2. **Differentiation** — focus on surfaces mainstream SAST tools do not
+   model deeply: zero-config setup, Flutter/Dart, Supabase/edge platforms,
+   useful autofixes, real-time IDE feedback, and incremental rescans.
 
 The files in this folder list **everything** for both strategies. Agents
 working on the project should pick a file based on the strategy currently
@@ -31,15 +30,15 @@ chosen, not pick at random.
 | [00-engine.md](00-engine.md) | Taint engine fundamentals — cross-file, async, points-to, CFG, type narrowing | Head-to-head |
 | [01-language-coverage.md](01-language-coverage.md) | Per-language source/sink depth (JS, TS, Python, Java, Go, C/C++, C#, Ruby, Swift, Kotlin, Dart) | Both |
 | [02-framework-models.md](02-framework-models.md) | Express, NestJS, Next.js, Django, Spring, Rails, ASP.NET, ORMs, etc. | Both |
-| [03-rule-coverage.md](03-rule-coverage.md) | Every CodeQL CWE class we lack (proto pollution, ReDoS, log injection, XXE, …) | Head-to-head |
+| [03-rule-coverage.md](03-rule-coverage.md) | Missing or partial vulnerability classes (prototype pollution, ReDoS depth, log injection, XXE, …) | Head-to-head |
 | [04-precision.md](04-precision.md) | Guard reasoning, sanitizer evidence, barrier nodes, confidence calibration | Both |
 | [05-scale.md](05-scale.md) | Whole-program DB, incremental rescan, monorepo support, memory bounds | Head-to-head |
 | [06-integrations.md](06-integrations.md) | SARIF features, GitHub PR comments, GitLab, IDE plugins, dashboards | Differentiation |
 | [07-rule-authoring.md](07-rule-authoring.md) | Custom rule DSL (Semgrep/QL alternative), rule sharing, plugin architecture | Differentiation |
 | [08-quality-evals.md](08-quality-evals.md) | OWASP Benchmark, Juliet (NIST), SARD, real-CVE corpus, ML-ranking, telemetry | Both |
-| [09-supabase-flutter.md](09-supabase-flutter.md) | Preserve and extend the Supabase/Flutter/Dart edge CodeQL doesn't have | Differentiation (where we already lead) |
+| [09-supabase-flutter.md](09-supabase-flutter.md) | Preserve and extend Supabase/Flutter/Dart-specific checks | Differentiation |
 | [10-non-goals.md](10-non-goals.md) | What we deliberately won't pursue and why | Both |
-| [11-quick-wins.md](11-quick-wins.md) | < 1 day tasks that close real benchmark gaps. Read this first if you have a few hours | Both |
+| [11-quick-wins.md](11-quick-wins.md) | Completed small-task backlog; append new sub-day tasks here when discovered | Both |
 
 ## How to read each file
 
@@ -76,8 +75,9 @@ For an LLM agent or new contributor, multiply by 2–3×.
 
 ## How to pick a task
 
-1. Read [11-quick-wins.md](11-quick-wins.md) first. Twenty cheap tasks
-   close more of the benchmark gap than one hard task. Always start here.
+1. Check [11-quick-wins.md](11-quick-wins.md) first. As of May 2026 its
+   listed quick wins are marked complete, so new work usually belongs in
+   the parent goals files.
 2. If you have multi-week scope: pick something from §00 (engine) or §05
    (scale). These unblock everything else.
 3. If you're rule-authoring: pick from §03 first, then §02 (framework
@@ -124,11 +124,13 @@ state of `feat/production-pass-2026-05`.
 
 ## Compare to where we are today (May 2026)
 
-Run `npm test` from `vscode-extension/` and `bin/fluttersupabasehelper.dart`
-benchmark to know the baseline. The COMPARISON.md document at the repo
-root shows our current position vs CodeQL on a 15-fixture benchmark — 6
-ties, 4 hard losses, 0 net wins outside of Dart.
+Use the checked-in test suites for verified project state:
 
-To "leave CodeQL in the dust" we need to flip that to something like:
-12 wins (us) / 3 wins (CodeQL) / 0 ties on a much larger benchmark.
-Achievable with the work in this folder. Not achievable in a quarter.
+- `npm test` in `vscode-extension/`
+- `HOME=/tmp dart run tool/smoke_test.dart`
+- `dart test`
+- `dart analyze lib bin tool test`
+
+There is no current, reproducible CodeQL-vs-this-tool benchmark checked in.
+Any future comparison should live under a real benchmark harness with fixture
+inputs, scanner outputs, CodeQL outputs, and scoring code.

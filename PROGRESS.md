@@ -15,10 +15,10 @@ Items are grouped into five passes that produced today's state:
    production fixes themselves.
 4. **Final pass** — 13 architecture/coverage items to ship production-ready,
    plus dead-code and placeholder cleanup.
-5. **Quick-win sweep** — 48 of 50 items from `goals/11-quick-wins.md`
-   landed across rule coverage, output formats, CI integration, and the
-   final three engine-precision items (sink-specific sanitizers,
-   instanceof receiver narrowing, negate-guard recognition).
+5. **Quick-win sweep** — the tasks listed in `goals/11-quick-wins.md`
+   landed across rule coverage, output formats, CI integration, and
+   engine-precision items (sink-specific sanitizers, instanceof receiver
+   narrowing, negate-guard recognition).
 
 ---
 
@@ -237,11 +237,10 @@ real bugs in the new code surfaced and were corrected:
 
 ## Pass 5 — Quick-win sweep
 
-The `goals/` folder formalised every remaining gap into 50 small tasks
-under [goals/11-quick-wins.md](goals/11-quick-wins.md). 48 of 50 landed
-in this pass; the two remaining (§QW-2 inheritance / §QW-41 nested
-guards) defer to the multi-week §EN-4 CFG work tracked in
-[goals/00-engine.md](goals/00-engine.md). Headline groupings:
+The `goals/` folder formalised near-term gaps into small tasks under
+[goals/11-quick-wins.md](goals/11-quick-wins.md). Those quick-win tasks are
+now marked complete; deeper versions of some items remain tracked in their
+parent goals files. Headline groupings:
 
 ### Rule-coverage adds (sha `f2d31ad`, `e330ed4`, `d0af6b4`)
 
@@ -309,7 +308,8 @@ duration in telemetry + report JSON, `eval(`-prefilter exit-fast.
   fully sanitized. Positive guards and nested-block guards still wait
   on §EN-4.
 
-12 new fixtures in `scripts/taint-engine.test.js` (99 → 112 tests).
+The `scripts/taint-engine.test.js` suite was expanded with focused
+regressions for these precision cases.
 
 ---
 
@@ -321,7 +321,7 @@ After every pass, the test suite ran clean:
 $ npm run compile     # tsc strict, zero warnings
 $ npm test
   Precision self-test passed.                (17 fixture assertions)
-  112 passed, 0 failed                       (taint engine invariants)
+  taint-engine.test.js passes                (taint engine invariants)
   AST Engine Validation Passed! ✔             (grammar smoke test)
   IFDS self-test passed.                     (7 Dart taint findings)
   rule-timeout / file-size-budget / output-formats / suppression-stats /

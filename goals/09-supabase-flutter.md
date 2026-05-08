@@ -1,14 +1,13 @@
 # 09 — Preserve and extend the Supabase / Flutter / Dart edge
 
-This is where we already lead CodeQL — they don't ship Dart, and they
-don't have specific Supabase / Flutter rules. The work here is to
-**stay** ahead and extend the lead so that the niche becomes
-unbeatable. Even if every other goal in this folder slipped, finishing
-this file alone keeps us best-in-class for Flutter/Supabase teams.
+This is the scanner's differentiation surface: Flutter, Dart, and
+Supabase-specific checks that generic SAST tools often do not model deeply.
+Keep claims here tied to shipped rules and fixtures, not broad market
+positioning.
 
 ---
 
-## Status (as of 2026-05-07)
+## Status (as of 2026-05-08)
 
 Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
@@ -16,10 +15,12 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
   §SF-24, §SF-25
 - 🟡 §SF-1 (verify_jwt + CORS + service-role-in-response landed; dedicated
   `Deno.env.get`/`kv.set`/`console.log(secrets)` rules still pending),
+  §SF-5 (committed SQL now models table/operation RLS policy coverage;
+  policy generation remains open),
   §SF-7 (rich source set landed; deeper `Navigator.pushNamed` sink modeling
   still pending), §SF-13 (WebView extended in d412b65 + d0af6b4 added the
   Android `addJavascriptInterface` rule)
-- ⏳ §SF-5, §SF-8, §SF-14–§SF-23, §SF-26–§SF-30
+- ⏳ §SF-8, §SF-14–§SF-23, §SF-26–§SF-30
 
 ---
 
@@ -67,26 +68,27 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 - **Current state:** ✅ rule exists per commit history.
 - **Target state:** Maintenance only.
 
-## §SF-5 — Supabase RLS policy *generation* from DDL
+## §SF-5 — Supabase RLS policy coverage from DDL 🟡 PARTIAL — 2026-05-08
 
-- **Why:** Today we can suggest RLS policies; we can't read existing
-  policies and verify they cover the access patterns we observe.
-- **Current state:** `rls-policy-suggestion` rule emits suggestions.
+- **Why:** Suggestions should not fire when committed migrations already
+  define the relevant policy, and missing-RLS findings should be table- and
+  operation-specific.
+- **Current state:** `DdlMetadata` parses `ENABLE/FORCE ROW LEVEL SECURITY`
+  and `CREATE POLICY ... FOR <operation>` from committed SQL. The
+  `missing-rls-awareness` and `rls-policy-suggestion` rules use that
+  table/operation coverage.
 - **Target state:** Parse SQL migrations / `supabase/migrations/*.sql`
   files. Build a model of `CREATE POLICY` statements per table. Cross-
   reference with detected `.from('table')` accesses. Flag tables with
-  access patterns not covered by policies.
-- **Approach:**
-  1. Use existing tree-sitter SQL grammar (or a small Postgres dialect
-     parser).
-  2. Build `Map<table, Policy[]>` from DDL.
-  3. For each `tableAccess` in `ProjectContext`, evaluate whether the
-     observed access is covered.
+  app operations without matching committed table policy coverage.
+- **Remaining work:** Parse policy expressions deeply enough to distinguish
+  owner-scoped policies from permissive/public policies, and generate
+  complete migration SQL where requested.
 - **Dependencies:** None.
 - **Effort:** **L** (~2 weeks).
 - **Tests:** Fixture: a Supabase project with `posts` table, RLS
-  enabled, INSERT policy covering ownership but SELECT policy missing.
-  Expected finding: SELECT not covered.
+  enabled, SELECT policy present, UPDATE policy missing. Expected finding:
+  UPDATE not covered.
 
 ## §SF-6 — Supabase `service_role` key client-side leak ✅ DONE — sha ca7785a + 8868ef1 (JWT decode)
 
@@ -234,8 +236,8 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
 ## §SF-22 — Auto-generate RLS policies from access patterns
 
-- **Why:** A killer feature. Today we suggest one-off policies. CodeQL
-  can't do this — it's Supabase-specific.
+- **Why:** A full migration generator would turn current one-off policy
+  suggestions into reviewable SQL.
 - **Current state:** `rls-policy-suggestion` emits suggestions per
   table.
 - **Target state:** Aggregate detected access patterns across the whole

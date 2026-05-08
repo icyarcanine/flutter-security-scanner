@@ -16,12 +16,12 @@ password fields, weak platform manifests, etc.). Everything under "Analysis
 Pipeline", "Taint Model", and "Confidence Levels" below describes the **VS Code
 extension engine**, not the CLI.
 
-**Production features:** SARIF 2.1.0 output, standalone HTML reports, CWE taxonomy, data-flow paths
+**Current shipped features:** SARIF 2.1.0 output, standalone HTML reports, CWE taxonomy, data-flow paths
 in findings, AST-aware inline suppressions, content-hash baselines, git diff
 mode for PR-style scans, SARIF diff mode, confidence-based CI failure,
 parallel rule execution, multi-root workspaces, on-save scanning, per-rule
 disable, statement-aware suppression boundary, inter-procedural IFDS for
-Dart, and 99 unit-tested taint engine invariants.
+Dart, and regression-tested taint engine behavior.
 
 ## What It Detects
 
@@ -42,7 +42,8 @@ Dart, and 99 unit-tested taint engine invariants.
 - **JavaScript platform risks** — cleartext HTTP clients, tabnabbing,
   broad cookie domains, sensitive web storage, clipboard exposure,
   symlink-following filesystem reads, deprecated TLS protocol pinning,
-  weak crypto APIs, typosquatted packages
+  weak crypto APIs, typosquatted packages, prototype-pollution writes,
+  high-confidence ReDoS regex patterns
 - **Supabase misconfigurations** — missing table/operation-level RLS DDL,
   policies without enabled RLS, insecure storage rules,
   committed `.env` files, public buckets, unscoped realtime channels,
@@ -100,7 +101,8 @@ following properties:
   - Code — `eval`, `Function`, `setTimeout`/`setInterval` (string arg),
     `pickle.loads`, `yaml.load`, `marshal.loads` — `CWE-95`.
   - HTML — `innerHTML`, `outerHTML`, `document.write`,
-    `dangerouslySetInnerHTML` — `CWE-79`.
+    `dangerouslySetInnerHTML`, `res.send`/`response.send`/`reply.send`
+    response-body sinks — `CWE-79`.
   - URL/SSRF — `fetch`, `axios.*`, `http.get`, `requests.*`,
     `urllib.urlopen` — `CWE-918`.
   - Path — `fs.readFile/writeFile/...` — `CWE-22`.
@@ -469,14 +471,12 @@ values fall through to a safer default.
 
 ## Limitations
 
-- JS/TS taint is intra-procedural only — no cross-function or cross-file
-  tracking. Dart has an additional inter-procedural IFDS pass
-  (`ifds-taint`).
-- IFDS sources are a name-based heuristic; real HTTP / storage /
-  SharedPreferences / stdin sources are not modeled yet. No taint
-  labels — any sanitizer clears for any sink. No `await` / cascade /
-  named arguments / field-sensitive / collection / implicit-`this`
-  modeling. Virtual dispatch resolves by last-name only.
+- JS/TS taint is mostly intra-procedural. It has limited same-file helper
+  summaries, but no whole-program or cross-file flow.
+- Dart has an additional inter-procedural IFDS pass (`ifds-taint`), but
+  its sources are still heuristic and it does not yet model every Dart
+  language feature (`await`, cascade operators, named arguments,
+  collection sensitivity, full virtual dispatch, implicit `this`, etc.).
 - Python, Go, Java have AST grammars but limited source/sink coverage and
   no taint models.
 - Non-Dart languages: no full CFG-based path-sensitive analysis. Top-level
@@ -486,7 +486,9 @@ values fall through to a safer default.
   to the §EN-4 work. Conditional reassignment to a sanitizer is
   conservatively *not* trusted, which biases toward false positives over
   false negatives.
-- Framework coverage limited to Express.js (`req.body/query/params`).
+- Framework modeling is still shallow. Express-style request fields and
+  common response-body sinks are modeled, but route registration,
+  middleware chains, and framework-specific lifecycle rules are not complete.
 - Entropy detection is probabilistic — some benign strings flagged at LOW.
 - Comment-based suppression can be added by anyone with commit access;
   CI policies should review/restrict suppression patterns.
@@ -500,7 +502,7 @@ npm run compile && npm test
 Runs in order:
 1. `precision-self-test.js` — end-to-end fixture sweep covering 17 rule
    interactions across JS / Dart / Python / test-path noise.
-2. `taint-engine.test.js` — 112 unit-style invariants for the
+2. `taint-engine.test.js` — unit-style invariants for the
    `IntraProceduralTaintTracker` (source seeding, sink-specific
    sanitizer recognition, receiver heuristic incl. instanceof narrowing,
    sink kinds, reassignment, parameterization, negate-guard, all

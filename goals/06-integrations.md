@@ -1,8 +1,7 @@
 # 06 — Integrations: outputs, IDEs, CI
 
-CodeQL is bound to GitHub Code Scanning. Our integration story has to
-beat that on portability — same SARIF everywhere, more output formats,
-real PR comments on GitLab/Bitbucket/Azure DevOps.
+The integration goal is portability: same SARIF everywhere, additional
+output formats, and PR comments on GitLab/Bitbucket/Azure DevOps.
 
 This is **differentiation territory**. Each task here is genuine
 upside for adoption.
@@ -25,7 +24,7 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 - **Current state:** ✅ `vscode-extension/src/output/sarif.ts` emits
   `codeFlows`, per-rule CWE aggregation, partialFingerprints, SRCROOT
   base IDs.
-- **Target state:** Add SARIF features CodeQL ships — DELIVERED:
+- **Target state:** Add GitHub Code Scanning-compatible SARIF features — DELIVERED:
   - ✅ `taxonomies` block — every CWE referenced by any rule appears in
     `runs[].taxonomies[].taxa`; rules carry `relationships` linking
     rule.id → CWE entry.
@@ -389,7 +388,7 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
 ## §IN-31 — Result diff: cross-tool (SARIF vs SARIF)
 
-- **Why:** Compare our findings to CodeQL's findings on the same
+- **Why:** Compare our findings to another scanner's findings on the same
   codebase.
 - **Target state:** A `flutter-supabase-helper diff <ours.sarif>
   <theirs.sarif>` subcommand showing per-rule overlap, unique findings,

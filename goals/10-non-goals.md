@@ -16,19 +16,17 @@ to the relevant goals file (00–09) and assign a new §-anchor.
 
 ## §NG-1 — C / C++ memory safety analysis
 
-- **Why skipped:** CodeQL's C/C++ pack is the product of 15+ years of
-  Semmle work plus ongoing GitHub Security Lab investment. Memory
-  safety analysis (use-after-free, buffer overflow, integer overflow,
-  null deref, format strings) requires:
+- **Why skipped:** Memory safety analysis (use-after-free, buffer overflow,
+  integer overflow, null deref, format strings) requires:
   - Pointer aliasing analysis
   - Heap modeling
   - Lifetime analysis
   - Complex CFG modeling for goto / setjmp / longjmp
   - Per-architecture undefined-behavior modeling
-  Each of these is a multi-month engineering effort. We cannot match
-  CodeQL on this.
-- **Alternative:** Document that users with C/C++ codebases should run
-  CodeQL alongside our scanner. Don't pretend we're a replacement.
+  Each of these is a multi-month engineering effort and is outside the
+  current web/mobile/Supabase scope.
+- **Alternative:** Document that users with C/C++ codebases should run a
+  dedicated C/C++ analyzer alongside this scanner.
 - **Reconsider when:** Never. C/C++ memory safety is the wrong battle.
 
 ## §NG-2 — Building our own QL-equivalent query language
@@ -44,8 +42,7 @@ to the relevant goals file (00–09) and assign a new §-anchor.
 
 ## §NG-3 — Distributed cloud-hosted scan service
 
-- **Why skipped:** GitHub Code Scanning + CodeQL Cloud is a hosted
-  service. Building our own SaaS on top of the engine is a separate
+- **Why skipped:** Building a hosted SaaS on top of the engine is a separate
   product (auth, billing, multi-tenancy, infra). Off-strategy for an
   open-source CLI / extension.
 - **Alternative:** Be excellent at on-prem / self-hosted /

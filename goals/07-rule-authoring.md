@@ -1,13 +1,11 @@
 # 07 — Rule authoring DSL
 
-CodeQL's most powerful feature is QL — a Datalog-derived query
-language that lets users author custom queries. We have no equivalent;
-rules are TypeScript and require recompiling.
+Custom rule authoring is currently a source-editing workflow: rules are
+TypeScript and require recompiling. This file tracks work toward a safer
+user-authored rule format.
 
 This file specifies what we'd need to build to give users a way to
-write their own rules without forking. **This is differentiation
-territory** — Semgrep does this with YAML; CodeQL does this with QL.
-Either is a moat; both are even better.
+write their own rules without forking.
 
 ## Status (as of 2026-05-07)
 

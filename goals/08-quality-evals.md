@@ -1,18 +1,16 @@
 # 08 — Quality, evaluations, telemetry
 
-CodeQL has run on millions of repos for years. We have anecdotes.
-Closing that gap is mostly about benchmarks, eval harnesses, and
-opt-in telemetry. **Without these, every claim of "we beat CodeQL on X"
-is unverifiable.**
+Our comparative evaluation is still immature. Closing that gap is mostly
+about benchmarks, eval harnesses, and opt-in telemetry. Without these,
+comparative claims against CodeQL or any other scanner are unverifiable.
 
 ## Status (as of 2026-05-07)
 
 Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
-- 🟡 Local fixture suite under [`test/fixtures/`](../test/fixtures/) covers
-  most rules end-to-end (~50 fixtures), and the in-repo `COMPARISON.md`
-  tracks 15-fixture head-to-head with CodeQL. That's the full extent of
-  evaluation infrastructure.
+- 🟡 Local fixture suites under [`test/fixtures/`](../test/fixtures/) and
+  `vscode-extension/scripts/*.test.js` cover rule regressions. There is no
+  current checked-in CodeQL comparison benchmark or scored external corpus.
 - ⏳ Every §QE-* task — OWASP, Juliet, SARD, real-CVE corpus, ML ranking,
   telemetry — is unstarted.
 
@@ -20,8 +18,7 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
 ## §QE-1 — OWASP Benchmark integration
 
-- **Why:** OWASP Benchmark is the standard SAST evaluation suite for
-  Java. CodeQL has published numbers; we have none.
+- **Why:** OWASP Benchmark is a standard SAST evaluation suite for Java.
 - **Current state:** No benchmark.
 - **Target state:** A `tool/benchmark.sh` script that:
   1. Clones the latest OWASP Benchmark.
@@ -59,8 +56,7 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
 ## §QE-4 — Real-CVE corpus
 
-- **Why:** Synthetic benchmarks miss real-world signal. CodeQL is
-  trained on real CVEs.
+- **Why:** Synthetic benchmarks miss real-world signal.
 - **Current state:** None.
 - **Target state:** A curated set of 100 real CVEs in OSS Node
   packages, each with the vulnerable+patched versions. Scanner runs
@@ -73,8 +69,8 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
 ## §QE-5 — Public scoreboard / leaderboard
 
-- **Why:** Transparency about precision is itself a competitive
-  advantage. CodeQL doesn't publish per-rule precision.
+- **Why:** Transparency about precision is useful only when it is backed
+  by real measured data.
 - **Current state:** None.
 - **Target state:** A web page showing per-rule precision/recall on
   each benchmark, updated on every release.
@@ -111,7 +107,7 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
 ## §QE-9 — Bug bounty for confirmed FNs
 
-- **Why:** Crowdsource the FN-finding work. CodeQL doesn't do this.
+- **Why:** Crowdsource the false-negative finding work.
 - **Current state:** None.
 - **Target state:** Document a process: report a vulnerable code
   pattern that we miss, get credit / swag / cash. Add the pattern as
@@ -119,17 +115,19 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 - **Approach:** Document. Run on a budget if any.
 - **Effort:** **S** (a few hours of process design + ongoing review).
 
-## §QE-10 — Differential testing against CodeQL
+## §QE-10 — Differential testing against another scanner
 
-- **Why:** When CodeQL flags a finding we don't, that's a high-signal
-  hint of a missing rule.
+- **Why:** When another scanner flags a finding we don't, that's a
+  high-signal hint of a missing rule.
 - **Current state:** None.
 - **Target state:** A `tool/differential.sh` runs both scanners on a
   shared corpus and surfaces:
-  - Findings only CodeQL has → likely a coverage gap on our side
-  - Findings only we have → potential wins (for the comparison doc)
+  - Findings only the comparison scanner has → likely a coverage gap on
+    our side
+  - Findings only we have → potential advantages to investigate manually
 - **Approach:** SARIF in, SARIF out, set difference by partialFingerprint.
-- **Dependencies:** Requires CodeQL CLI installed locally / in CI.
+- **Dependencies:** Requires the comparison scanner CLI installed locally
+  or in CI.
 - **Effort:** **M** (3 days).
 
 ## §QE-11 — Differential testing against Semgrep
@@ -140,7 +138,7 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
 ## §QE-12 — ML-ranked findings
 
-- **Why:** A real differentiator. CodeQL doesn't do this.
+- **Why:** A triage-quality signal can make findings more actionable.
 - **Current state:** Findings ordered by severity then file/line.
 - **Target state:** A small classifier ranks findings by likelihood
   of being a true positive based on:
@@ -204,7 +202,8 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 ## §QE-17 — Public benchmark leaderboard via diff against CodeQL
 
 - **Why:** Honest comparative numbers.
-- **Current state:** Static doc (COMPARISON.md) with 15 fixtures.
+- **Current state:** No current leaderboard or reproducible CodeQL-vs-this
+  scanner benchmark is checked in.
 - **Target state:** Auto-updated leaderboard on a CodeQL-comparable
   benchmark. Updates per release.
 - **Dependencies:** §QE-10.

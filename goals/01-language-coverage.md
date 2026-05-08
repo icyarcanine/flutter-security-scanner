@@ -1,13 +1,11 @@
 # 01 — Language coverage
 
-For each language we currently support, this file lists the source/sink
-expansions needed to match CodeQL's per-language pack. For languages we
-don't yet support, it lists the bring-up cost.
+For each language we currently support, this file lists source/sink
+expansions and bring-up work. For languages we do not yet support, it lists
+the estimated implementation cost.
 
-CodeQL ships first-class analysis for: **JavaScript/TypeScript, Python,
-Java, Go, C/C++, C#, Ruby, Swift, Kotlin**. We currently have full taint
-on JS/TS, IFDS on Dart, AST grammars without taint on Python/Go/Java,
-and nothing on the rest.
+We currently have JS/TS taint, IFDS on Dart, AST grammars without full taint
+on Python/Go/Java, and no deep analysis for the rest.
 
 Read [00-engine.md](00-engine.md) first. Most language-specific work
 adds rows to a registry; the engine itself is what makes those rows
@@ -27,8 +25,8 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
 | Language | Grammar | Sources | Sinks | Sanitizers | Taint depth | Framework models |
 |----------|---------|---------|-------|------------|-------------|-------------------|
-| JavaScript | ✅ tree-sitter | ~12 categories | 10 sink kinds | regex over names | intra-procedural | none |
-| TypeScript | ✅ tree-sitter | (shares JS) | (shares JS) | (shares JS) | (shares JS) | none |
+| JavaScript | ✅ tree-sitter | ~12 categories | 10 sink kinds | registry + name heuristics | mostly intra-procedural | partial Express-style request/response heuristics |
+| TypeScript | ✅ tree-sitter | (shares JS) | (shares JS) | (shares JS) | (shares JS) | partial Express-style request/response heuristics |
 | Dart | ✅ tree-sitter | ~6 patterns | ~5 sink kinds | name-based | **inter-procedural (IFDS)** | none |
 | Python | ✅ tree-sitter | Flask/Django/FastAPI request fields only | partial (subprocess, eval, sql, yaml) | regex names | none | partial Flask |
 | Go | ✅ tree-sitter | **none** (sink-only) | os/exec, eval-style | none | none | none |
@@ -41,7 +39,7 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
 ---
 
-## §LC-1 — Python: bring sources to parity with CodeQL
+## §LC-1 — Python: deepen web source coverage
 
 - **Why:** We have AST grammar but no source patterns for Django ORM,
   SQLAlchemy, Pyramid, Tornado, or async views.
@@ -50,7 +48,8 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
   `request.query_params/path_params`, and stdin. Misses `flask.request.values`,
   `quart.request`, `tornado.RequestHandler.get_argument`, `aiohttp.web.Request`,
   Django `request.POST`, `request.GET`, `request.FILES`, `request.META`.
-- **Target state:** Every CodeQL `python/web/` source recognized.
+- **Target state:** Common Python web framework request sources recognized
+  with fixture coverage.
 - **Approach:** Append regexes to `_isDirectSourceExpression`. Also add
   destructured forms (`from flask import request as r`).
 - **Dependencies:** None.
@@ -64,7 +63,6 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 ## §LC-2 — Python: SQL/ORM sinks (SQLAlchemy, Django ORM, peewee, asyncpg)
 
 - **Why:** A real Python web app uses an ORM, not raw `cursor.execute()`.
-  CodeQL's Python pack ships ORM-aware queries.
 - **Current state:** Only `cursor.execute`, `subprocess.run/call/check_output/Popen`,
   `os.system/popen`, `pickle.loads/load`, `yaml.load/load_all/unsafe_load/full_load`.
 - **Target state:** Recognize `Model.objects.raw()`, `Model.objects.extra(where=…)`,
@@ -156,8 +154,8 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
 ## §LC-7 — Java: sinks (JDBC, JPA, JNDI, JMS, Hibernate, Mybatis)
 
-- **Why:** No Java sinks today. CodeQL's Java pack covers
-  hundreds of CWEs across these frameworks.
+- **Why:** No Java sinks today; common Java frameworks need explicit sink
+  coverage.
 - **Current state:** Zero Java sinks recognized.
 - **Target state:** `Statement.executeQuery/executeUpdate/execute`,
   `PreparedStatement.executeQuery` (when constructed with concatenation),
@@ -216,8 +214,8 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
 ## §LC-10 — Ruby: bring up + Rails models
 
-- **Why:** Rails is one of the dominant web frameworks; CodeQL has a
-  Ruby pack.
+- **Why:** Rails is a common web framework and needs explicit source/sink
+  modeling.
 - **Current state:** Nothing.
 - **Target state:** `tree-sitter-ruby` registered. Sources from
   `params`, `request.GET`, ActiveRecord sinks (`User.where("name = '#{name}'")`,
@@ -232,8 +230,7 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
 ## §LC-11 — Swift: iOS focus
 
-- **Why:** iOS apps are a real audience and CodeQL has limited Swift
-  coverage. Real differentiation potential.
+- **Why:** iOS apps are a real audience for mobile security checks.
 - **Current state:** Nothing.
 - **Target state:** `tree-sitter-swift` grammar; sources from
   `URLSession` data tasks, iOS deep links (`UIApplicationDelegate.application:openURL:`),
@@ -261,8 +258,8 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
 
 ## §LC-13 — C / C++: bring up
 
-- **Why:** Half of CodeQL's value is on C/C++ (memory safety, format
-  strings, integer overflow). Different domain than web SAST.
+- **Why:** C/C++ memory safety is a different domain from the web/mobile
+  SAST focus of this project.
 - **Current state:** Nothing.
 - **Target state:** `tree-sitter-c` and `tree-sitter-cpp` registered.
   Memory-safety rules: use-after-free (CWE-416), double-free (CWE-415),
@@ -273,8 +270,7 @@ Legend: ✅ DONE | 🟡 PARTIAL | ⏳ REMAINING (default).
   (a) Add rules that recognize known-bad patterns (`gets()`, `strcpy`,
       `sprintf` with `%s` and user input).
   (b) Skip C/C++ entirely and stay focused on managed languages.
-- **Recommendation:** Skip in the first round. CodeQL's C/C++ pack is
-  10+ years deep; we cannot match it. Document as a non-goal in
+- **Recommendation:** Skip in the first round. Document as a non-goal in
   [10-non-goals.md](10-non-goals.md).
 - **Effort:** **XL** if pursued; **0** if skipped.
 

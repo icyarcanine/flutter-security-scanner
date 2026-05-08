@@ -7,9 +7,9 @@ in the corresponding goals file too.
 
 ## Strategy
 
-Working through `goals/11-quick-wins.md` in the README's recommended order.
-Twenty cheap tasks > one hard task for closing the benchmark gap. Larger
-items (§00 engine, §05 scale) come after the quick wins are exhausted.
+The original `goals/11-quick-wins.md` list is marked complete. Current work
+should use the parent goals files and live code/tests as the source of truth;
+do not infer CodeQL parity from this progress log.
 
 ## Status legend
 
@@ -169,10 +169,10 @@ Finished the rest of the unblocked quick-win file in `d0af6b4`:
 | `d0af6b4` | §QW-47 / §IN-9 — standalone HTML report |
 
 Verification:
-- `npm test` passes, including 99 taint/rule regression tests and HTML output
+- `npm test` passes, including taint/rule regression tests and HTML output
   smoke coverage.
 - `HOME=/tmp dart run tool/smoke_test.dart` passes.
-- `dart analyze lib bin tool` exits 0 with the existing 13 info-level lints.
+- `dart analyze lib bin tool` exits 0 with existing unrelated info-level lints.
 - `git diff --check` passes before commit.
 
 Quick-win backlog now has only dependency-gated items:
@@ -199,10 +199,29 @@ inner taint to the sink, where the per-kind decision happens. Numeric
 coercion / generic validators / sanitizing replace stay full-spectrum.
 
 Verification:
-- `npm test` passes — 112 taint-engine tests (up from 99) including
-  12 new fixtures across QW-1/QW-2/QW-41, plus precision/IFDS/AST/
+- `npm test` passes — taint-engine fixtures across QW-1/QW-2/QW-41,
+  plus precision/IFDS/AST/
   rule-timeout/file-size/output-format/suppression/cli-filter suites.
 - `HOME=/tmp dart run tool/smoke_test.dart` passes.
-- `dart analyze lib bin tool` exits with the existing 13 info-level
-  lints (unchanged).
+- `dart analyze lib bin tool` exits with existing unrelated info-level
+  lints.
+- `git diff --check` passes before commit.
+
+### 2026-05-08 — Supabase DDL/RPC and JS rule coverage
+
+Landed a focused coverage and precision batch:
+
+| Area | What changed |
+|------|--------------|
+| Supabase RLS | Committed SQL now feeds table/operation-level RLS enablement and policy coverage into missing-RLS and policy-suggestion rules. |
+| Supabase RPC | Client calls to unsafe committed `SECURITY DEFINER` functions are flagged when no auth guard is recognized in the SQL function body. |
+| JS/TS rules | Added high-confidence `prototype-pollution` and `redos` rules. |
+| JS/TS taint sinks | Added response-body HTML sinks for `res.send`/`res.write`/`res.end`/`reply.send`. |
+
+Verification:
+- `dart test` passes.
+- `HOME=/tmp dart run tool/smoke_test.dart` passes.
+- `dart analyze lib bin tool test` exits 0 with existing unrelated info
+  lints only.
+- `npm test` passes.
 - `git diff --check` passes before commit.
