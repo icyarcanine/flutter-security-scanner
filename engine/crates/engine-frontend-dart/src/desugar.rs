@@ -4,7 +4,7 @@
 //! form for the solver. It ensures that a cascade `obj..a()..b()` is
 //! treated as two sequential calls on the same receiver.
 
-use engine_core::cpg::{AstEdge, CfgEdge, CodeGraph, EdgeKind, NodeId, NodeKind};
+use engine_core::cpg::{CodeGraph, NodeId, NodeKind};
 
 pub struct DesugarPass<'g> {
     graph: &'g mut CodeGraph,
@@ -34,9 +34,9 @@ impl<'g> DesugarPass<'g> {
 
     /// If a method call is part of a cascade, ensure the CFG flows
     /// correctly through the receiver to subsequent calls.
-    fn handle_cascade(&mut self, nid: NodeId) {
-        // Implementation detail: find if this node has a 'cascade' parent
-        // and link the receiver to the next call in the chain.
+    fn handle_cascade(&mut self, _nid: NodeId) {
+        // TODO: find cascade parent, link receiver to next call in chain.
+        // Currently a no-op stub — cascade lowering happens later.
     }
 
     /// Injects symbol info for implicit 'this' if the analyzer bridge

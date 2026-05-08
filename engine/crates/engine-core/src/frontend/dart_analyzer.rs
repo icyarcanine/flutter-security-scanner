@@ -1,3 +1,7 @@
+// Feature-gated module; the JSON wire types are intentionally
+// undocumented until the analyzer-bridge protocol stabilises.
+#![allow(missing_docs)]
+
 //! Dart analyzer sidecar bridge — semantic type resolution.
 //!
 //! # Architecture
@@ -95,8 +99,12 @@ pub enum ElementKind {
     Reference,
 }
 
-/// Protocol command sent to the Dart helper over stdin.
+/// Protocol command sent to the Dart helper over stdin. Defined for the
+/// upcoming `BridgeCommand`-based wire format; the current bridge writes
+/// raw file paths per line. Allow the unused warning until the new
+/// protocol lands.
 #[derive(Debug)]
+#[allow(dead_code)]
 enum BridgeCommand<'a> {
     /// Resolve (or re-resolve) the listed files.
     Resolve(&'a [&'a str]),

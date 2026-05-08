@@ -173,13 +173,29 @@ fn main() -> Result<()> {
 
     // Seed the solver at every source the rule discovered.
     let source_ids: Vec<NodeId> = solver.flow().source_node_ids().collect();
-    for src in source_ids {
-        solver.seed_at_source(src);
+    for src in &source_ids {
+        solver.seed_at_source(*src);
     }
     solver.run();
 
-    // 4. Walk every sink the rule discovered; emit a finding when the IFDS
-    //    solver reports the sink is reachable from a tainted fact.
+    // 4. Walk every sink the rule discovered; emit a finding only when:
+    //    (a) the IFDS solver thinks the sink carries a tainted fact, AND
+    //    (b) at least one source the rule matched lies syntactically
+    //        inside the sink's byte range (same file).
+    //
+    // The (b) check is a precision filter the current SemgrepFlowFunctions
+    // doesn't provide on its own: the flow function does identity
+    // propagation, so once any source fires, every downstream sink is
+    // reachable. Without this filter, a sink fires on unrelated code that
+    // happens to follow a source in CFG order.
+    //
+    // Trade-off: this rejects multi-statement flows like
+    //   `final id = source; sink(id);`
+    // because the source's byte range is not inside the sink's.
+    // Detecting those properly needs PDG-aware variable tracking (Phase
+    // 5+); for v1 the conservative same-expression check is the right
+    // line. False negatives on var indirection are documented in
+    // RUST_ENGINE_PROGRESS.md.
     let rule_id = solver.flow().rule().id.clone();
     let rule_msg = solver.flow().rule().message.clone();
     let rule_sev = solver.flow().rule().severity.clone();
@@ -190,11 +206,22 @@ fn main() -> Result<()> {
         if !solver.is_tainted(sink_node) {
             continue;
         }
-        let node = graph.node(sink_node);
-        let file_path = graph.file_path(node.file).to_owned();
+        let sink = graph.node(sink_node);
+
+        let has_source_inside = source_ids.iter().any(|src_id| {
+            let src = graph.node(*src_id);
+            src.file == sink.file
+                && src.byte_range.start >= sink.byte_range.start
+                && src.byte_range.end <= sink.byte_range.end
+        });
+        if !has_source_inside {
+            continue;
+        }
+
+        let file_path = graph.file_path(sink.file).to_owned();
         let (line, col) = byte_to_line_col(
-            source_map.get(&node.file).map(String::as_str).unwrap_or(""),
-            node.byte_range.start as usize,
+            source_map.get(&sink.file).map(String::as_str).unwrap_or(""),
+            sink.byte_range.start as usize,
         );
         findings.push(Finding {
             file: file_path,

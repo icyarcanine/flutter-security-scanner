@@ -650,7 +650,10 @@ pub struct SymbolEntry {
 /// correlator. Readers take an immutable borrow and run lock-free.
 pub struct CodeGraph {
     /// Arena for graph-lifetime string allocations (property blobs, etc.).
-    /// Cleared only on a full workspace rebuild.
+    /// Cleared only on a full workspace rebuild. Reserved for upcoming
+    /// passes (Semgrep metavariable text storage, dataflow witness traces);
+    /// suppress dead-code warning until those land.
+    #[allow(dead_code)]
     pub(crate) bump: Bump,
     /// Dense node storage. Indexed by `NodeId::index()`.
     nodes: Vec<Node>,

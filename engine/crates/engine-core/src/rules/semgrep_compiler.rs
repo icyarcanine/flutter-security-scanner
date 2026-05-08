@@ -47,7 +47,7 @@ use rustc_hash::FxHashMap;
 use serde::Deserialize;
 use smallvec::SmallVec;
 
-use crate::cpg::{CodeGraph, EdgeKind, EdgeKindTag, NodeId, NodeKind, SymbolId, TypeRef};
+use crate::cpg::{CodeGraph, EdgeKind, EdgeKindTag, NodeId, NodeKind, TypeRef};
 use crate::frontend::types::TypeArena;
 use crate::solver::{DomainFact, FlowFunctions, FlowResult};
 
@@ -83,16 +83,23 @@ pub struct SemgrepRule {
     pub pattern_either: Option<Vec<PatternClause>>,
 
     // -- Taint mode fields ------------------------------------------------
+    /// Source patterns — values that originate user-controlled data.
     #[serde(rename = "pattern-sources", default)]
     pub pattern_sources: Option<Vec<PatternClause>>,
+    /// Sink patterns — call sites or assignments where tainted values are
+    /// dangerous.
     #[serde(rename = "pattern-sinks", default)]
     pub pattern_sinks: Option<Vec<PatternClause>>,
+    /// Sanitizer patterns — call sites that neutralise taint.
     #[serde(rename = "pattern-sanitizers", default)]
     pub pattern_sanitizers: Option<Vec<PatternClause>>,
 
     // -- Metavariable constraints -----------------------------------------
+    /// Per-metavariable type constraints (e.g. `$X` must be a `String`).
     #[serde(rename = "metavariable-type", default)]
     pub metavariable_type: Option<Vec<MetavarTypeConstraint>>,
+    /// Per-metavariable regex constraints applied to the captured node's
+    /// source text.
     #[serde(rename = "metavariable-regex", default)]
     pub metavariable_regex: Option<Vec<MetavarRegexConstraint>>,
 }
@@ -100,14 +107,20 @@ pub struct SemgrepRule {
 /// A pattern clause — either a single pattern or a negation.
 #[derive(Clone, Debug, Deserialize)]
 pub struct PatternClause {
+    /// Positive pattern; matched nodes are kept.
     #[serde(default)]
     pub pattern: Option<String>,
+    /// Negative pattern; matched nodes are excluded from the parent set.
     #[serde(rename = "pattern-not", default)]
     pub pattern_not: Option<String>,
+    /// Disjunction of nested clauses; the clause matches when any sub-clause
+    /// matches.
     #[serde(rename = "pattern-either", default)]
     pub pattern_either: Option<Vec<PatternClause>>,
+    /// Per-metavariable type constraints scoped to this clause.
     #[serde(rename = "metavariable-type", default)]
     pub metavariable_type: Option<Vec<MetavarTypeConstraint>>,
+    /// Per-metavariable regex constraints scoped to this clause.
     #[serde(rename = "metavariable-regex", default)]
     pub metavariable_regex: Option<Vec<MetavarRegexConstraint>>,
 }
@@ -115,7 +128,9 @@ pub struct PatternClause {
 /// Constrains a captured metavariable to a specific type.
 #[derive(Clone, Debug, Deserialize)]
 pub struct MetavarTypeConstraint {
+    /// Metavariable name without the `$` sigil (e.g. `X` for `$X`).
     pub metavariable: String,
+    /// Canonical type name the metavariable must be a subtype of.
     #[serde(rename = "type")]
     pub type_name: String,
 }
@@ -123,7 +138,9 @@ pub struct MetavarTypeConstraint {
 /// Constrains a captured metavariable's source text to match a regex.
 #[derive(Clone, Debug, Deserialize)]
 pub struct MetavarRegexConstraint {
+    /// Metavariable name without the `$` sigil.
     pub metavariable: String,
+    /// Regex applied to the captured node's source-text span.
     pub regex: String,
 }
 
@@ -190,7 +207,10 @@ pub enum NodePredicate {
     DeepCapture(MetavarId),
     /// Match a node that has an AST child at `slot` matching `inner`.
     HasChild {
+        /// Positional slot in the parent's grammar production
+        /// (slot 0 = receiver, 1 = selector, 2+ = arguments for method calls).
         slot: u16,
+        /// Predicate the child node must satisfy.
         inner: Box<NodePredicate>,
     },
     /// Logical AND.

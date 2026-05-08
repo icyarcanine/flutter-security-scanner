@@ -5,7 +5,6 @@
 //! back to `ReturnSite`. This is the infrastructure for the IFDS solver.
 
 use engine_core::cpg::{CodeGraph, EdgeKind, EdgeKindTag, IcfgEdge, NodeId, NodeKind};
-use tracing::{debug, warn};
 
 pub struct IcfgBuilder<'g> {
     graph: &'g mut CodeGraph,

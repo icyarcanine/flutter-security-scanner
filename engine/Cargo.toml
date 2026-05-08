@@ -54,9 +54,13 @@ datafrog = "2.0"
 crepe    = "0.1"
 
 # -- SMT -------------------------------------------------------------------
-# Gated per-target in engine-core/Cargo.toml: Z3 statically linked on native
-# builds, stubbed out on wasm32 until we ship a prebuilt z3.wasm sidecar.
-z3 = { version = "0.12", default-features = false, features = ["static-link-z3"] }
+# Z3 is feature-gated via `engine-core/smt-proofs`. We dropped the
+# `static-link-z3` feature because z3-sys 0.8 vendors a CMakeLists.txt with
+# `cmake_minimum_required(VERSION 2.8)` that CMake 4+ rejects. Instead the
+# build links against the system Z3 — locally via `brew install z3`, in CI
+# via `apt-get install libz3-dev`. Set `LIBZ3_SYS_USE_PKG_CONFIG=1` so
+# z3-sys finds the system library without re-running its own bindgen.
+z3 = { version = "0.12", default-features = false }
 
 # -- Serialization / Semgrep YAML ------------------------------------------
 serde      = { version = "1", features = ["derive"] }

@@ -4,7 +4,6 @@
 //! procedures (functions/methods), allocates Entry and Exit nodes,
 //! and connects statements following the program's execution pulse.
 
-use tracing::{debug, info};
 use tree_sitter::Node as TNode;
 
 use engine_core::cpg::{AstEdge, CfgEdge, CodeGraph, EdgeKind, EdgeKindTag, NodeId, NodeKind};

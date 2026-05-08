@@ -3,7 +3,6 @@
 //! Handles Rust's sophisticated control flow, including `match`, `if let`,
 //! `loop`, and implicit returns (last expression in a block).
 
-use tracing::debug;
 use tree_sitter::Node as TNode;
 
 use engine_core::cpg::{CfgEdge, CodeGraph, EdgeKind, NodeId, NodeKind};

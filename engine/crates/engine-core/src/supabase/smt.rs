@@ -63,7 +63,9 @@
 //! the public API surface is deliberately identical so the switch is
 //! transparent.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(feature = "smt-proofs")]
+use std::time::Instant;
 
 use thiserror::Error;
 
@@ -360,6 +362,9 @@ pub enum BmcConclusion {
 /// SQL frontend lands concrete evaluator support; this skeleton exists so
 /// the public API is usable from day one.
 pub struct BoundedModelChecker {
+    /// Loop / recursion unroll bound used by the bounded check. Read by the
+    /// future BMC implementation; suppress dead-code until that ships.
+    #[allow(dead_code)]
     max_depth: u32,
 }
 

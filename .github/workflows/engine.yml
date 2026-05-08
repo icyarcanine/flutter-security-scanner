@@ -114,10 +114,14 @@ jobs:
 
       - name: cargo build --features full
         env:
+          # z3-sys uses pkg-config to locate the system z3 (apt's libz3-dev),
+          # then bindgen needs the header search path explicitly.
           LIBZ3_SYS_USE_PKG_CONFIG: '1'
+          BINDGEN_EXTRA_CLANG_ARGS: '-I/usr/include'
         run: cargo build --workspace --release --features "engine-core/full"
 
       - name: cargo test --features full
         env:
           LIBZ3_SYS_USE_PKG_CONFIG: '1'
+          BINDGEN_EXTRA_CLANG_ARGS: '-I/usr/include'
         run: cargo test --workspace --features "engine-core/full"

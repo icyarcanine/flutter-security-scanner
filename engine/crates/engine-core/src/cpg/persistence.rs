@@ -1,3 +1,8 @@
+// Feature-gated module; the deserialised wire types and column-family
+// constants are intentionally undocumented until the persistence API
+// stabilises.
+#![allow(missing_docs)]
+
 //! RocksDB-backed persistent CPG store with incremental analysis support.
 //!
 //! # Why persistence?
@@ -48,8 +53,7 @@ use rustc_hash::FxHashSet;
 use tracing::{debug, info};
 
 use crate::cpg::{
-    CodeGraph, Edge, EdgeId, EdgeKind, EdgeKindTag, FileId, IcfgEdge, Node, NodeId, NodeKind,
-    SymbolEntry, SymbolId,
+    CodeGraph, Edge, EdgeKind, EdgeKindTag, FileId, IcfgEdge, Node, NodeId, NodeKind,
 };
 
 // ============================================================================
@@ -157,7 +161,10 @@ impl CpgStore {
         let mut batch = WriteBatch::default();
         let nodes_cf = self.cf(CF_NODES);
         let edges_cf = self.cf(CF_EDGES);
-        let symbols_cf = self.cf(CF_SYMBOLS);
+        // CF_SYMBOLS handle reserved for the next persistence pass that
+        // will write per-symbol metadata; the current `save_graph` only
+        // writes nodes/edges/files/file_idx.
+        let _symbols_cf = self.cf(CF_SYMBOLS);
         let files_cf = self.cf(CF_FILES);
         let file_idx_cf = self.cf(CF_FILE_IDX);
 

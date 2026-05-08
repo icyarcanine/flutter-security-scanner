@@ -4,7 +4,6 @@
 //! It handles Rust-specific constructs like `struct`, `impl`, `match`, and
 //! critical security markers like `unsafe` blocks.
 
-use tracing::debug;
 use tree_sitter::{Node as TNode, Tree};
 
 use engine_core::cpg::{AstEdge, CodeGraph, EdgeKind, FileId, NodeId, NodeKind};

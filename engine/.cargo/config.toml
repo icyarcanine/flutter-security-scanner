@@ -1,0 +1,29 @@
+# Workspace-local cargo config so `cargo build --features full` works
+# out of the box on macOS without contributors needing to set env vars
+# manually. CI sets the same vars in `.github/workflows/engine.yml`.
+#
+# Why these vars are needed:
+# - `LIBZ3_SYS_USE_PKG_CONFIG=1` makes z3-sys 0.8 link the system Z3
+#   (brew/apt) instead of building a vendored copy via cmake. The vendored
+#   copy uses `cmake_minimum_required(VERSION 2.8)` which CMake 4+ rejects.
+# - `BINDGEN_EXTRA_CLANG_ARGS=-I...` tells z3-sys's bindgen where to find
+#   `z3.h`. Brew installs headers under `/opt/homebrew/include/`; the
+#   intersection with `/usr/include` covers macOS Intel + Linux.
+#
+# Library search paths (`-L/opt/homebrew/lib`) are set per-target below
+# so they only apply to the host architecture; cross-compiling to other
+# targets won't pick them up.
+
+[env]
+LIBZ3_SYS_USE_PKG_CONFIG = "1"
+BINDGEN_EXTRA_CLANG_ARGS = "-I/opt/homebrew/include -I/usr/local/include -I/usr/include"
+
+# macOS Apple Silicon — link against brew's /opt/homebrew/lib.
+[target.aarch64-apple-darwin]
+rustflags = ["-L/opt/homebrew/lib"]
+
+# macOS Intel — link against brew's /usr/local/lib.
+[target.x86_64-apple-darwin]
+rustflags = ["-L/usr/local/lib"]
+
+# Linux uses standard library paths; no extra rustflags needed.
