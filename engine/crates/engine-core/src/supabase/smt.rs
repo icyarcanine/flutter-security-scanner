@@ -112,6 +112,9 @@ pub struct DartClientModel {
     pub columns: Vec<SymbolId>,
     /// Auth context the client believes it is operating under.
     pub auth_context: AuthContext,
+    /// CPG node id of the `supabase.from(...)` call site. Used to recover
+    /// the file path and line/column for finding attribution.
+    pub call_site: NodeId,
 }
 
 /// Symbolic model of a TypeScript Edge Function.
@@ -358,44 +361,22 @@ pub enum BmcConclusion {
     Inconclusive,
 }
 
-/// Trivial BMC implementation. The real BMC will be fleshed out when the
-/// SQL frontend lands concrete evaluator support; this skeleton exists so
-/// the public API is usable from day one.
-pub struct BoundedModelChecker {
-    /// Loop / recursion unroll bound used by the bounded check. Read by the
-    /// future BMC implementation; suppress dead-code until that ships.
-    #[allow(dead_code)]
-    max_depth: u32,
-}
-
-impl BoundedModelChecker {
-    /// Create a checker with the default unroll depth.
-    #[must_use]
-    pub fn new() -> Self {
-        Self { max_depth: 16 }
-    }
-
-    /// Create a checker with a custom unroll depth.
-    #[must_use]
-    pub fn with_depth(depth: u32) -> Self {
-        Self { max_depth: depth }
-    }
-
-    /// Run the bounded check. Placeholder until the concrete evaluator is
-    /// wired in.
-    #[must_use]
-    pub fn run(&self) -> BmcVerdict {
-        BmcVerdict {
-            conclusion: BmcConclusion::Inconclusive,
-            depth_explored: 0,
-            elapsed: Duration::ZERO,
-        }
-    }
-}
-
-impl Default for BoundedModelChecker {
-    fn default() -> Self {
-        Self::new()
+// BMC implementation lives in the sibling `super::bmc` module.
+// The types `BmcVerdict`, `BmcConclusion` are defined above so that all
+// call sites in `smt.rs` can reference them without importing from `bmc`.
+// The actual `BoundedModelChecker` struct and its `run()` method are in
+// `bmc.rs`; the `bmc` module is re-exported in `mod.rs` as
+// `pub use bmc::BoundedModelChecker`.
+//
+/// Convenience helper for the stub and native correlators to construct
+/// a `BmcVerdict` when delegating to the real BMC is not possible
+/// (e.g. a Correlator already timed out before getting to the BMC call).
+#[must_use]
+pub fn bmc_unknown() -> BmcVerdict {
+    BmcVerdict {
+        conclusion: BmcConclusion::Inconclusive,
+        depth_explored: 0,
+        elapsed: Duration::ZERO,
     }
 }
 
@@ -519,7 +500,7 @@ mod native {
             if elapsed > budget {
                 return Ok(Verdict::Unknown {
                     reason: FallbackReason::WallClockTimeout,
-                    bmc: BoundedModelChecker::new().run(),
+                    bmc: bmc_unknown(),
                 });
             }
 
@@ -551,7 +532,7 @@ mod native {
                 }
                 SatResult::Unknown => Ok(Verdict::Unknown {
                     reason: FallbackReason::Z3Timeout,
-                    bmc: BoundedModelChecker::new().run(),
+                    bmc: bmc_unknown(),
                 }),
             }
         }
@@ -728,7 +709,7 @@ impl SupabaseCorrelator {
 
         Ok(Verdict::Unknown {
             reason: FallbackReason::UnsupportedTheory,
-            bmc: BoundedModelChecker::new().run(),
+            bmc: bmc_unknown(),
         })
     }
 }
@@ -764,6 +745,7 @@ mod tests {
                 filters: vec![Predicate::UidEq { column: user_id }],
                 columns: vec![],
                 auth_context: AuthContext::Authenticated { uid: user_id },
+                call_site: call,
             },
             edge_fn: Some(EdgeFunctionModel {
                 name: fn_name,

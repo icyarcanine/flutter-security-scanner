@@ -1,0 +1,16 @@
+android {
+    compileSdkVersion 33
+
+    defaultConfig {
+        applicationId "com.example.insecure"
+        minSdkVersion 21
+        targetSdkVersion 33
+    }
+
+    buildTypes {
+        release {
+            // Missing minifyEnabled and proguardFiles
+            signingConfig signingConfigs.release
+        }
+    }
+}

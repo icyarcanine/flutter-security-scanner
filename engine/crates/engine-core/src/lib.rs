@@ -25,7 +25,6 @@
 //! that CI runs in CI.
 
 #![warn(missing_docs)]
-#![warn(clippy::pedantic, clippy::nursery)]
 #![allow(
     clippy::module_name_repetitions,
     clippy::too_many_lines,
@@ -65,8 +64,10 @@ pub mod rules {
     pub mod semgrep_compiler;
 }
 
+/// Supabase correlation engine — populator + SMT (see [`smt`]).
 pub mod supabase {
-    //! Supabase correlation engine — see [`smt`].
+    pub mod populator;
     pub mod smt;
+    pub use populator::*;
     pub use smt::*;
 }

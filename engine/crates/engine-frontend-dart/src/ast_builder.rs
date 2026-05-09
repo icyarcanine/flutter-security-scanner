@@ -176,9 +176,7 @@ impl<'g, 's> AstBuilder<'g, 's> {
                     // into the value.
                     let mut inner_cursor = arg_child.walk();
                     let inner_expr: Option<TNode> = match arg_child.kind() {
-                        "argument" => arg_child
-                            .children(&mut inner_cursor)
-                            .find(|c| c.is_named()),
+                        "argument" => arg_child.children(&mut inner_cursor).find(|c| c.is_named()),
                         "named_argument" => arg_child
                             .children(&mut inner_cursor)
                             .find(|c| c.is_named() && c.kind() != "label"),

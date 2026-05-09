@@ -1,0 +1,19 @@
+rules:
+  - id: dart.supabase.realtime-subscription-missing-cleanup
+    languages: [dart]
+    message: >
+      A Supabase Realtime subscription is created but never cancelled.
+      Store the subscription and call .cancel() in dispose() to prevent
+      memory leaks and stale listeners.
+    severity: WARNING
+    patterns:
+      - pattern: |
+          $STREAM = $CLIENT.from($TABLE).stream($PKS).listen($HANDLER)
+      - pattern-not: |
+          $STREAM.cancel()
+      - pattern-not: |
+          $SUBSCRIPTION?.cancel()
+      - pattern-not: |
+          dispose() {
+            $STREAM?.cancel();
+          }

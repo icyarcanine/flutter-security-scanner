@@ -67,7 +67,8 @@ class PlatformSecurityRule extends Rule {
         findings.addAll(_checkAndroidManifest(file));
       }
       if (file.name == 'Info.plist') {
-        findings.addAll(_checkInfoPlist(file, usesNativeCrypto: usesNativeCrypto));
+        findings
+            .addAll(_checkInfoPlist(file, usesNativeCrypto: usesNativeCrypto));
       }
     }
 
@@ -112,11 +113,9 @@ class PlatformSecurityRule extends Rule {
         severity: FindingSeverity.medium,
         confidence: FindingConfidence.high,
         message: 'Android backup is enabled (android:allowBackup="true")',
-        fix:
-            'Set android:allowBackup="false" in the <application> tag, or '
+        fix: 'Set android:allowBackup="false" in the <application> tag, or '
             'define backup rules to exclude sensitive data.',
-        risk:
-            'With backup enabled, app data including tokens and credentials '
+        risk: 'With backup enabled, app data including tokens and credentials '
             'can be extracted from the device via adb backup.',
         offset: match.start,
       );
@@ -131,12 +130,10 @@ class PlatformSecurityRule extends Rule {
         severity: FindingSeverity.medium,
         confidence: FindingConfidence.high,
         message: 'Cleartext traffic is allowed in Android manifest',
-        fix:
-            'Set android:usesCleartextTraffic="false" and use HTTPS for all '
+        fix: 'Set android:usesCleartextTraffic="false" and use HTTPS for all '
             'network connections. If needed for development, use a network '
             'security config with domain-specific exceptions.',
-        risk:
-            'Allowing cleartext traffic enables man-in-the-middle attacks '
+        risk: 'Allowing cleartext traffic enables man-in-the-middle attacks '
             'on any unencrypted HTTP connection.',
         offset: match.start,
       );
@@ -149,11 +146,9 @@ class PlatformSecurityRule extends Rule {
         severity: FindingSeverity.high,
         confidence: FindingConfidence.high,
         message: 'Android app is set as debuggable',
-        fix:
-            'Remove android:debuggable="true" from the manifest. '
+        fix: 'Remove android:debuggable="true" from the manifest. '
             'Debug mode should only be set via build variants, never hardcoded.',
-        risk:
-            'A debuggable app can be attached to with a debugger, allowing '
+        risk: 'A debuggable app can be attached to with a debugger, allowing '
             'extraction of secrets, bypassing security controls, and code '
             'injection.',
         offset: match.start,
@@ -167,12 +162,10 @@ class PlatformSecurityRule extends Rule {
         severity: FindingSeverity.high,
         confidence: FindingConfidence.high,
         message: 'Android app is marked testOnly',
-        fix:
-            'Remove android:testOnly="true" from the manifest. A testOnly '
+        fix: 'Remove android:testOnly="true" from the manifest. A testOnly '
             'APK cannot be installed from the Play Store and typically has '
             'debugging flags enabled.',
-        risk:
-            'testOnly builds bypass several production checks and are often '
+        risk: 'testOnly builds bypass several production checks and are often '
             'shipped accidentally alongside debuggable flags.',
         offset: match.start,
       );
@@ -273,8 +266,7 @@ class PlatformSecurityRule extends Rule {
           severity: FindingSeverity.medium,
           confidence: FindingConfidence.high,
           message: 'Sensitive Android permission requested: $perm',
-          fix:
-              'Remove android.permission.$perm unless the app genuinely needs '
+          fix: 'Remove android.permission.$perm unless the app genuinely needs '
               'it and you have a plan for Play Console review. Prefer '
               'scoped-storage, MediaStore, or Storage Access Framework '
               'alternatives where possible.',
@@ -298,12 +290,10 @@ class PlatformSecurityRule extends Rule {
           message:
               'Android minSdkVersion is $level (pre-Android 7) — weak TLS and '
               'legacy security model',
-          fix:
-              'Bump minSdkVersion to at least 24 (Android 7.0). Older levels '
+          fix: 'Bump minSdkVersion to at least 24 (Android 7.0). Older levels '
               'cannot enforce modern TLS defaults, lack scoped storage, and '
               'share the full external storage partition.',
-          risk:
-              'Supporting pre-Android-7 devices means the app must operate '
+          risk: 'Supporting pre-Android-7 devices means the app must operate '
               'under the legacy security model: weaker default TLS, world-'
               'readable shared storage, no per-app data isolation.',
           offset: match.start,
@@ -358,11 +348,9 @@ class PlatformSecurityRule extends Rule {
         severity: FindingSeverity.medium,
         confidence: FindingConfidence.high,
         message: 'iOS App Transport Security allows arbitrary loads',
-        fix:
-            'Remove NSAllowsArbitraryLoads or set it to false. Add specific '
+        fix: 'Remove NSAllowsArbitraryLoads or set it to false. Add specific '
             'domain exceptions in NSExceptionDomains instead.',
-        risk:
-            'NSAllowsArbitraryLoads disables all App Transport Security '
+        risk: 'NSAllowsArbitraryLoads disables all App Transport Security '
             'protections, allowing insecure HTTP connections to any server.',
         offset: allowsArbitrary.offset,
       );
@@ -377,15 +365,12 @@ class PlatformSecurityRule extends Rule {
       add(
         severity: FindingSeverity.medium,
         confidence: FindingConfidence.high,
-        message:
-            'iOS ATS bypass enabled for WebView content '
+        message: 'iOS ATS bypass enabled for WebView content '
             '(NSAllowsArbitraryLoadsInWebContent="true")',
-        fix:
-            'Remove NSAllowsArbitraryLoadsInWebContent. If your WebView '
+        fix: 'Remove NSAllowsArbitraryLoadsInWebContent. If your WebView '
             'legitimately needs HTTP content, narrow it to specific domains '
             'via NSExceptionDomains.',
-        risk:
-            'Any HTTP URL loaded inside a WKWebView bypasses ATS, giving '
+        risk: 'Any HTTP URL loaded inside a WKWebView bypasses ATS, giving '
             'an attacker on the network an in-app surface to inject HTML '
             'and JavaScript.',
         offset: allowsWebContent.offset,
@@ -402,11 +387,9 @@ class PlatformSecurityRule extends Rule {
         confidence: FindingConfidence.high,
         message:
             'iOS plist has a per-domain ATS exception allowing insecure HTTP loads',
-        fix:
-            'Remove NSExceptionAllowsInsecureHTTPLoads or migrate the domain '
+        fix: 'Remove NSExceptionAllowsInsecureHTTPLoads or migrate the domain '
             'to HTTPS. Per-domain exceptions still require Apple review.',
-        risk:
-            'Per-domain HTTP exceptions allow plaintext traffic to a named '
+        risk: 'Per-domain HTTP exceptions allow plaintext traffic to a named '
             'host. If that host is ever proxied or DNS-spoofed, credentials '
             'and tokens sent to it are exposed.',
         offset: match.start,
@@ -423,12 +406,10 @@ class PlatformSecurityRule extends Rule {
         confidence: FindingConfidence.high,
         message:
             'iOS plist has a third-party ATS exception allowing insecure HTTP loads',
-        fix:
-            'Drop the NSThirdPartyExceptionAllowsInsecureHTTPLoads flag and '
+        fix: 'Drop the NSThirdPartyExceptionAllowsInsecureHTTPLoads flag and '
             'require HTTPS from the third-party service, or isolate the '
             'insecure traffic to a server-side proxy.',
-        risk:
-            'Third-party HTTP exceptions let SDKs phone home in cleartext. '
+        risk: 'Third-party HTTP exceptions let SDKs phone home in cleartext. '
             'Anything they send — device IDs, user events, session tokens — '
             'is visible to network-adjacent attackers.',
         offset: match.start,
@@ -441,15 +422,12 @@ class PlatformSecurityRule extends Rule {
       add(
         severity: FindingSeverity.medium,
         confidence: FindingConfidence.high,
-        message:
-            'iOS Documents folder is exposed via file sharing '
+        message: 'iOS Documents folder is exposed via file sharing '
             '(UIFileSharingEnabled="true")',
-        fix:
-            'Set UIFileSharingEnabled to false unless the app is genuinely a '
+        fix: 'Set UIFileSharingEnabled to false unless the app is genuinely a '
             'document editor. Otherwise everything in the Documents folder '
             'is visible and copyable via the Files app and iTunes.',
-        risk:
-            'Enabling file sharing publishes the contents of the Documents '
+        risk: 'Enabling file sharing publishes the contents of the Documents '
             'folder to the user and anyone with device access, which often '
             'includes cached attachments, exported data, or ad-hoc logs.',
         offset: fileSharing.offset,
@@ -463,16 +441,13 @@ class PlatformSecurityRule extends Rule {
       add(
         severity: FindingSeverity.low,
         confidence: FindingConfidence.medium,
-        message:
-            'Info.plist claims the app uses no non-exempt encryption, but '
+        message: 'Info.plist claims the app uses no non-exempt encryption, but '
             'the project imports a crypto library',
-        fix:
-            'Either remove the ITSAppUsesNonExemptEncryption key (forcing '
+        fix: 'Either remove the ITSAppUsesNonExemptEncryption key (forcing '
             'Apple to ask at upload time) or set it to true and attach the '
             'encryption export self-classification. Lying here risks App '
             'Review rejection and export-compliance issues.',
-        risk:
-            'A mismatched encryption declaration can fail App Review and, '
+        risk: 'A mismatched encryption declaration can fail App Review and, '
             'in some jurisdictions, constitutes an incorrect export filing.',
         offset: cryptoDeclaration.offset,
       );
@@ -487,7 +462,7 @@ class PlatformSecurityRule extends Rule {
   /// nearest `<true/>` or `<false/>` within 200 characters.
   _PlistBool _plistKeyBoolValue(String content, String key) {
     final anchor = RegExp(
-      '<key>\\s*' + RegExp.escape(key) + '\\s*</key>',
+      '<key>\\s*${RegExp.escape(key)}\\s*</key>',
     );
     final match = anchor.firstMatch(content);
     if (match == null) return const _PlistBool(null, -1);

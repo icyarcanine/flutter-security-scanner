@@ -75,16 +75,60 @@ impl<'g> CfgBuilder<'g> {
         // 3. Start execution at the Entry node.
         self.frontier = vec![entry_id];
 
-        // 4. Find the body and process it.
+        // 4. Wire formal parameters into the CFG so IFDS can propagate
+        //    taint from parameter declarations to the body. Parameters are
+        //    "available" at function entry, so Entry → Param₁ → Param₂ → …
+        //    is the natural execution order.
+        self.wire_parameters(node, entry_id);
+
+        // 5. Find the body and process it.
         if let Some(body) = node.child_by_field_name("body") {
             self.process_statement_list(body, entry_id);
         }
 
-        // 5. Connect the remaining frontier to the Exit node.
+        // 6. Connect the remaining frontier to the Exit node.
         for &f in &self.frontier {
             self.graph
                 .add_edge(f, exit_id, EdgeKind::Cfg(CfgEdge::Fall));
         }
+    }
+
+    /// Walk the CST looking for `formal_parameter_list` children and wire
+    /// each parameter's CPG node into the CFG fall-through chain.
+    fn wire_parameters(&mut self, node: TNode, entry_id: NodeId) {
+        if let Some(param_list) = Self::find_child_recursive(node, "formal_parameter_list") {
+            let mut param_cursor = param_list.walk();
+            for param in param_list.children(&mut param_cursor) {
+                if !param.is_named() {
+                    continue;
+                }
+                // The CPG node for the parameter was created by the AST
+                // builder.  Tree-sitter node IDs are stable within a
+                // parse, so the mapping should contain it.
+                if let Some(&param_id) = self.cst_to_cpg.get(&param.id()) {
+                    self.graph.node_mut(param_id).procedure = Some(entry_id);
+                    for &f in &self.frontier {
+                        self.graph
+                            .add_edge(f, param_id, EdgeKind::Cfg(CfgEdge::Fall));
+                    }
+                    self.frontier = vec![param_id];
+                }
+            }
+        }
+    }
+
+    /// Recursively search for a child with the given kind.
+    fn find_child_recursive<'a>(node: TNode<'a>, kind: &str) -> Option<TNode<'a>> {
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == kind {
+                return Some(child);
+            }
+            if let Some(found) = Self::find_child_recursive(child, kind) {
+                return Some(found);
+            }
+        }
+        None
     }
 
     fn process_statement_list(&mut self, node: TNode, entry_id: NodeId) {

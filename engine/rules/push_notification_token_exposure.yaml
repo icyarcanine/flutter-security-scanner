@@ -1,0 +1,36 @@
+rules:
+  - id: dart.flutter.push-notification-token-exposure
+    languages: [dart]
+    message: >
+      An FCM or APNs token is logged or displayed in the UI.
+      Tokens are bearer credentials; send them directly to your
+      backend over HTTPS and never expose them in logs or UI.
+    severity: ERROR
+    mode: taint
+    pattern-sources:
+      - pattern: |
+          FirebaseMessaging.instance.getToken()
+      - pattern: |
+          FirebaseMessaging.instance.onTokenRefresh
+      - pattern: |
+          $ messaging().getToken()
+      - pattern: |
+          $ messaging().onTokenRefresh
+      - pattern: |
+          $TOKEN = $MSG.getAPNSToken()
+    pattern-sinks:
+      - pattern: |
+          print($SINK)
+      - pattern: |
+          debugPrint($SINK)
+      - pattern: |
+          log($SINK)
+      - pattern: |
+          Text($SINK)
+      - pattern: |
+          SnackBar(content: Text($SINK))
+      - pattern: |
+          AlertDialog(content: Text($SINK))
+    pattern-sanitizers:
+      - pattern: |
+          $BACKEND.post($URL, body: $TOKEN)

@@ -1,0 +1,5 @@
+name: error_sanitization_good_app
+description: Test fixture for sanitized errors
+dependencies:
+  supabase_flutter: ^2.0.0
+  logging: ^1.2.0

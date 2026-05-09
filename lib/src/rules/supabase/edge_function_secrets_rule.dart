@@ -72,7 +72,9 @@ class SupabaseEdgeFunctionSecretsRule extends Rule {
     for (final match in _verifyJwtFalsePattern.allMatches(file.content)) {
       final line = file.lineForOffset(match.start);
       if (isOffsetCommented(file, match.start) ||
-          isCommentLine(file.lines[line - 1])) continue;
+          isCommentLine(file.lines[line - 1])) {
+        continue;
+      }
 
       final functionName = match.group(1) ?? '(unknown)';
       yield Finding(
@@ -99,12 +101,13 @@ class SupabaseEdgeFunctionSecretsRule extends Rule {
     for (final match in _corsWildcardPattern.allMatches(content)) {
       final line = file.lineForOffset(match.start);
       if (isOffsetCommented(file, match.start) ||
-          isCommentLine(file.lines[line - 1])) continue;
+          isCommentLine(file.lines[line - 1])) {
+        continue;
+      }
 
       yield Finding(
-        severity: usesServiceRole
-            ? FindingSeverity.high
-            : FindingSeverity.medium,
+        severity:
+            usesServiceRole ? FindingSeverity.high : FindingSeverity.medium,
         confidence: FindingConfidence.medium,
         category: FindingCategory.supabase,
         code: code,
@@ -129,23 +132,28 @@ class SupabaseEdgeFunctionSecretsRule extends Rule {
     );
     for (final match in responsePattern.allMatches(content)) {
       final callOpen = content.indexOf('(', match.start);
-      if (callOpen == -1) continue;
+      if (callOpen == -1) {
+        continue;
+      }
       final closeIndex = _findParenClose(content, callOpen + 1);
-      if (closeIndex == -1) continue;
+      if (closeIndex == -1) {
+        continue;
+      }
       final body = content.substring(callOpen + 1, closeIndex);
       // Catch `SUPABASE_SERVICE_ROLE_KEY`, `service_role`, `service-role`, and
       // camelCase variants like `serviceRoleKey`, `serviceRoleJwt`, etc. The
       // right-hand word boundary is intentionally omitted so suffixes such as
       // `Key` / `Jwt` / `Token` don't mask the match.
       if (!_serviceRoleEnvPattern.hasMatch(body) &&
-          !RegExp(r'\bservice[_-]?role', caseSensitive: false)
-              .hasMatch(body)) {
+          !RegExp(r'\bservice[_-]?role', caseSensitive: false).hasMatch(body)) {
         continue;
       }
 
       final line = file.lineForOffset(match.start);
       if (isOffsetCommented(file, match.start) ||
-          isCommentLine(file.lines[line - 1])) continue;
+          isCommentLine(file.lines[line - 1])) {
+        continue;
+      }
 
       yield Finding(
         severity: FindingSeverity.high,

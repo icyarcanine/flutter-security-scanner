@@ -35,9 +35,23 @@ class GenericSecretRule extends Rule {
   /// Binary / encoded file formats where neither targeted regexes nor the
   /// entropy heuristic make sense. These are skipped entirely.
   static const _binarySkipExtensions = {
-    '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico',
-    '.woff', '.woff2', '.ttf', '.eot',
-    '.zip', '.tar', '.gz', '.bz2', '.7z', '.jar',
+    '.pdf',
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.gif',
+    '.svg',
+    '.ico',
+    '.woff',
+    '.woff2',
+    '.ttf',
+    '.eot',
+    '.zip',
+    '.tar',
+    '.gz',
+    '.bz2',
+    '.7z',
+    '.jar',
     '.map',
   };
 
@@ -68,7 +82,8 @@ class GenericSecretRule extends Rule {
 
     // Cryptographic key material
     _SecretPattern(
-      RegExp(r'-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----'),
+      RegExp(
+          r'-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----'),
       'Private Key',
     ),
     _SecretPattern(
@@ -185,7 +200,9 @@ class GenericSecretRule extends Rule {
 
           final line = file.lineForOffset(match.start);
           if (isOffsetCommented(file, match.start) ||
-              isCommentLine(file.lines[line - 1])) continue;
+              isCommentLine(file.lines[line - 1])) {
+            continue;
+          }
 
           // JWT special case: decode the payload so a Supabase service_role
           // token gets the critical-severity treatment it deserves, while a
@@ -242,7 +259,9 @@ class GenericSecretRule extends Rule {
         if (_isHighEntropy(candidate)) {
           final line = file.lineForOffset(match.start);
           if (isOffsetCommented(file, match.start) ||
-              isCommentLine(file.lines[line - 1])) continue;
+              isCommentLine(file.lines[line - 1])) {
+            continue;
+          }
 
           findings.add(
             Finding(

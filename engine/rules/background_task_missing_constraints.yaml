@@ -1,0 +1,20 @@
+rules:
+  - id: dart.flutter.background-task-missing-constraints
+    languages: [dart]
+    message: >
+      A WorkManager background task is registered without constraints.
+      Add networkType, requiresBatteryNotLow, and requiresCharging
+      constraints to prevent tasks from running at inappropriate times.
+    severity: INFO
+    patterns:
+      - pattern-either:
+          - pattern: |
+              WorkManager().registerOneTimeTask($TASK)
+          - pattern: |
+              WorkManager().registerPeriodicTask($TASK)
+          - pattern: |
+              Workmanager().registerOneTimeTask($TASK)
+          - pattern: |
+              Workmanager().registerPeriodicTask($TASK)
+      - pattern-not: |
+          constraints: Constraints($CONSTRAINTS)

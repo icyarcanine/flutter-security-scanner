@@ -1,0 +1,4 @@
+name: error_sanitization_bad_app
+description: Test fixture for unsanitized errors
+dependencies:
+  supabase_flutter: ^2.0.0

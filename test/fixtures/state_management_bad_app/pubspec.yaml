@@ -1,0 +1,5 @@
+name: state_management_bad_app
+description: Test fixture for state management auth leak
+dependencies:
+  flutter_bloc: ^8.1.0
+  supabase_flutter: ^2.0.0

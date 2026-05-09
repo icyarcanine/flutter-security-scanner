@@ -47,7 +47,7 @@ use rustc_hash::FxHashMap;
 use serde::Deserialize;
 use smallvec::SmallVec;
 
-use crate::cpg::{CodeGraph, EdgeKind, EdgeKindTag, NodeId, NodeKind, TypeRef};
+use crate::cpg::{AstEdge, CodeGraph, EdgeKind, EdgeKindTag, FileId, NodeId, NodeKind, TypeRef};
 use crate::frontend::types::TypeArena;
 use crate::solver::{DomainFact, FlowFunctions, FlowResult};
 
@@ -622,7 +622,7 @@ pub fn scan_cpg(
     results
 }
 
-use crate::cpg::FileId;
+// FileId already imported at module top
 
 /// Evaluate a predicate against a single CPG node. Returns `true` if the
 /// node matches. Captures are written into `bindings`.
@@ -930,9 +930,82 @@ pub fn load_rule(
         .flat_map(|m| scan_cpg(graph, types, m, source_text))
         .collect();
 
+    // --- Auto-source: function parameters matching known taint-source names ---
+    // The Semgrep YAML rules only list explicit source patterns (e.g.
+    // TextEditingController.text). Real-world Flutter code passes user
+    // input through function parameters (e.g. `void foo(String userInput)`).
+    // We mirror the TypeScript tracker's heuristic: parameters whose
+    // identifier names match common source names are treated as taint
+    // sources automatically.
+    let mut auto_sources = Vec::new();
+    let source_param_names: &[&str] = &[
+        "userInput",
+        "input",
+        "data",
+        "payload",
+        "req",
+        "request",
+        "query",
+        "body",
+        "params",
+        "headers",
+        "cookies",
+        "files",
+        "userData",
+        "formData",
+        "rawInput",
+        "text",
+        "value",
+        "searchQuery",
+        "filter",
+        "sort",
+        "command",
+        "script",
+        "email",
+        "password",
+        "username",
+        "phone",
+        "url",
+        "uri",
+        "message",
+        "content",
+        "json",
+        "xml",
+        "yaml",
+    ];
+    for node in graph.iter_nodes() {
+        if node.kind != NodeKind::Parameter {
+            continue;
+        }
+        // Walk AST children to find the Identifier that holds the parameter name.
+        for edge in graph.out_edges(node.id, EdgeKindTag::Ast) {
+            if let EdgeKind::Ast(AstEdge::Child { .. }) = edge.kind {
+                let child = graph.node(edge.dst);
+                if child.kind == NodeKind::Identifier {
+                    if let Some(sym) = child.symbol {
+                        let name = &graph.symbol(sym).canonical;
+                        if source_param_names
+                            .iter()
+                            .any(|&p| p.eq_ignore_ascii_case(name))
+                        {
+                            auto_sources.push(Match {
+                                node: node.id,
+                                bindings: MetavarBindings::empty(),
+                            });
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut all_sources = sources;
+    all_sources.extend(auto_sources);
+
     Ok(SemgrepFlowFunctions::new(
         Arc::new(compiled),
-        sources,
+        all_sources,
         sinks,
         sanitizers,
     ))

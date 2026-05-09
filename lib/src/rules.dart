@@ -5,8 +5,15 @@ import 'rules/config/improper_initialization_rule.dart';
 import 'rules/config/invalid_supabase_url_rule.dart';
 import 'rules/config/multiple_supabase_clients_rule.dart';
 import 'rules/config/placeholder_env_values_rule.dart';
+import 'rules/security/network_security_config_rule.dart';
+import 'rules/security/webview_security_rule.dart';
+import 'rules/security/local_database_security_rule.dart';
+import 'rules/security/android_intent_rule.dart';
 import 'rules/security/biometric_auth_rule.dart';
 import 'rules/security/client_side_trust_rule.dart';
+import 'rules/security/dependency_security_rule.dart';
+import 'rules/security/file_picker_validation_rule.dart';
+import 'rules/security/state_management_auth_leak_rule.dart';
 import 'rules/security/committed_env_rule.dart';
 import 'rules/security/file_upload_validation_rule.dart';
 import 'rules/security/certificate_pinning_rule.dart';
@@ -19,7 +26,7 @@ import 'rules/security/injection_rule.dart';
 import 'rules/security/insecure_deserialization_rule.dart';
 import 'rules/security/insecure_storage_rule.dart';
 import 'rules/security/path_traversal_rule.dart';
-import 'rules/security/plaintext_http_rule.dart';
+import 'rules/security/proguard_obfuscation_rule.dart';
 import 'rules/security/platform_security_rule.dart';
 import 'rules/security/public_storage_rule.dart';
 import 'rules/security/release_hardening_rule.dart';
@@ -27,11 +34,19 @@ import 'rules/security/sensitive_logging_rule.dart';
 import 'rules/security/unobscured_password_rule.dart';
 import 'rules/security/unsafe_eval_rule.dart';
 import 'rules/security/weak_crypto_rule.dart';
-import 'rules/security/webview_security_rule.dart';
+import 'rules/security/plaintext_http_rule.dart';
+import 'rules/security/background_task_security_rule.dart';
+import 'rules/security/push_notification_security_rule.dart';
+import 'rules/security/multi_tenancy_isolation_rule.dart';
 import 'rules/security/xss_rule.dart';
+import 'rules/supabase/auth_security_rule.dart';
+import 'rules/supabase/edge_function_auth_rule.dart';
 import 'rules/supabase/edge_function_secrets_rule.dart';
+import 'rules/supabase/error_sanitization_rule.dart';
+import 'rules/supabase/webhook_security_rule.dart';
 import 'rules/supabase/missing_rls_awareness_rule.dart';
 import 'rules/supabase/realtime_filter_rule.dart';
+import 'rules/supabase/realtime_subscription_cleanup_rule.dart';
 import 'rules/supabase/rls_policy_suggestion_rule.dart';
 import 'rules/supabase/rpc_injection_rule.dart';
 import 'rules/supabase/service_role_key_rule.dart';
@@ -50,6 +65,7 @@ List<Rule> buildDefaultRules({required bool includeSuggestions}) {
     const CommittedEnvRule(),
     const SensitiveLoggingRule(),
     const ClientSideTrustRule(),
+    const DependencySecurityRule(),
     const FileUploadValidationRule(),
     const PublicStorageRule(),
     const InsecureStorageRule(),
@@ -65,7 +81,16 @@ List<Rule> buildDefaultRules({required bool includeSuggestions}) {
     const UnobscuredPasswordRule(),
     const GradleSecretsRule(),
     const ReleaseHardeningRule(),
+    const ProguardObfuscationRule(),
+    const NetworkSecurityConfigRule(),
+    const LocalDatabaseSecurityRule(),
+    const AndroidIntentSecurityRule(),
     const BiometricAuthRule(),
+    const FilePickerValidationRule(),
+    const StateManagementAuthLeakRule(),
+    const BackgroundTaskSecurityRule(),
+    const PushNotificationSecurityRule(),
+    const MultiTenancyIsolationRule(),
     // Config
     const EnvironmentVariablesRule(),
     const PlaceholderEnvValuesRule(),
@@ -77,8 +102,13 @@ List<Rule> buildDefaultRules({required bool includeSuggestions}) {
     const ServiceRoleKeyRule(),
     const SupabaseRpcInjectionRule(),
     const SupabaseRealtimeFilterRule(),
+    const RealtimeSubscriptionCleanupRule(),
     const SupabaseSignedUrlTtlRule(),
+    const SupabaseAuthSecurityRule(),
+    const SupabaseEdgeFunctionAuthRule(),
     const SupabaseEdgeFunctionSecretsRule(),
+    const SupabaseWebhookSecurityRule(),
+    const SupabaseErrorSanitizationRule(),
     const MissingRlsAwarenessRule(),
     const TableOwnershipRule(),
   ];

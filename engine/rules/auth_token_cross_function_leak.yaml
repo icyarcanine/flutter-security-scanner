@@ -1,0 +1,40 @@
+rules:
+  - id: dart.supabase.auth-token-cross-function-leak
+    languages: [dart]
+    message: >
+      Auth token flows from a source to a network call or log statement
+      across function boundaries. The IFDS solver has tracked this taint
+      through inter-procedural summary edges.
+    severity: ERROR
+    mode: taint
+    pattern-sources:
+      - pattern: |
+          $AUTH.auth.currentSession
+      - pattern: |
+          $AUTH.auth.currentUser
+      - pattern: |
+          $AUTH.auth.onAuthStateChange
+      - pattern: |
+          $JWT = $AUTH.auth.currentSession.accessToken
+      - pattern: |
+          $TOKEN = $AUTH.auth.currentSession.refreshToken
+    pattern-sinks:
+      - pattern: |
+          print($SINK)
+      - pattern: |
+          debugPrint($SINK)
+      - pattern: |
+          $CLIENT.post($URL, body: $SINK)
+      - pattern: |
+          $CLIENT.get($URL, headers: $SINK)
+      - pattern: |
+          $STORAGE.write(key: $KEY, value: $SINK)
+      - pattern: |
+          Text($SINK)
+      - pattern: |
+          SnackBar(content: Text($SINK))
+    pattern-sanitizers:
+      - pattern: |
+          flutter_secure_storage.FlutterSecureStorage().write($...)
+      - pattern: |
+          jsonEncode($X)

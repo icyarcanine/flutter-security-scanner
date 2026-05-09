@@ -9,9 +9,11 @@ name = "engine-cli"
 path = "src/main.rs"
 
 [dependencies]
-engine-core          = { path = "../engine-core" }
-engine-frontend-dart = { path = "../engine-frontend-dart" }
-engine-frontend-rust = { path = "../engine-frontend-rust" }
+engine-core                = { path = "../engine-core" }
+engine-frontend-dart       = { path = "../engine-frontend-dart" }
+engine-frontend-rust       = { path = "../engine-frontend-rust" }
+engine-frontend-typescript = { path = "../engine-frontend-typescript" }
+engine-frontend-sql        = { path = "../engine-frontend-sql" }
 clap                 = { version = "4.4", features = ["derive"] }
 tracing              = { workspace = true }
 tracing-subscriber   = { version = "0.3", features = ["env-filter"] }

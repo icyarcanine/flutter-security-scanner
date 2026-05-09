@@ -2,6 +2,7 @@
 
 pub mod ast_builder;
 pub mod cfg_builder;
+pub mod debug_tree;
 pub mod desugar;
 pub mod icfg_builder;
 pub mod pdg_builder;

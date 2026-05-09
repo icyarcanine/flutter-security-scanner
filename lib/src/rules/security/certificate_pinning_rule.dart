@@ -1,12 +1,19 @@
 import '../../models/finding.dart';
 import '../../models/project_context.dart';
+import '../../models/scanned_file.dart';
 import '../../rule.dart';
+import '../rule_helpers.dart';
 
-/// Detects missing certificate pinning for network connections in apps that
-/// handle sensitive data (auth, payments).
+/// Detects missing or ineffective certificate pinning for network connections
+/// in apps that handle sensitive data (auth, payments).
 ///
-/// This is a project-level check: if the app uses authentication or payment
-/// packages but has no certificate pinning configured, it flags the risk.
+/// Checks for:
+/// 1. No certificate pinning configured for sensitive apps
+/// 2. badCertificateCallback that always returns true (disables validation)
+/// 3. SecurityContext with no trusted certificates set
+/// 4. Dio httpClientAdapter that bypasses certificate checks
+///
+/// This is a project-level and code-level check.
 class CertificatePinningRule extends Rule {
   const CertificatePinningRule();
 
@@ -17,9 +24,16 @@ class CertificatePinningRule extends Rule {
   List<Finding> evaluate(ProjectContext context) {
     final findings = <Finding>[];
     final pubspec = context.pubspecFile;
+
+    // Check for broken pinning configurations first.
+    for (final file in context.appDartFiles) {
+      findings.addAll(_findBypassedCertificateValidation(file));
+      findings.addAll(_findEmptySecurityContext(file));
+    }
+
     if (pubspec == null) return findings;
 
-    // Only flag if the app handles sensitive network traffic.
+    // Only flag missing pinning if the app handles sensitive network traffic.
     final handlesSensitiveData = _handlesSensitiveData(pubspec.content);
     if (!handlesSensitiveData) return findings;
 
@@ -48,6 +62,125 @@ class CertificatePinningRule extends Rule {
         line: 1,
       ),
     );
+
+    return findings;
+  }
+
+  /// Detects certificate validation being bypassed.
+  List<Finding> _findBypassedCertificateValidation(ScannedFile file) {
+    final findings = <Finding>[];
+
+    // badCertificateCallback that always returns true
+    final bypassPattern = RegExp(
+      r'badCertificateCallback\s*[:\=]\s*(?:\([^)]*\)\s*=>\s*true|'
+      r'\{[^}]*return\s+true\s*;?\s*\})',
+      caseSensitive: false,
+    );
+
+    for (final match in bypassPattern.allMatches(file.content)) {
+      final line = file.lineForOffset(match.start);
+      if (isCommentLine(file.lines[line - 1])) continue;
+
+      findings.add(Finding(
+        severity: FindingSeverity.high,
+        confidence: FindingConfidence.high,
+        category: FindingCategory.security,
+        code: code,
+        message: 'Certificate validation is completely disabled',
+        fix:
+            'Never return true from badCertificateCallback in production. '
+            'This disables ALL TLS certificate validation, making the app '
+            'vulnerable to any man-in-the-middle attack. '
+            'Validate certificates against a pinned set of public keys '
+            'or trusted CAs.',
+        risk:
+            'With certificate validation disabled, attackers on any network '
+            'can intercept and modify all HTTPS traffic, stealing credentials, '
+            'tokens, and sensitive user data without detection.',
+        filePath: file.relativePath,
+        line: line,
+      ));
+    }
+
+    // onBadCertificate that returns true
+    final onBadPattern = RegExp(
+      r'onBadCertificate\s*[:\=]\s*(?:\([^)]*\)\s*=>\s*true|'
+      r'\{[^}]*return\s+true\s*;?\s*\})',
+      caseSensitive: false,
+    );
+
+    for (final match in onBadPattern.allMatches(file.content)) {
+      final line = file.lineForOffset(match.start);
+      if (isCommentLine(file.lines[line - 1])) continue;
+
+      findings.add(Finding(
+        severity: FindingSeverity.high,
+        confidence: FindingConfidence.high,
+        category: FindingCategory.security,
+        code: code,
+        message: 'onBadCertificate handler accepts all invalid certificates',
+        fix:
+            'Remove or properly implement onBadCertificate. Returning true '
+            'accepts self-signed, expired, and forged certificates, '
+            'completely defeating TLS protection.',
+        risk:
+            'Accepting all bad certificates allows any attacker with a '
+            'network position to perform a man-in-the-middle attack, '
+            'decrypting and modifying all app traffic.',
+        filePath: file.relativePath,
+        line: line,
+      ));
+    }
+
+    return findings;
+  }
+
+  /// Detects SecurityContext created but never configured with certificates.
+  List<Finding> _findEmptySecurityContext(ScannedFile file) {
+    final findings = <Finding>[];
+
+    final securityContextPattern = RegExp(
+      r'SecurityContext\s*\(\s*\)',
+      caseSensitive: false,
+    );
+
+    for (final match in securityContextPattern.allMatches(file.content)) {
+      final line = file.lineForOffset(match.start);
+
+      // Check if setTrustedCertificates or useCertificateChain is called
+      final endLine = (line + 20).clamp(0, file.lines.length);
+      final surroundingContent = file.lines
+          .sublist(line - 1, endLine)
+          .join('\n')
+          .toLowerCase();
+
+      if (!surroundingContent.contains('settrustedcertificates') &&
+          !surroundingContent.contains('usecertificatechain') &&
+          !surroundingContent.contains('useprivatekey')) {
+        findings.add(Finding(
+          severity: FindingSeverity.medium,
+          confidence: FindingConfidence.medium,
+          category: FindingCategory.security,
+          code: code,
+          message: 'SecurityContext created without trusted certificates',
+          fix:
+              'A SecurityContext with no trusted certificates provides no '
+              'additional security. Either load pinned certificates:\n\n'
+              'final context = SecurityContext();\n'
+              'context.setTrustedCertificatesBytes(certBytes);\n'
+              'final client = HttpClient(context: context);\n\n'
+              'Or remove the SecurityContext if you are relying on the '
+              'system certificate store.',
+          risk:
+              'Creating an empty SecurityContext and passing it to an '
+              'HttpClient does not improve security. Without pinned '
+              'certificates, the client still trusts any system CA, '
+              'including rogue certificates installed on compromised devices.',
+          filePath: file.relativePath,
+          line: line,
+        ));
+      }
+    }
 
     return findings;
   }
@@ -81,10 +214,12 @@ class CertificatePinningRule extends Rule {
       }
     }
 
-    // Check Dart code for manual pinning patterns.
+    // Check Dart code for actual pinning patterns.
+    // Do NOT count bare SecurityContext() or badCertificateCallback as
+    // evidence of pinning — those are often misconfigured or bypasses.
     for (final file in context.appDartFiles) {
       if (RegExp(
-        r'''SecurityContext|badCertificateCallback|onBadCertificate|setTrustedCertificates|certificatePinning|pinnedCertificates''',
+        r'''setTrustedCertificates|certificatePinning|pinnedCertificates|http_certificate_pinning|dio_certificate_pinning''',
         caseSensitive: false,
       ).hasMatch(file.content)) {
         return true;

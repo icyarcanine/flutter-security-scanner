@@ -20,7 +20,6 @@ import { GenericSecretRule } from './secrets/genericSecretRule';
 import { InjectionRule } from './security/injectionRule';
 import { XssRule } from './security/xssRule';
 import { UnsafeEvalRule } from './bugs/unsafeEvalRule';
-import { IfdsTaintRule } from './security/ifdsTaintRule';
 import { RustEngineTaintRule } from './security/rustEngineTaintRule';
 import { InsecureRandomRule } from './security/insecureRandomRule';
 import { JwtMisuseRule } from './security/jwtMisuseRule';
@@ -53,7 +52,6 @@ export function buildDefaultRules(includeSuggestions: boolean): Rule[] {
     new XssRule(),
     new UnsafeEvalRule(),
     new RustEngineTaintRule(),
-    new IfdsTaintRule(),
     new InsecureRandomRule(),
     new JwtMisuseRule(),
     new InsecureCookieRule(),

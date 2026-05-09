@@ -99,7 +99,7 @@ impl<'g> PdgBuilder<'g> {
                 let mut new_out = gen.get(&nid).cloned().unwrap_or_default();
                 let k = kill.get(&nid);
                 for &reaching in &new_in {
-                    if k.map_or(true, |set| !set.contains(&reaching)) {
+                    if k.is_none_or(|set| !set.contains(&reaching)) {
                         new_out.insert(reaching);
                     }
                 }

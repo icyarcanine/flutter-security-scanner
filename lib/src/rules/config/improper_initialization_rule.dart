@@ -11,7 +11,22 @@ class ImproperInitializationRule extends Rule {
 
   @override
   List<Finding> evaluate(ProjectContext context) {
-    if (!context.usesSupabaseFlutter || context.hasSupabaseInitialize) {
+    // Only flag if supabase_flutter is actually imported or used in Dart code,
+    // not merely listed as a dependency in pubspec.yaml.
+    final hasSupabaseImport = context.appDartFiles.any(
+      (f) => RegExp(
+        r'''package:supabase_flutter/supabase_flutter\.dart''',
+      ).hasMatch(f.content),
+    );
+    final hasSupabaseUsage = context.usesSupabaseFlutter ||
+        context.appDartFiles.any(
+          (f) => RegExp(
+            r'''\bSupabase\.(instance|initialize)\b|\bsupabase\.(from|storage|auth|rpc)\b|\.storage\.from\(|\.auth\.(currentUser|currentSession)\b''',
+            caseSensitive: false,
+          ).hasMatch(f.content),
+        );
+    if ((!hasSupabaseImport && !hasSupabaseUsage) ||
+        context.hasSupabaseInitialize) {
       return const [];
     }
 

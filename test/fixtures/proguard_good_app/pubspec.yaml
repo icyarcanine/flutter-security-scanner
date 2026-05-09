@@ -1,0 +1,5 @@
+name: proguard_good_app
+description: Test fixture for proper proguard
+dependencies:
+  flutter:
+    sdk: flutter

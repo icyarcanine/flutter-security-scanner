@@ -355,13 +355,13 @@ class ProjectContext {
     for (final file in appDartFiles) {
       for (final match in pattern.allMatches(file.content)) {
         final line = file.lineForOffset(match.start);
-        final context = file.contextAroundLine(line, before: 12, after: 6);
+        final context = file.contextAroundLine(line, before: 40, after: 6);
         uploads.add(
           UploadCall(
             file: file,
             line: line,
             hasTypeValidation: RegExp(
-              r'''mime|contentType|lookupMimeType|allowedTypes|allowedExtensions|endsWith\(['"].+\.[a-z0-9]+['"]\)|fileType''',
+              r'''mime|contentType|lookupMimeType|allowedTypes|allowedExtensions|endsWith\(['"].+\.[a-z0-9]+['"]\)|fileType|ImagePicker|pickImage|FileType\.''',
               caseSensitive: false,
             ).hasMatch(context),
             hasSizeValidation:

@@ -6,6 +6,12 @@ import '../rule_helpers.dart';
 
 /// Detects unsafe HTML rendering patterns that can lead to cross-site scripting
 /// (XSS) vulnerabilities in Flutter web or Dart server code.
+///
+/// @deprecated The Rust engine's `dart-xss.yaml` Semgrep rule handles XSS
+/// detection with higher confidence via IFDS taint analysis. This Dart-side
+/// rule is kept as a fallback for users who run the scanner without the
+/// engine binary (`engine-cli`). See `vscode-extension/rules/dart-xss.yaml`.
+@Deprecated('Use the Rust engine dart-xss.yaml rule instead')
 class XssRule extends Rule {
   const XssRule();
 

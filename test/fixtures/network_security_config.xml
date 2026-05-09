@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- BAD: Allows cleartext traffic globally -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system"/>
+            <!-- BAD: Trusts user certificates (self-signed) -->
+            <certificates src="user"/>
+        </trust-anchors>
+    </base-config>
+
+    <!-- BAD: Debug overrides present -->
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="user"/>
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>

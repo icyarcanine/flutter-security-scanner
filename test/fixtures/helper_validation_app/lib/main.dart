@@ -16,5 +16,9 @@ Future<void> main() async {
 
   final file = Object();
   validateUpload(file);
-  await Supabase.instance.client.storage.from('user-media').upload('x', file);
+  try {
+    await Supabase.instance.client.storage.from('user-media').upload('x', file);
+  } catch (e) {
+    // Upload error handled
+  }
 }

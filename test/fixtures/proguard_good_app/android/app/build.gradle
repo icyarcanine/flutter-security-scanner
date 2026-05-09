@@ -1,0 +1,18 @@
+android {
+    compileSdkVersion 33
+
+    defaultConfig {
+        applicationId "com.example.secure"
+        minSdkVersion 21
+        targetSdkVersion 33
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
+        }
+    }
+}

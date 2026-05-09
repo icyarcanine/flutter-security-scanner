@@ -59,7 +59,9 @@ class SupabaseSignedUrlTtlRule extends Rule {
 
         final line = file.lineForOffset(match.start);
         if (isOffsetCommented(file, match.start) ||
-            isCommentLine(file.lines[line - 1])) continue;
+            isCommentLine(file.lines[line - 1])) {
+          continue;
+        }
 
         if (ttlSeconds == null) {
           findings.add(

@@ -12,6 +12,8 @@ members = [
     "crates/engine-core",
     "crates/engine-frontend-dart",
     "crates/engine-frontend-rust",
+    "crates/engine-frontend-typescript",
+    "crates/engine-frontend-sql",
     "crates/engine-cli",
 ]
 
@@ -34,8 +36,8 @@ repository   = "https://github.com/dilpreet-s-sidhu/flutter-security-scanner"
 tree-sitter        = "0.22"
 tree-sitter-dart   = "0.0.4"
 tree-sitter-rust   = "0.21"
-# tree-sitter-typescript and tree-sitter-sql will be added when the TS and
-# Postgres frontends land as separate crates.
+tree-sitter-typescript = "0.21"  # Added for Edge Function analysis
+tree-sitter-sql        = "0.1"   # Added for RLS policy AST parsing
 
 # -- Graph / containers ----------------------------------------------------
 petgraph   = "0.6"
@@ -73,7 +75,7 @@ regex = "1.10"
 
 # -- Persistence -----------------------------------------------------------
 # RocksDB for incremental CPG caching. Native-only (feature-gated).
-rocksdb = { version = "0.22", default-features = false, features = ["snappy"] }
+rocksdb = { version = "0.22", default-features = false, features = ["snappy", "lz4", "zstd", "zlib", "bzip2"] }
 
 # -- WASM bindings ---------------------------------------------------------
 wasm-bindgen = "0.2"

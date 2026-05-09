@@ -1,0 +1,6 @@
+name: file_picker_good_app
+description: Test fixture for secure file picker
+dependencies:
+  file_picker: ^6.0.0
+  supabase_flutter: ^2.0.0
+  uuid: ^4.0.0

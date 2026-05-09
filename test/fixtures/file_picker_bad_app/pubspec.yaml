@@ -1,0 +1,5 @@
+name: file_picker_bad_app
+description: Test fixture for insecure file picker
+dependencies:
+  file_picker: ^6.0.0
+  supabase_flutter: ^2.0.0

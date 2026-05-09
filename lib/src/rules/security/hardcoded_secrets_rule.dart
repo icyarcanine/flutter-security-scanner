@@ -190,7 +190,9 @@ class HardcodedSecretsRule extends Rule {
     for (final match in firebaseKeyPattern.allMatches(file.content)) {
       final line = file.lineForOffset(match.start);
       if (isOffsetCommented(file, match.start) ||
-          isCommentLine(file.lines[line - 1])) continue;
+          isCommentLine(file.lines[line - 1])) {
+        continue;
+      }
 
       findings.add(
         Finding(
@@ -199,8 +201,7 @@ class HardcodedSecretsRule extends Rule {
           category: FindingCategory.security,
           code: code,
           message: 'Hardcoded Firebase API key detected',
-          fix:
-              'Move the Firebase API key to environment-backed config. '
+          fix: 'Move the Firebase API key to environment-backed config. '
               'Use --dart-define or flutter_dotenv to inject it at build time.',
           risk:
               'Hardcoded Firebase keys cannot be rotated easily and may allow '
@@ -229,7 +230,9 @@ class HardcodedSecretsRule extends Rule {
 
       final line = file.lineForOffset(match.start);
       if (isOffsetCommented(file, match.start) ||
-          isCommentLine(file.lines[line - 1])) continue;
+          isCommentLine(file.lines[line - 1])) {
+        continue;
+      }
 
       findings.add(
         Finding(
@@ -241,8 +244,7 @@ class HardcodedSecretsRule extends Rule {
           fix:
               'Move this credential to environment variables or a secure vault. '
               'Never commit secrets to source control.',
-          risk:
-              'Hardcoded secrets in source code can be extracted and used to '
+          risk: 'Hardcoded secrets in source code can be extracted and used to '
               'gain unauthorized access to services and data.',
           filePath: file.relativePath,
           line: line,
@@ -269,8 +271,7 @@ class HardcodedSecretsRule extends Rule {
             code: code,
             message:
                 'Firebase config file (google-services.json) checked into source',
-            fix:
-                'Add google-services.json to .gitignore and distribute it '
+            fix: 'Add google-services.json to .gitignore and distribute it '
                 'securely. Generate per-environment configs in CI/CD.',
             risk:
                 'Firebase config files contain project identifiers and API keys '
@@ -295,8 +296,7 @@ class HardcodedSecretsRule extends Rule {
             code: code,
             message:
                 'Firebase config file (GoogleService-Info.plist) checked into source',
-            fix:
-                'Add GoogleService-Info.plist to .gitignore and distribute it '
+            fix: 'Add GoogleService-Info.plist to .gitignore and distribute it '
                 'securely. Generate per-environment configs in CI/CD.',
             risk:
                 'Firebase config files contain project identifiers and API keys '

@@ -1,0 +1,15 @@
+[package]
+name = "engine-frontend-sql"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+
+[dependencies]
+engine-core      = { path = "../engine-core" }
+rustc-hash       = { workspace = true }
+tracing          = { workspace = true }
+regex            = { workspace = true }
+
+[lib]
+name = "engine_frontend_sql"
+path = "src/lib.rs"

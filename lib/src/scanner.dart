@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'config/scanner_config.dart';
+import 'engine/engine_runner.dart';
 import 'models/finding.dart';
 import 'models/project_context.dart';
 import 'rule.dart';
@@ -30,6 +31,10 @@ class ProjectScanner {
   /// no path filtering.
   final ScannerConfig config;
 
+  /// Tracks whether the engine install hint has been printed this process
+  /// lifetime so we don't spam stderr on every scan invocation.
+  static bool _engineHintPrinted = false;
+
   ProjectScanReport scan(String rootPath) {
     final context = ProjectContext.load(
       rootPath,
@@ -39,6 +44,21 @@ class ProjectScanner {
     );
     final findings = <Finding>[];
 
+    // ---- Rust engine pass (high-confidence taint analysis) ----
+    // Run BEFORE the regex rules so an engine timeout doesn't block the
+    // cheap pattern-matching tier. When the binary isn't found, emit the
+    // install hint to stderr once per process lifetime.
+    final engineResult = runRustEngineSync(context);
+    findings.addAll(engineResult.findings);
+    for (final w in engineResult.warnings) {
+      stderr.writeln('[fluttersupabasehelper] engine: $w');
+    }
+    if (engineResult.installHint != null && !_engineHintPrinted) {
+      _engineHintPrinted = true;
+      stderr.writeln(engineResult.installHint);
+    }
+
+    // ---- Dart-side regex / structural rules ----
     final rules = buildDefaultRules(
       includeSuggestions: includeSuggestions,
     ).where((rule) => !config.isRuleDisabled(rule.code));

@@ -1,0 +1,6 @@
+name: state_management_good_app
+description: Test fixture for safe state management
+dependencies:
+  flutter_bloc: ^8.1.0
+  flutter_secure_storage: ^9.0.0
+  supabase_flutter: ^2.0.0

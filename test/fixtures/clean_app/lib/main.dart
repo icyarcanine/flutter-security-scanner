@@ -22,7 +22,11 @@ Future<void> main() async {
   if (!allowedExtensions.contains('.txt') || fileSize > maxSize) {
     return;
   }
-  await supabase.storage
-      .from('user-media')
-      .upload('posts/${currentUser.id}.txt', currentUser.id);
+  try {
+    await supabase.storage
+        .from('user-media')
+        .upload('posts/${currentUser.id}.txt', currentUser.id);
+  } catch (e) {
+    // Upload error handled gracefully
+  }
 }

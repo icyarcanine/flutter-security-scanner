@@ -49,11 +49,15 @@ class SupabaseRealtimeFilterRule extends Rule {
           if (!argBody.contains('postgresChanges')) continue;
         }
 
-        if (_hasFilter(argBody)) continue;
+        if (_hasFilter(argBody)) {
+          continue;
+        }
 
         final line = file.lineForOffset(match.start);
         if (isOffsetCommented(file, match.start) ||
-            isCommentLine(file.lines[line - 1])) continue;
+            isCommentLine(file.lines[line - 1])) {
+          continue;
+        }
 
         findings.add(
           Finding(

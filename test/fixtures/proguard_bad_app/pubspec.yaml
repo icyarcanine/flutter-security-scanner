@@ -1,0 +1,5 @@
+name: proguard_bad_app
+description: Test fixture for missing proguard
+dependencies:
+  flutter:
+    sdk: flutter
