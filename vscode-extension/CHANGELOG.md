@@ -3,6 +3,12 @@
 All notable changes to the Flutter Supabase Security Scanner VS Code extension are
 documented here.
 
+## 1.2.0
+
+- Renamed the Marketplace extension identity to `Flutter Supabase Security Scanner`
+  under publisher `Icyarcanine`.
+- Added the Marketplace icon asset to the packaged extension manifest.
+
 ## 1.1.0
 
 ### Added

@@ -2,7 +2,7 @@
   "name": "flutter-supabase-security-scanner",
   "displayName": "Flutter Supabase Security Scanner",
   "description": "Multi-language SAST scanner with taint tracking, SARIF output, and rules covering injection, JWT misuse, CORS, insecure cookies, hardcoded secrets, and Supabase RLS gaps.",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "publisher": "Icyarcanine",
   "icon": "media/icon.png",
   "license": "MIT",
