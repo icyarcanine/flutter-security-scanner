@@ -31,7 +31,7 @@ export function toJunit(report: ProjectScanReport): string {
   const skipped = report.skippedFiles.length;
 
   const suiteAttrs = [
-    `name="flutter-supabase-helper"`,
+    `name="flutter-supabase-security-scanner"`,
     `tests="${totalTests}"`,
     `failures="${failures}"`,
     `errors="${errors}"`,

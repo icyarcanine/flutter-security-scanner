@@ -6,7 +6,7 @@ import { Finding } from './models/finding';
 /**
  * Baseline system for SAST findings.
  *
- * `npx flutter-supabase-helper baseline` saves current findings to
+ * `npx flutter-supabase-security-scanner baseline` saves current findings to
  * `.sast-baseline.json`. Future scans compare against the baseline and only
  * surface NEW findings.
  *

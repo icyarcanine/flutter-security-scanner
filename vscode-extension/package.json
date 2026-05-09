@@ -1,9 +1,9 @@
 {
-  "name": "flutter-supabase-helper",
-  "displayName": "Flutter Supabase Helper — Hybrid SAST",
+  "name": "flutter-supabase-security-scanner",
+  "displayName": "Flutter Supabase Security Scanner",
   "description": "Multi-language SAST scanner with taint tracking, SARIF output, and rules covering injection, JWT misuse, CORS, insecure cookies, hardcoded secrets, and Supabase RLS gaps.",
   "version": "1.1.0",
-  "publisher": "flutter-supabase-helper",
+  "publisher": "Icyarcanine",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -44,7 +44,7 @@
   ],
   "main": "./out/extension.js",
   "bin": {
-    "flutter-supabase-helper": "./out/cli.js"
+    "flutter-supabase-security-scanner": "./out/cli.js"
   },
   "files": [
     "out/**/*.js",
@@ -59,40 +59,40 @@
   "contributes": {
     "commands": [
       {
-        "command": "flutter-supabase-helper.runSecurityChecks",
-        "title": "Flutter Supabase Helper: Run Security Checks",
+        "command": "flutter-supabase-security-scanner.runSecurityChecks",
+        "title": "Flutter Supabase Security Scanner: Run Security Checks",
         "icon": "$(shield)"
       },
       {
-        "command": "flutter-supabase-helper.scanWorkspace",
-        "title": "Flutter Supabase Helper: Scan Workspace",
+        "command": "flutter-supabase-security-scanner.scanWorkspace",
+        "title": "Flutter Supabase Security Scanner: Scan Workspace",
         "icon": "$(shield)"
       },
       {
-        "command": "flutter-supabase-helper.scanFile",
-        "title": "Flutter Supabase Helper: Scan Active File's Project"
+        "command": "flutter-supabase-security-scanner.scanFile",
+        "title": "Flutter Supabase Security Scanner: Scan Active File's Project"
       }
     ],
     "configuration": {
-      "title": "Flutter Supabase Helper",
+      "title": "Flutter Supabase Security Scanner",
       "properties": {
-        "flutterSupabaseHelper.includeSuggestions": {
+        "flutterSupabaseSecurityScanner.includeSuggestions": {
           "type": "boolean",
           "default": true,
           "description": "Include heuristic RLS policy suggestions in scan results."
         },
-        "flutterSupabaseHelper.autoScanOnOpen": {
+        "flutterSupabaseSecurityScanner.autoScanOnOpen": {
           "type": "boolean",
           "default": true,
           "description": "Automatically scan the workspace when a Flutter+Supabase project is detected."
         },
-        "flutterSupabaseHelper.disabledRules": {
+        "flutterSupabaseSecurityScanner.disabledRules": {
           "type": "array",
           "default": [],
           "items": { "type": "string" },
           "description": "Rule codes to skip (e.g. \"high-entropy-secret\", \"file-upload-validation\"). Disabled rules emit no findings."
         },
-        "flutterSupabaseHelper.scanOnSave": {
+        "flutterSupabaseSecurityScanner.scanOnSave": {
           "type": "boolean",
           "default": false,
           "description": "Re-scan the workspace 750ms after any supported file is saved. Off by default to avoid surprises on large projects."
@@ -102,19 +102,19 @@
     "menus": {
       "editor/title": [
         {
-          "command": "flutter-supabase-helper.runSecurityChecks",
+          "command": "flutter-supabase-security-scanner.runSecurityChecks",
           "group": "navigation"
         }
       ],
       "commandPalette": [
         {
-          "command": "flutter-supabase-helper.runSecurityChecks"
+          "command": "flutter-supabase-security-scanner.runSecurityChecks"
         },
         {
-          "command": "flutter-supabase-helper.scanWorkspace"
+          "command": "flutter-supabase-security-scanner.scanWorkspace"
         },
         {
-          "command": "flutter-supabase-helper.scanFile"
+          "command": "flutter-supabase-security-scanner.scanFile"
         }
       ]
     },

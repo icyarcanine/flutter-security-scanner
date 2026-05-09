@@ -19,22 +19,22 @@ export function activate(context: vscode.ExtensionContext) {
     // The button now binds to the friendlier `runSecurityChecks` command so a
     // single click runs every rule and pops a summary toast.
     const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    statusBar.command = 'flutter-supabase-helper.runSecurityChecks';
+    statusBar.command = 'flutter-supabase-security-scanner.runSecurityChecks';
     statusBar.text = '$(shield) Scan';
-    statusBar.tooltip = 'Flutter Supabase Helper: Run Security Checks';
+    statusBar.tooltip = 'Flutter Supabase Security Scanner: Run Security Checks';
     context.subscriptions.push(statusBar);
 
     // Register commands. `runSecurityChecks` is the primary one-click entry
-    // point for new developers; `scanWorkspace` and `scanFile` remain for
-    // backward compatibility with anything bound to the older command IDs.
+    // point for new developers; `scanWorkspace` and `scanFile` remain as
+    // explicit command-palette actions.
     context.subscriptions.push(
-      vscode.commands.registerCommand('flutter-supabase-helper.runSecurityChecks', () =>
+      vscode.commands.registerCommand('flutter-supabase-security-scanner.runSecurityChecks', () =>
         runSecurityChecks(diagnostics, statusBar)
       ),
-      vscode.commands.registerCommand('flutter-supabase-helper.scanWorkspace', () =>
+      vscode.commands.registerCommand('flutter-supabase-security-scanner.scanWorkspace', () =>
         scanWorkspace(diagnostics, statusBar)
       ),
-      vscode.commands.registerCommand('flutter-supabase-helper.scanFile', () =>
+      vscode.commands.registerCommand('flutter-supabase-security-scanner.scanFile', () =>
         scanFile(diagnostics)
       )
     );
@@ -89,12 +89,12 @@ export function activate(context: vscode.ExtensionContext) {
         workspaceRoot,
       });
       void context.workspaceState.update(
-        'flutterSupabaseHelper.engineCliPath',
+        'flutterSupabaseSecurityScanner.engineCliPath',
         engineResolution.status === 'found' ? engineResolution.path : undefined,
       );
 
       // Auto-scan on open if configured
-      const config = vscode.workspace.getConfiguration('flutterSupabaseHelper');
+      const config = vscode.workspace.getConfiguration('flutterSupabaseSecurityScanner');
       if (config.get<boolean>('autoScanOnOpen', true)) {
         // Accept any project type (not just Flutter)
         vscode.workspace.findFiles(
@@ -103,7 +103,7 @@ export function activate(context: vscode.ExtensionContext) {
           1
         ).then((uris) => {
           if (uris.length > 0) {
-            vscode.commands.executeCommand('flutter-supabase-helper.runSecurityChecks');
+            vscode.commands.executeCommand('flutter-supabase-security-scanner.runSecurityChecks');
           }
         });
       }
@@ -142,13 +142,13 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
       vscode.workspace.onDidSaveTextDocument(doc => {
         if (!STATUS_BAR_LANGUAGES.has(doc.languageId)) { return; }
-        const cfg = vscode.workspace.getConfiguration('flutterSupabaseHelper');
+        const cfg = vscode.workspace.getConfiguration('flutterSupabaseSecurityScanner');
         if (!cfg.get<boolean>('scanOnSave', false)) { return; }
         if (pendingTimeout) { clearTimeout(pendingTimeout); }
         // 750 ms debounce: batches rapid sequential saves; small enough to
         // feel live for a single edit-save cycle.
         pendingTimeout = setTimeout(() => {
-          vscode.commands.executeCommand('flutter-supabase-helper.scanWorkspace');
+          vscode.commands.executeCommand('flutter-supabase-security-scanner.scanWorkspace');
         }, 750);
       }),
     );

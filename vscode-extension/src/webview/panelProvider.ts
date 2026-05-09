@@ -20,8 +20,8 @@ export class PanelProvider {
       PanelProvider._panel.reveal(vscode.ViewColumn.Two);
     } else {
       PanelProvider._panel = vscode.window.createWebviewPanel(
-        'flutterSupabaseHelper',
-        'Flutter Supabase Helper',
+        'flutterSupabaseSecurityScanner',
+        'Flutter Supabase Security Scanner',
         vscode.ViewColumn.Two,
         {
           enableScripts: true,

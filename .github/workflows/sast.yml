@@ -15,7 +15,7 @@ permissions:
   security-events: write
 
 jobs:
-  flutter-supabase-helper:
+  flutter-supabase-security-scanner:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

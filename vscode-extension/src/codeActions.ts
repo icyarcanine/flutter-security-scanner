@@ -15,7 +15,7 @@ export class SastCodeActionProvider implements vscode.CodeActionProvider {
     const actions: vscode.CodeAction[] = [];
 
     for (const diag of context.diagnostics) {
-      if (diag.source !== 'Flutter Supabase Helper') continue;
+      if (diag.source !== 'Flutter Supabase Security Scanner') continue;
 
       // Inline suppression action (always available)
       actions.push(this._createSuppressionAction(document, diag));

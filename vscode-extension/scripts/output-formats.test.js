@@ -231,7 +231,7 @@ async function testGitLabSecurity() {
     assert.ok(Array.isArray(v.identifiers) && v.identifiers.length > 0,
       'vulnerability must have at least one identifier');
     // Ensure the rule-id identifier is always present so dedupe across runs works.
-    const ruleIdent = v.identifiers.find(i => i.type === 'flutter-supabase-helper-rule');
+    const ruleIdent = v.identifiers.find(i => i.type === 'flutter-supabase-security-scanner-rule');
     assert.ok(ruleIdent, 'each vulnerability must include the rule identifier');
   }
 

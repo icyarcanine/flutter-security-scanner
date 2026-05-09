@@ -2,6 +2,7 @@
 build/
 doc/api/
 validation_runs/
+/*.vsix
 
 vscode-extension/node_modules/
 vscode-extension/out/
@@ -33,5 +34,4 @@ engine/Cargo.lock
 # for all three supported triples. Not tracked in git because they're
 # 4 MB each and cargo-built artifacts shouldn't live in version control.
 vscode-extension/bin/
-
 

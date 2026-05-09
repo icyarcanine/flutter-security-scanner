@@ -21,17 +21,17 @@ export async function runSecurityChecks(
   const workspaceFolders = vscode.workspace.workspaceFolders;
   if (!workspaceFolders || workspaceFolders.length === 0) {
     vscode.window.showWarningMessage(
-      'Flutter Supabase Helper: open a folder first, then run the security checks.',
+      'Flutter Supabase Security Scanner: open a folder first, then run the security checks.',
     );
     return;
   }
 
   const rootPath = workspaceFolders[0].uri.fsPath;
-  const config = vscode.workspace.getConfiguration('flutterSupabaseHelper');
+  const config = vscode.workspace.getConfiguration('flutterSupabaseSecurityScanner');
   const includeSuggestions = config.get<boolean>('includeSuggestions', true);
 
   statusBar.text = '$(sync~spin) Scanning…';
-  statusBar.tooltip = 'Flutter Supabase Helper: scanning workspace…';
+  statusBar.tooltip = 'Flutter Supabase Security Scanner: scanning workspace…';
   statusBar.show();
 
   let report: ProjectScanReport;
@@ -39,7 +39,7 @@ export async function runSecurityChecks(
     report = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: 'Flutter Supabase Helper — Running security checks',
+        title: 'Flutter Supabase Security Scanner — Running security checks',
         cancellable: false,
       },
       async (progress) => {
@@ -54,10 +54,10 @@ export async function runSecurityChecks(
     );
   } catch (err) {
     statusBar.text = '$(shield) Scan';
-    statusBar.tooltip = 'Flutter Supabase Helper: Run Security Checks';
+    statusBar.tooltip = 'Flutter Supabase Security Scanner: Run Security Checks';
     const message = err instanceof Error ? err.message : String(err);
     void vscode.window.showErrorMessage(
-      `Flutter Supabase Helper: scan failed — ${message}`,
+      `Flutter Supabase Security Scanner: scan failed — ${message}`,
     );
     return;
   }
@@ -87,26 +87,26 @@ function _updateStatusBar(
   if (issues === 0 && suggestions === 0) {
     statusBar.text = '$(shield) Clean';
     statusBar.tooltip =
-      `Flutter Supabase Helper: scanned ${report.totalFiles} files in ${report.scanDurationMs} ms — no issues found.\nClick to re-run.`;
+      `Flutter Supabase Security Scanner: scanned ${report.totalFiles} files in ${report.scanDurationMs} ms — no issues found.\nClick to re-run.`;
     statusBar.backgroundColor = undefined;
   } else if (high > 0) {
     statusBar.text = `$(error) ${issues} issue${issues === 1 ? '' : 's'}`;
     statusBar.tooltip =
-      `Flutter Supabase Helper: ${high} high, ${medium} medium, ${low} low across ${report.totalFiles} files.\nClick to re-run.`;
+      `Flutter Supabase Security Scanner: ${high} high, ${medium} medium, ${low} low across ${report.totalFiles} files.\nClick to re-run.`;
     statusBar.backgroundColor = new vscode.ThemeColor(
       'statusBarItem.errorBackground',
     );
   } else if (medium > 0) {
     statusBar.text = `$(warning) ${issues} issue${issues === 1 ? '' : 's'}`;
     statusBar.tooltip =
-      `Flutter Supabase Helper: ${medium} medium, ${low} low across ${report.totalFiles} files.\nClick to re-run.`;
+      `Flutter Supabase Security Scanner: ${medium} medium, ${low} low across ${report.totalFiles} files.\nClick to re-run.`;
     statusBar.backgroundColor = new vscode.ThemeColor(
       'statusBarItem.warningBackground',
     );
   } else {
     statusBar.text = `$(info) ${issues + suggestions} item${issues + suggestions === 1 ? '' : 's'}`;
     statusBar.tooltip =
-      `Flutter Supabase Helper: ${low} low-severity findings, ${suggestions} suggestions across ${report.totalFiles} files.\nClick to re-run.`;
+      `Flutter Supabase Security Scanner: ${low} low-severity findings, ${suggestions} suggestions across ${report.totalFiles} files.\nClick to re-run.`;
     statusBar.backgroundColor = undefined;
   }
 }
@@ -127,7 +127,7 @@ async function _showSummaryNotification(
 
   if (issues === 0 && suggestions === 0) {
     void vscode.window.showInformationMessage(
-      `Flutter Supabase Helper: clean bill of health. Scanned ${stats}.`,
+      `Flutter Supabase Security Scanner: clean bill of health. Scanned ${stats}.`,
     );
     return;
   }
@@ -148,7 +148,7 @@ async function _showSummaryNotification(
   }
   const breakdown = parts.length > 0 ? parts.join(', ') : `${issues} item${issues === 1 ? '' : 's'}`;
 
-  const summary = `Flutter Supabase Helper: ${breakdown}. Scanned ${stats}.`;
+  const summary = `Flutter Supabase Security Scanner: ${breakdown}. Scanned ${stats}.`;
 
   const action = high > 0
     ? await vscode.window.showErrorMessage(summary, 'View Report', 'Open Problems')

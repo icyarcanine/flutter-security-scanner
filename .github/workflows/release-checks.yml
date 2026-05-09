@@ -98,4 +98,4 @@ jobs:
 
       - name: Package VSIX
         working-directory: vscode-extension
-        run: npm run package:vsix -- --out flutter-supabase-helper.vsix
+        run: npm run package:vsix -- --out flutter-supabase-security-scanner.vsix

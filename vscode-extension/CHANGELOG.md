@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the Flutter Supabase Helper VS Code extension are
+All notable changes to the Flutter Supabase Security Scanner VS Code extension are
 documented here.
 
 ## 1.1.0

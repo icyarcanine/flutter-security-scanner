@@ -7,7 +7,7 @@ export async function scanFile(diagnostics: DiagnosticsProvider): Promise<void> 
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
     vscode.window.showInformationMessage(
-      'Flutter Supabase Helper: No active editor. Open a Dart file from your Flutter project.',
+      'Flutter Supabase Security Scanner: No active editor. Open a Dart file from your Flutter project.',
     );
     return;
   }
@@ -15,7 +15,7 @@ export async function scanFile(diagnostics: DiagnosticsProvider): Promise<void> 
   const workspaceFolders = vscode.workspace.workspaceFolders;
   if (!workspaceFolders || workspaceFolders.length === 0) {
     vscode.window.showInformationMessage(
-      'Flutter Supabase Helper: No workspace folder open.',
+      'Flutter Supabase Security Scanner: No workspace folder open.',
     );
     return;
   }
@@ -25,7 +25,7 @@ export async function scanFile(diagnostics: DiagnosticsProvider): Promise<void> 
   const wsFolder = vscode.workspace.getWorkspaceFolder(fileUri) ?? workspaceFolders[0];
   const rootPath = wsFolder.uri.fsPath;
 
-  const config = vscode.workspace.getConfiguration('flutterSupabaseHelper');
+  const config = vscode.workspace.getConfiguration('flutterSupabaseSecurityScanner');
   const includeSuggestions = config.get<boolean>('includeSuggestions', true);
   const disabledRules = config.get<string[]>('disabledRules', []) ?? [];
 
@@ -33,7 +33,7 @@ export async function scanFile(diagnostics: DiagnosticsProvider): Promise<void> 
     const report = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: 'Flutter Supabase Helper: Scanning…',
+        title: 'Flutter Supabase Security Scanner: Scanning…',
         cancellable: false,
       },
       async () => {
@@ -47,10 +47,10 @@ export async function scanFile(diagnostics: DiagnosticsProvider): Promise<void> 
 
     const issues = report.issueCount;
     if (issues === 0) {
-      vscode.window.showInformationMessage('Flutter Supabase Helper: No issues found!');
+      vscode.window.showInformationMessage('Flutter Supabase Security Scanner: No issues found!');
     } else {
       vscode.window.showWarningMessage(
-        `Flutter Supabase Helper: Found ${issues} issue${issues !== 1 ? 's' : ''}.`,
+        `Flutter Supabase Security Scanner: Found ${issues} issue${issues !== 1 ? 's' : ''}.`,
         'View Report',
       ).then(choice => {
         if (choice === 'View Report') { PanelProvider.showReport(report); }
@@ -58,6 +58,6 @@ export async function scanFile(diagnostics: DiagnosticsProvider): Promise<void> 
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    vscode.window.showErrorMessage(`Flutter Supabase Helper scan failed: ${message}`);
+    vscode.window.showErrorMessage(`Flutter Supabase Security Scanner scan failed: ${message}`);
   }
 }

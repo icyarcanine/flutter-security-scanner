@@ -114,12 +114,12 @@ jobs:
 
       - name: Package VSIX
         working-directory: vscode-extension
-        run: npm run package:vsix -- --out ../flutter-supabase-helper.vsix
+        run: npm run package:vsix -- --out ../flutter-supabase-security-scanner.vsix
 
       - uses: actions/upload-artifact@v4
         with:
-          name: flutter-supabase-helper-vsix
-          path: flutter-supabase-helper.vsix
+          name: flutter-supabase-security-scanner-vsix
+          path: flutter-supabase-security-scanner.vsix
           retention-days: 14
 
   publish:

@@ -20,14 +20,14 @@ import { ProjectScanReport } from '../scanner/scanner';
 import type { Finding } from '../models/finding';
 
 const SCHEMA_VERSION = '15.0.6';
-const ANALYZER_ID = 'flutter-supabase-helper';
-const ANALYZER_NAME = 'Flutter Supabase Helper SAST';
-const VENDOR_NAME = 'flutter-supabase-helper';
+const ANALYZER_ID = 'flutter-supabase-security-scanner';
+const ANALYZER_NAME = 'Flutter Supabase Security Scanner SAST';
+const VENDOR_NAME = 'flutter-supabase-security-scanner';
 
 type GitLabSastSeverity = 'Critical' | 'High' | 'Medium' | 'Low' | 'Info' | 'Unknown';
 
 interface GitLabIdentifier {
-  type: 'cwe' | 'owasp' | 'cve' | 'flutter-supabase-helper-rule';
+  type: 'cwe' | 'owasp' | 'cve' | 'flutter-supabase-security-scanner-rule';
   name: string;
   value: string;
   url?: string;
@@ -171,7 +171,7 @@ function buildDescription(f: Finding): string {
 function buildIdentifiers(f: Finding): GitLabIdentifier[] {
   const identifiers: GitLabIdentifier[] = [
     {
-      type: 'flutter-supabase-helper-rule',
+      type: 'flutter-supabase-security-scanner-rule',
       name: f.code,
       value: f.code,
     },

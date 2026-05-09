@@ -123,7 +123,7 @@ async function testTelemetryDurations() {
   assert.ok(typeof report.stats.stageDurationsMs?.fast === 'number',
     `json report should expose stage durations: ${out.stdout}`);
 
-  const telemetryFile = path.join(dataHome, 'flutter-supabase-helper', 'telemetry.json');
+  const telemetryFile = path.join(dataHome, 'flutter-supabase-security-scanner', 'telemetry.json');
   const telemetry = JSON.parse(fs.readFileSync(telemetryFile, 'utf8'));
   const last = telemetry.at(-1);
   assert.ok(typeof last.stageDurationsMs?.fast === 'number',

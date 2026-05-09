@@ -515,7 +515,7 @@ function emitOrWrite(outputFile: string | undefined, content: string): void {
 // ── Output: Pretty ──────────────────────────────
 
 function outputPretty(report: ProjectScanReport, findings: Finding[], counts: FullCounts) {
-  console.log(`\n  Flutter Supabase Helper — SAST Report`);
+  console.log(`\n  Flutter Supabase Security Scanner — SAST Report`);
   console.log(`  ${'─'.repeat(40)}`);
   console.log(`  Files scanned:  ${report.totalFiles}`);
   console.log(`  Scan duration:  ${report.scanDurationMs}ms`);
@@ -727,11 +727,11 @@ function checkThreshold(
 
 /**
  * Resolve the directory we write telemetry into. We prefer (in order):
- *   1. `$XDG_DATA_HOME/flutter-supabase-helper` (only when path is under HOME)
+ *   1. `$XDG_DATA_HOME/flutter-supabase-security-scanner` (only when path is under HOME)
  *   2. `~/Library/Application Support/...`      (macOS)
- *   3. `%LOCALAPPDATA%/flutter-supabase-helper` (Windows; only when under HOME or USERPROFILE)
- *   4. `~/.local/share/flutter-supabase-helper` (XDG default)
- *   5. `~/.flutter-supabase-helper`             (last-resort fallback)
+ *   3. `%LOCALAPPDATA%/flutter-supabase-security-scanner` (Windows; only when under HOME or USERPROFILE)
+ *   4. `~/.local/share/flutter-supabase-security-scanner` (XDG default)
+ *   5. `~/.flutter-supabase-security-scanner`             (last-resort fallback)
  *
  * NEVER the project root — that pollutes scanned repos with a file the user
  * doesn't expect and that ends up committed by accident.
@@ -769,9 +769,9 @@ function _telemetryFilePath(): string {
   } else {
     // No HOME at all (containers, restricted shells). Use cwd-relative
     // hidden dir; saveTelemetry's try/catch will swallow failures.
-    base = path.join('.', '.flutter-supabase-helper-data');
+    base = path.join('.', '.flutter-supabase-security-scanner-data');
   }
-  const dir = path.join(base, 'flutter-supabase-helper');
+  const dir = path.join(base, 'flutter-supabase-security-scanner');
   fs.mkdirSync(dir, { recursive: true });
   return path.join(dir, 'telemetry.json');
 }
@@ -1002,12 +1002,12 @@ function computeRulePerformance(results: RepoResult[]) {
 
 function printUsage() {
   console.log(`
-Flutter Supabase Helper — Hybrid SAST Engine CLI
+Flutter Supabase Security Scanner — Hybrid SAST Engine CLI
 
 Usage:
-  npx flutter-supabase-helper scan <dir> [options]
-  npx flutter-supabase-helper baseline <dir>
-  npx flutter-supabase-helper validate <dir>
+  npx flutter-supabase-security-scanner scan <dir> [options]
+  npx flutter-supabase-security-scanner baseline <dir>
+  npx flutter-supabase-security-scanner validate <dir>
 
 Options:
   --json                  Output as JSON (default)
@@ -1036,17 +1036,17 @@ Options:
   --max-file-size <size>  Per-file size cap, e.g. 5MB / 512KB / 1g (default 1MB)
 
 Examples:
-  npx flutter-supabase-helper scan ./my-project --pretty
-  npx flutter-supabase-helper scan . --fail-on high --json
-  npx flutter-supabase-helper scan . --sarif -o sast.sarif
-  npx flutter-supabase-helper scan . --html -o sast.html
-  npx flutter-supabase-helper scan . --json --diff-against old.sarif
-  npx flutter-supabase-helper scan . --summary --notify slack:$SLACK_WEBHOOK_URL
-  npx flutter-supabase-helper scan . --pretty --max-findings 10
-  npx flutter-supabase-helper scan . --open
-  npx flutter-supabase-helper baseline .
-  npx flutter-supabase-helper scan . --baseline --summary
-  npx flutter-supabase-helper validate ./test_repos
+  npx flutter-supabase-security-scanner scan ./my-project --pretty
+  npx flutter-supabase-security-scanner scan . --fail-on high --json
+  npx flutter-supabase-security-scanner scan . --sarif -o sast.sarif
+  npx flutter-supabase-security-scanner scan . --html -o sast.html
+  npx flutter-supabase-security-scanner scan . --json --diff-against old.sarif
+  npx flutter-supabase-security-scanner scan . --summary --notify slack:$SLACK_WEBHOOK_URL
+  npx flutter-supabase-security-scanner scan . --pretty --max-findings 10
+  npx flutter-supabase-security-scanner scan . --open
+  npx flutter-supabase-security-scanner baseline .
+  npx flutter-supabase-security-scanner scan . --baseline --summary
+  npx flutter-supabase-security-scanner validate ./test_repos
 `);
 }
 

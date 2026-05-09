@@ -1,4 +1,4 @@
-# Flutter Supabase Helper — Hybrid SAST Engine
+# Flutter Supabase Security Scanner
 
 A static application security testing (SAST) toolkit for Flutter + Supabase
 projects. The repository ships **two separate scanners** that share the same
@@ -219,11 +219,11 @@ The Dart CLI does **not** perform AST parsing or taint tracking. It uses targete
 ### Node CLI (ships with the VS Code extension)
 
 ```bash
-npx flutter-supabase-helper scan ./my-project
-npx flutter-supabase-helper scan . --pretty                 # human-readable
-npx flutter-supabase-helper scan . --json                   # machine-readable (default)
-npx flutter-supabase-helper scan . --summary                # counts only
-npx flutter-supabase-helper scan . --sarif -o sast.sarif    # SARIF 2.1.0
+npx flutter-supabase-security-scanner scan ./my-project
+npx flutter-supabase-security-scanner scan . --pretty                 # human-readable
+npx flutter-supabase-security-scanner scan . --json                   # machine-readable (default)
+npx flutter-supabase-security-scanner scan . --summary                # counts only
+npx flutter-supabase-security-scanner scan . --sarif -o sast.sarif    # SARIF 2.1.0
 ```
 
 ### Output Formats
@@ -246,7 +246,7 @@ npx flutter-supabase-helper scan . --sarif -o sast.sarif    # SARIF 2.1.0
 ```yaml
 # GitHub Actions — fail build + upload findings to Code Scanning
 - name: SAST scan
-  run: npx flutter-supabase-helper scan . --sarif -o sast.sarif --fail-on high
+  run: npx flutter-supabase-security-scanner scan . --sarif -o sast.sarif --fail-on high
 - uses: github/codeql-action/upload-sarif@v3
   if: always()
   with: { sarif_file: sast.sarif }
@@ -262,7 +262,7 @@ HIGH-confidence findings, while still reporting lower-confidence results.
 ### PR-style scans (`--changed-since`)
 
 ```bash
-npx flutter-supabase-helper scan . --changed-since main --sarif -o pr.sarif
+npx flutter-supabase-security-scanner scan . --changed-since main --sarif -o pr.sarif
 ```
 
 Restricts findings to files modified since the given git ref (uses `git diff
@@ -272,8 +272,8 @@ work). Combine with `--fail-on high` for low-friction PR gating.
 ### SARIF diff mode (`--diff-against`)
 
 ```bash
-npx flutter-supabase-helper scan . --sarif -o current.sarif
-npx flutter-supabase-helper scan . --json --diff-against previous.sarif
+npx flutter-supabase-security-scanner scan . --sarif -o current.sarif
+npx flutter-supabase-security-scanner scan . --json --diff-against previous.sarif
 ```
 
 Filters out findings whose SARIF partial fingerprint already appeared in an
@@ -288,9 +288,9 @@ scanning dashboards.
 repos:
   - repo: local
     hooks:
-      - id: flutter-supabase-helper-sast
-        name: Flutter Supabase Helper SAST
-        entry: npx flutter-supabase-helper scan . --changed-since HEAD --fail-on high --fail-confidence high --summary
+      - id: flutter-supabase-security-scanner-sast
+        name: Flutter Supabase Security Scanner SAST
+        entry: npx flutter-supabase-security-scanner scan . --changed-since HEAD --fail-on high --fail-confidence high --summary
         language: system
         pass_filenames: false
 ```
@@ -318,7 +318,7 @@ npx lint-staged
     // Run the SAST scan once per commit, ignoring filenames — the scanner
     // computes changed files itself and bails early when none are touched.
     // The trailing `[]` makes lint-staged skip its default per-file fan-out.
-    "*": "bash -c 'npx flutter-supabase-helper scan . --changed-since HEAD --fail-on high --fail-confidence high --summary' --"
+    "*": "bash -c 'npx flutter-supabase-security-scanner scan . --changed-since HEAD --fail-on high --fail-confidence high --summary' --"
   }
 }
 ```
@@ -331,8 +331,8 @@ matches both the pre-commit and CI flows above and keeps the answer to
 ### Baseline (suppress known issues)
 
 ```bash
-npx flutter-supabase-helper baseline .            # snapshot current findings (v2 with content hashes)
-npx flutter-supabase-helper scan . --baseline     # report only new findings
+npx flutter-supabase-security-scanner baseline .            # snapshot current findings (v2 with content hashes)
+npx flutter-supabase-security-scanner scan . --baseline     # report only new findings
 ```
 
 Baseline saved to `.sast-baseline.json`. v2 baselines store a content hash
@@ -344,7 +344,7 @@ to fingerprint.
 
 ```bash
 # CLI: comma-separated, repeatable
-npx flutter-supabase-helper scan . --disable high-entropy-secret,file-upload-validation
+npx flutter-supabase-security-scanner scan . --disable high-entropy-secret,file-upload-validation
 ```
 
 Unknown rule codes produce a warning listing all valid codes (so typos
@@ -353,15 +353,15 @@ surface immediately).
 ```jsonc
 // .vscode/settings.json
 {
-  "flutterSupabaseHelper.disabledRules": ["high-entropy-secret"],
-  "flutterSupabaseHelper.scanOnSave": false
+  "flutterSupabaseSecurityScanner.disabledRules": ["high-entropy-secret"],
+  "flutterSupabaseSecurityScanner.scanOnSave": false
 }
 ```
 
 ### Validation Harness
 
 ```bash
-npx flutter-supabase-helper validate ./test_repos
+npx flutter-supabase-security-scanner validate ./test_repos
 ```
 
 Scans subdirectories and outputs per-rule precision statistics and
@@ -415,11 +415,11 @@ Activates automatically on project open.
 
 | Command | Description |
 |---------|-------------|
-| `Flutter Supabase Helper: Scan Workspace` | Full project scan (multi-root aware) |
-| `Flutter Supabase Helper: Scan Active File's Project` | Scan from active file |
+| `Flutter Supabase Security Scanner: Scan Workspace` | Full project scan (multi-root aware) |
+| `Flutter Supabase Security Scanner: Scan Active File's Project` | Scan from active file |
 
 **On-save scanning** (off by default) — set
-`flutterSupabaseHelper.scanOnSave: true` in your settings to re-run the
+`flutterSupabaseSecurityScanner.scanOnSave: true` in your settings to re-run the
 scan 750 ms after any supported file is saved.
 
 **Quick fixes** include real autofixes (not just TODO comments):
@@ -453,9 +453,9 @@ Local-only. Stored under your platform's data directory:
 
 | Platform | Path |
 |----------|------|
-| macOS    | `~/Library/Application Support/flutter-supabase-helper/telemetry.json` |
-| Linux    | `$XDG_DATA_HOME/flutter-supabase-helper/telemetry.json` (or `~/.local/share/...`) |
-| Windows  | `%LOCALAPPDATA%/flutter-supabase-helper/telemetry.json` |
+| macOS    | `~/Library/Application Support/flutter-supabase-security-scanner/telemetry.json` |
+| Linux    | `$XDG_DATA_HOME/flutter-supabase-security-scanner/telemetry.json` (or `~/.local/share/...`) |
+| Windows  | `%LOCALAPPDATA%/flutter-supabase-security-scanner/telemetry.json` |
 
 Env-driven paths are validated to live under your home directory; suspicious
 values fall through to a safer default.

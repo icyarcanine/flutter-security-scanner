@@ -14,7 +14,7 @@ import * as path from 'path';
 import { FindingSeverity } from '../models/finding';
 import { ProjectScanReport } from '../scanner/scanner';
 
-const TOOL_NAME = 'flutter-supabase-helper';
+const TOOL_NAME = 'flutter-supabase-security-scanner';
 const TOOL_VERSION = '1.0.0';
 const TOOL_INFORMATION_URI = 'https://github.com/icyarcanine/flutter-security-scanner';
 
@@ -407,7 +407,7 @@ export function toSarif(
       },
       ...(taxonomies.length > 0 ? { taxonomies } : {}),
       automationDetails: {
-        id: options.automationId ?? `flutter-supabase-helper/${new Date().toISOString()}`,
+        id: options.automationId ?? `flutter-supabase-security-scanner/${new Date().toISOString()}`,
         description: { text: `Scan over ${results.length} finding(s) at ${rootPath}` },
       },
       results,

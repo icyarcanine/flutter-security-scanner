@@ -14,7 +14,7 @@ export class DiagnosticsProvider {
   private readonly _findingsByFile = new Map<string, Finding[]>();
 
   constructor() {
-    this._collection = vscode.languages.createDiagnosticCollection('flutter-supabase-helper');
+    this._collection = vscode.languages.createDiagnosticCollection('flutter-supabase-security-scanner');
   }
 
   updateDiagnostics(report: ProjectScanReport): void {
@@ -94,7 +94,7 @@ export class DiagnosticsProvider {
       : finding.message;
 
     const diag = new vscode.Diagnostic(range, message, severity);
-    diag.source = 'Flutter Supabase Helper';
+    diag.source = 'Flutter Supabase Security Scanner';
     diag.code = finding.code;
 
     try {
