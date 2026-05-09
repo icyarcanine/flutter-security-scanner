@@ -87,8 +87,7 @@ class EngineResolver {
 
   static String _installHint() {
     final platform = Platform.operatingSystem;
-    final repoUrl =
-        'https://github.com/dilpreet-s-sidhu/flutter-security-scanner';
+    final repoUrl = 'https://github.com/icyarcanine/flutter-security-scanner';
     final lines = <String>[
       'The Rust analysis kernel binary `engine-cli` was not found.',
       '',
@@ -111,7 +110,8 @@ class EngineResolver {
     if (platform == 'macos') {
       lines.add('');
       lines.add('  Option C — bootstrap script (handles everything):');
-      lines.add('    bash <(curl -fsSL $repoUrl/raw/main/scripts/bootstrap.sh)');
+      lines
+          .add('    bash <(curl -fsSL $repoUrl/raw/main/scripts/bootstrap.sh)');
     }
     lines.add('');
     lines.add('Re-run the scanner after installation.');

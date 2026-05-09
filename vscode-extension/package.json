@@ -1,18 +1,18 @@
 {
   "name": "flutter-supabase-helper",
   "displayName": "Flutter Supabase Helper — Hybrid SAST",
-  "description": "Multi-language SAST scanner with IFDS taint tracking, SARIF output, and 24+ rules covering injection, JWT misuse, CORS, insecure cookies, hardcoded secrets, and Supabase RLS gaps.",
+  "description": "Multi-language SAST scanner with taint tracking, SARIF output, and rules covering injection, JWT misuse, CORS, insecure cookies, hardcoded secrets, and Supabase RLS gaps.",
   "version": "1.1.0",
   "publisher": "flutter-supabase-helper",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/flutter-supabase-helper/sast.git"
+    "url": "https://github.com/icyarcanine/flutter-security-scanner.git"
   },
   "bugs": {
-    "url": "https://github.com/flutter-supabase-helper/sast/issues"
+    "url": "https://github.com/icyarcanine/flutter-security-scanner/issues"
   },
-  "homepage": "https://github.com/flutter-supabase-helper/sast#readme",
+  "homepage": "https://github.com/icyarcanine/flutter-security-scanner#readme",
   "engines": {
     "vscode": "^1.85.0",
     "node": ">=18.0.0"
@@ -50,9 +50,7 @@
     "out/**/*.js",
     "out/**/*.d.ts",
     "rules/**/*.yaml",
-    "bin/engine-cli-darwin-arm64",
-    "bin/engine-cli-darwin-x64",
-    "bin/engine-cli-linux-x64",
+    "bin/engine-cli-*",
     "media/**/*",
     "schemas/**/*",
     "README.md",
@@ -134,7 +132,8 @@
     ]
   },
   "scripts": {
-    "compile": "tsc -p ./",
+    "clean": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\"",
+    "compile": "npm run clean && tsc -p ./",
     "test": "npm run compile && node scripts/precision-self-test.js && node scripts/taint-engine.test.js && node scripts/test-ast.js && node scripts/rule-timeout.test.js && node scripts/file-size-budget.test.js && node scripts/output-formats.test.js && node scripts/suppression-stats.test.js && node scripts/cli-filters.test.js && node scripts/hover-provider.test.js",
     "test:taint": "npm run compile && node scripts/taint-engine.test.js",
     "bundle:engine": "bash scripts/bundle-engine.sh",
@@ -142,9 +141,11 @@
     "stage-docs": "node -e \"const fs=require('fs');const path=require('path');for(const f of ['README.md','LICENSE'])fs.copyFileSync('../'+f,f);fs.mkdirSync('schemas',{recursive:true});fs.copyFileSync('../schemas/fshrc.schema.json','schemas/fshrc.schema.json');\"",
     "vscode:prepublish": "npm run stage-docs && npm run compile",
     "prepublishOnly": "npm run stage-docs && npm run bundle:engine && npm run compile && npm test",
-    "lint": "eslint src --ext ts"
+    "package:vsix": "npm run stage-docs && npm run compile && vsce package",
+    "lint": "tsc -p ./ --noEmit --pretty false"
   },
   "devDependencies": {
+    "@vscode/vsce": "^3.9.0",
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
     "typescript": "^5.3.3"

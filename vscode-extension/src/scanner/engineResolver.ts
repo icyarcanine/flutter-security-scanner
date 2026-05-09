@@ -70,7 +70,7 @@ export function platformKey(): string {
 }
 
 function buildInstallHint(): string {
-  const repoUrl = 'https://github.com/dilpreet-s-sidhu/flutter-security-scanner';
+  const repoUrl = 'https://github.com/icyarcanine/flutter-security-scanner';
   return [
     'The Rust analysis kernel binary `engine-cli` was not found.',
     '',

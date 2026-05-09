@@ -1,7 +1,15 @@
 name: fluttersupabasehelper
 description: Lightweight static security and configuration checks for Flutter + Supabase projects.
 version: 0.1.0
-publish_to: none
+repository: https://github.com/icyarcanine/flutter-security-scanner
+homepage: https://github.com/icyarcanine/flutter-security-scanner#readme
+issue_tracker: https://github.com/icyarcanine/flutter-security-scanner/issues
+topics:
+  - sast
+  - security
+  - flutter
+  - supabase
+  - dart
 
 environment:
   sdk: ^3.0.0

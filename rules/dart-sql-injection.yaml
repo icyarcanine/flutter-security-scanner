@@ -1,0 +1,45 @@
+id: dart.security.sql-injection
+message: "User-controlled value flows into a SQL sink. Use parameterized queries."
+severity: ERROR
+languages: [dart]
+mode: taint
+
+pattern-sources:
+  - pattern: "window.prompt($ARG)"
+  - pattern: "TextEditingController.text"
+  - pattern: "TextField.controller.text"
+  - pattern: "FormField.onChanged($ARG)"
+  - pattern: "onSubmitted($ARG)"
+  - pattern: "Uri.base.queryParameters[$KEY]"
+  - pattern: "Uri.splitQueryString($ARG)"
+  - pattern: "Platform.environment[$KEY]"
+  - pattern: "stdin.readLineSync()"
+  - pattern: "SharedPreferences.getString($KEY)"
+  - pattern: "SecureStorage.read(key: $KEY)"
+  - pattern: "http.Client.get($ARG)"
+  - pattern: "http.Client.post($ARG)"
+  - pattern: "dart:io.HttpRequest.uri"
+
+pattern-sinks:
+  - pattern: "supabase.from($TABLE).select($ARG)"
+  - pattern: "supabase.from($TABLE).insert($ARG)"
+  - pattern: "supabase.from($TABLE).update($ARG)"
+  - pattern: "supabase.from($TABLE).delete($ARG)"
+  - pattern: "supabase.rpc($FUNC, params: $ARG)"
+  - pattern: "supabase.from($TABLE).eq($COL, $VAL)"
+  - pattern: "$DB.rawQuery($ARG)"
+  - pattern: "$DB.execute($ARG)"
+  - pattern: "$DB.rawInsert($ARG)"
+  - pattern: "$DB.rawUpdate($ARG)"
+  - pattern: "$DB.rawDelete($ARG)"
+  - pattern: "DatabaseExecutor.rawQuery($ARG)"
+  - pattern: "DatabaseExecutor.rawInsert($ARG)"
+  - pattern: "DatabaseExecutor.rawUpdate($ARG)"
+  - pattern: "DatabaseExecutor.rawDelete($ARG)"
+
+pattern-sanitizers:
+  - pattern: "supabase.rpc($FUNC, params: {'arg': int.parse($ARG)})"
+  - pattern: "int.parse($ARG)"
+  - pattern: "double.parse($ARG)"
+  - pattern: "Uri.encodeComponent($ARG)"
+  - pattern: "Uri.encodeFull($ARG)"

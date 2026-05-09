@@ -16,7 +16,7 @@ import { ProjectScanReport } from '../scanner/scanner';
 
 const TOOL_NAME = 'flutter-supabase-helper';
 const TOOL_VERSION = '1.0.0';
-const TOOL_INFORMATION_URI = 'https://github.com/flutter-supabase-helper/sast';
+const TOOL_INFORMATION_URI = 'https://github.com/icyarcanine/flutter-security-scanner';
 
 interface SarifMessage { text: string; }
 interface SarifArtifactLocation { uri: string; uriBaseId?: string; }

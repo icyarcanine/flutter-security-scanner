@@ -7,47 +7,33 @@ documented here.
 
 ### Added
 
-- **`ifds-taint` rule** — production IFDS (Reps-Horwitz-Sagiv tabulation)
-  taint analysis for Dart. Inter-procedural, context-sensitive via
-  procedure summaries, runs as a stage-3 rule after the existing
-  intra-procedural `InjectionRule`. Flows into a sink are reported with
-  `HIGH` severity / `HIGH` confidence as `Tainted value flows into sink
-  '<name>' (IFDS)`.
-  - **Sources** (name-based heuristic on parameters): `userInput`,
-    `input`, `req`, `request`, `payload`, `data`, `body`, `query`,
-    `params`.
-  - **Sinks**: `rawQuery`, `query`, `execute`, `exec`, `spawn`, `eval`,
-    `Function`, `innerHTML`, `outerHTML`, `document.write` (shared with
-    the existing intra-procedural tracker).
-  - **Sanitizers**: `escapeHtml`, `sanitize`, `validate`, parameterized
-    query builders.
-  - Dart-only; tree-sitter CPG covers if/else, while, do-while, for-in,
-    try/catch/finally (flattened), class methods, sink-with-lhs,
-    template interpolation, bare assignments, strong-kill
-    reassignments.
-- 10 fixture-based self-tests (`scripts/ifds-self-test.js`) exercising
-  intra, inter, sanitizer-neg, branching, reassignment-neg, class
-  methods, sink-with-lhs, for-each, multi-file ICFG, and parse-error
-  robustness. Wired into `npm test`.
+- **Rust engine sidecar rule** — `rust-engine-taint` invokes `engine-cli`
+  when a bundled or installed Rust analysis kernel is available. The engine
+  runs Semgrep-style Dart taint YAML rules for SQL injection, command
+  injection, and HTML rendering/XSS sinks, then merges findings into the
+  normal scanner output.
+- The legacy TypeScript-side IFDS implementation was removed from the
+  default rule set. The JavaScript/TypeScript `dataFlow.ts` taint tracker
+  remains the supported non-Rust taint path.
+- Release packaging now cleans stale `out/` files before compiling so deleted
+  rules cannot leak into a `.vsix`.
 
 ### Suppression
 
-- `ifds-taint` findings honor the existing suppression surfaces:
-  `// sast-ignore ifds-taint` (inline) and `.sastignore` (file-level).
+- `rust-engine-taint` findings honor the existing suppression surfaces:
+  `// sast-ignore rust-engine-taint` (inline) and `.sastignore` (file-level).
   There is no project-wide rule-disable config in the extension; if you
   need to silence the rule globally today, add a broad `.sastignore`
   entry.
 
 ### Known limitations
 
-Shipped as-is and tracked for follow-up: name-based source heuristic
-(misses real HTTP / storage / SharedPreferences sources), no taint
-labels (any sanitizer clears for any sink), no `await` / cascade / named
-arguments / field-sensitive assignment / collection taint / implicit
-`this`. Virtual dispatch resolves by last-name only (same-named methods
-on different classes collide). Try/catch is flattened as a chain
-(sound, occasionally over-approximates). Finding message does not yet
-include a source-to-sink trace.
+Shipped as-is and tracked for follow-up: the Rust kernel is still
+experimental. Direct SQL, command, and HTML rendering taint smoke flows work,
+but PDG-aware variable tracking and some Dart syntax coverage are incomplete.
+When `engine-cli` is unavailable, the extension falls back to the existing
+regex / AST / JavaScript-TypeScript taint rules and skips Rust-backed Dart
+taint findings.
 
 ## 1.0.0
 

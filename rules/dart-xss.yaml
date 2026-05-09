@@ -1,0 +1,37 @@
+id: dart.security.xss-html-widget
+message: "User-controlled value flows into an HTML rendering sink. Sanitize before rendering."
+severity: WARNING
+languages: [dart]
+mode: taint
+
+pattern-sources:
+  - pattern: "window.prompt($ARG)"
+  - pattern: "TextEditingController.text"
+  - pattern: "TextField.controller.text"
+  - pattern: "FormField.onChanged($ARG)"
+  - pattern: "onSubmitted($ARG)"
+  - pattern: "Uri.base.queryParameters[$KEY]"
+  - pattern: "Uri.splitQueryString($ARG)"
+  - pattern: "Platform.environment[$KEY]"
+  - pattern: "stdin.readLineSync()"
+  - pattern: "SharedPreferences.getString($KEY)"
+  - pattern: "http.Client.get($ARG)"
+  - pattern: "http.Client.post($ARG)"
+  - pattern: "dart:io.HttpRequest.uri"
+  - pattern: "WebSocket.stream"
+
+pattern-sinks:
+  - pattern: "Html(data: $ARG)"
+  - pattern: "Markdown(data: $ARG)"
+  - pattern: "flutter_inappwebview.InAppWebView(data: $ARG)"
+  - pattern: "flutter_inappwebview.HeadlessInAppWebView(data: $ARG)"
+  - pattern: "flutter_widget_from_html.dart.HtmlWidget($ARG)"
+  - pattern: "flutter_html.Html(data: $ARG)"
+  - pattern: "js.context.callMethod('eval', [$ARG])"
+  - pattern: "js.context.eval($ARG)"
+  - pattern: "dart:js.context[$PROP] = $ARG"
+
+pattern-sanitizers:
+  - pattern: "sanitizeHtml($ARG)"
+  - pattern: "escapeHtml($ARG)"
+  - pattern: "Bleach.clean($ARG)"

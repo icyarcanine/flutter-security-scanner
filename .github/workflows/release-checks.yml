@@ -1,0 +1,101 @@
+name: release-checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bin/**'
+      - 'lib/**'
+      - 'rules/**'
+      - 'schemas/**'
+      - 'test/**'
+      - 'tool/**'
+      - 'vscode-extension/**'
+      - 'pubspec.yaml'
+      - 'CHANGELOG.md'
+      - '.pubignore'
+      - '.github/workflows/release-checks.yml'
+  pull_request:
+    paths:
+      - 'bin/**'
+      - 'lib/**'
+      - 'rules/**'
+      - 'schemas/**'
+      - 'test/**'
+      - 'tool/**'
+      - 'vscode-extension/**'
+      - 'pubspec.yaml'
+      - 'CHANGELOG.md'
+      - '.pubignore'
+      - '.github/workflows/release-checks.yml'
+
+concurrency:
+  group: release-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dart-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Install Dart dependencies
+        run: dart pub get
+
+      - name: Analyze Dart package
+        run: dart analyze lib bin tool test
+
+      - name: Dart smoke test
+        run: HOME=/tmp dart run tool/smoke_test.dart
+
+      - name: Pub publish dry-run
+        # The test fixtures intentionally include checked-in `.env` files
+        # covered by fixture-local `.gitignore` files so scanner behavior can
+        # be regression-tested. Pub reports that as a warning, not a package
+        # error; fail this gate on real validation errors.
+        run: dart pub publish --dry-run --ignore-warnings
+
+  vscode-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: vscode-extension/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.85.0'
+          targets: x86_64-unknown-linux-gnu
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'engine -> target'
+          key: release-checks-linux-x64
+
+      - name: Install extension dependencies
+        working-directory: vscode-extension
+        run: npm ci
+
+      - name: Build host engine binary
+        working-directory: vscode-extension
+        run: npm run bundle:engine
+
+      - name: Typecheck/lint extension
+        working-directory: vscode-extension
+        run: npm run lint
+
+      - name: Test extension
+        working-directory: vscode-extension
+        run: npm test
+
+      - name: Package VSIX
+        working-directory: vscode-extension
+        run: npm run package:vsix -- --out flutter-supabase-helper.vsix

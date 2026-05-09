@@ -6,22 +6,20 @@ finding codes but run different engines:
 
 | Component | Location | Engine | When to use it |
 |-----------|----------|--------|----------------|
-| **VS Code extension** | `vscode-extension/` | Regex **+** tree-sitter AST **+** taint tracking — intra-procedural for JS/TS, **inter-procedural IFDS for Dart** (TypeScript, Node.js, `web-tree-sitter@0.21.0`) | Day-to-day authoring — inline quick fixes, AST/REGEX badges, taint-confirmed findings |
-| **Dart CLI** | `bin/fluttersupabasehelper.dart` | Regex/structural Flutter + Supabase rules with committed SQL DDL awareness (Dart) | CI gating on Flutter apps, headless scans, local `dart run` |
+| **VS Code extension** | `vscode-extension/` | Regex **+** tree-sitter AST **+** JS/TS taint tracking, with optional Rust `engine-cli` sidecar rules for Dart taint flows | Day-to-day authoring — inline quick fixes, AST/REGEX badges, taint-confirmed findings |
+| **Dart CLI** | `bin/fluttersupabasehelper.dart` | Rust `engine-cli` sidecar when installed, plus regex/structural Flutter + Supabase rules with committed SQL DDL awareness | CI gating on Flutter apps, headless scans, local `dart run` |
 
-The Dart CLI deliberately **does not** use tree-sitter or taint tracking. It is a
-fast, zero-dependency lint pass that complements `dart analyze` with Flutter- and
-Supabase-specific checks (table/operation-level RLS DDL coverage, committed `.env`, unobscured
-password fields, weak platform manifests, etc.). Everything under "Analysis
-Pipeline", "Taint Model", and "Confidence Levels" below describes the **VS Code
-extension engine**, not the CLI.
+The Dart CLI remains useful without `engine-cli`: when the Rust binary is
+missing it falls back to its built-in structural rules and prints one install
+hint. Rust-backed IFDS taint findings are only produced when `engine-cli` is
+available through `ENGINE_CLI`, a bundled binary, or a global install.
 
 **Current shipped features:** SARIF 2.1.0 output, standalone HTML reports, CWE taxonomy, data-flow paths
 in findings, AST-aware inline suppressions, content-hash baselines, git diff
 mode for PR-style scans, SARIF diff mode, confidence-based CI failure,
 parallel rule execution, multi-root workspaces, on-save scanning, per-rule
-disable, statement-aware suppression boundary, inter-procedural IFDS for
-Dart, and regression-tested taint engine behavior.
+disable, statement-aware suppression boundary, optional Rust-backed Dart
+taint rules, and regression-tested taint engine behavior.
 
 ## What It Detects
 
@@ -62,7 +60,7 @@ Every security finding carries a CWE identifier (e.g. `CWE-89` SQL injection,
 | Tier | Languages | Analysis |
 |------|-----------|----------|
 | **Full** | JavaScript, TypeScript, JSX, TSX | Regex + AST + intra-procedural taint tracking |
-| **Full (IFDS)** | Dart | Regex + AST + intra-procedural taint tracking + inter-procedural IFDS (`ifds-taint`) |
+| **Full (Rust sidecar when installed)** | Dart | Regex + AST heuristics + Rust `engine-cli` Semgrep-style taint rules |
 | **AST** | Python, Go, Java | Regex + AST structural patterns |
 | **Regex** | Kotlin, SQL, YAML, JSON, `.env` | Heuristic rules only |
 
@@ -71,7 +69,7 @@ Every security finding carries a CWE identifier (e.g. `CWE-89` SQL injection,
 1. **Regex** — fast heuristic pass across all files
 2. **AST** — selective parsing via `web-tree-sitter` WASM grammars
 3. **Taint tracking** — intra-procedural data-flow analysis with provenance
-   capture (JS/TS), plus inter-procedural IFDS for Dart (`ifds-taint` rule)
+   capture (JS/TS), plus optional Rust-backed Dart taint rules
 
 Rules within each stage run in **parallel** (`Promise.all`); stages
 themselves run sequentially because later stages depend on caches built by
@@ -174,31 +172,24 @@ Example chain for `db.query("SELECT … " + sql)` where `sql = "…" + id`,
 4. line 4   — sink: db.query
 ```
 
-### Inter-procedural IFDS (Dart, `ifds-taint`)
+### Rust-Backed Dart Taint
 
-In addition to the intra-procedural tracker above, Dart projects get a
-second pass backed by a Reps-Horwitz-Sagiv tabulation IFDS solver. It
-runs as stage-3 rule `ifds-taint` and reports `Tainted value flows into
-sink '<name>' (IFDS)` at HIGH severity / HIGH confidence.
+When `engine-cli` is available, Dart projects get an additional Rust-backed
+taint pass through the `rust-engine-taint` rule. The extension and Dart CLI
+invoke the Rust binary with Semgrep-style YAML rules for Dart SQL injection,
+command injection, and HTML rendering/XSS sinks, then merge the resulting
+findings into normal scanner output.
 
-- **Inter-procedural and context-sensitive** via procedure summaries
-  (path-edges keyed by entry fact, `pendingCallers` for late-summary
-  propagation).
-- **Branching CFG**: if/else, while, do-while, for-in, try/catch/finally
-  (flattened — sound, occasionally over-approximates).
-- **Strong kills** on clean reassignment; additive (augmented)
-  assignment preserves taint.
-- **Sources** (name-based heuristic): parameters named `userInput`,
-  `input`, `req`, `request`, `payload`, `data`, `body`, `query`,
-  `params`. Real HTTP / storage / SharedPreferences / stdin sources are
-  not yet modeled — expect false negatives.
-- **Sinks** are shared with the intra-procedural tracker (SQL, command,
-  code, HTML).
-- **Sanitizers** are shared too, and are unlabeled: any recognised
-  sanitizer clears taint for any sink (conservative but imprecise).
+- The Rust workspace builds and its direct SQL/command smoke flows are
+  regression-tested.
+- The Rust kernel is still experimental. PDG-aware variable tracking and
+  some Dart syntax coverage are incomplete, so expect false negatives on
+  flows that require deeper Dart semantic reconstruction.
+- If the binary is missing, the scanner falls back to the built-in rules
+  rather than failing the whole scan.
 
-The existing intra-procedural `InjectionRule` still runs; `ifds-taint`
-complements it. Duplicate findings on the same line are de-duped by the
+The existing intra-procedural `InjectionRule` still runs; Rust-backed Dart
+taint complements it. Duplicate findings on the same line are de-duped by the
 scanner.
 
 ### Confidence Levels
@@ -394,8 +385,8 @@ db.query(
 db.query("ok"  + req.body.id);
 db.query("FN"  + req.body.id);   // NOT suppressed — separate statement
 
-// IFDS-confirmed taint can also be suppressed by code:
-// sast-ignore ifds-taint
+// Rust-engine taint can also be suppressed by code:
+// sast-ignore rust-engine-taint
 db.rawQuery(userInput);
 ```
 
@@ -473,10 +464,10 @@ values fall through to a safer default.
 
 - JS/TS taint is mostly intra-procedural. It has limited same-file helper
   summaries, but no whole-program or cross-file flow.
-- Dart has an additional inter-procedural IFDS pass (`ifds-taint`), but
-  its sources are still heuristic and it does not yet model every Dart
-  language feature (`await`, cascade operators, named arguments,
-  collection sensitivity, full virtual dispatch, implicit `this`, etc.).
+- Dart Rust-engine taint is optional at runtime and still experimental.
+  It does not yet model every Dart language feature (`await`, cascade
+  operators, collection sensitivity, full virtual dispatch, implicit
+  `this`, etc.).
 - Python, Go, Java have AST grammars but limited source/sink coverage and
   no taint models.
 - Non-Dart languages: no full CFG-based path-sensitive analysis. Top-level
@@ -518,9 +509,8 @@ The binary lands at `engine/target/release/engine-cli`. Resolver helpers for
 the TS extension and Dart `lib/` scanner live at
 [vscode-extension/src/scanner/engineResolver.ts](vscode-extension/src/scanner/engineResolver.ts)
 and [lib/src/engine/engine_resolver.dart](lib/src/engine/engine_resolver.dart);
-TS sidecar integration is tracked in
-[RUST_ENGINE_PROGRESS.md](RUST_ENGINE_PROGRESS.md) Phase 5; Dart `lib/`
-sidecar integration remains Phase 7.
+TS sidecar integration and Dart `lib/` sidecar integration are tracked in
+[RUST_ENGINE_PROGRESS.md](RUST_ENGINE_PROGRESS.md).
 
 The intended runtime behavior is a precise install hint when the binary is
 missing, rather than a silent failure.
@@ -535,10 +525,10 @@ npm install
 npm run compile
 ```
 
-Target release behavior after packaging artifacts are produced: published
-`.vsix` builds include a prebuilt `engine-cli` binary, so end users do not
-need a Rust toolchain. Contributors can build the engine from source when
-testing Rust-backed analysis locally.
+Release builds produced by `.github/workflows/release-binaries.yml` stage
+prebuilt `engine-cli` binaries for the supported targets before packaging.
+Contributors can also build the engine from source when testing Rust-backed
+analysis locally.
 
 ### 3. Dart `lib/` scanner (`lib/`)
 
@@ -563,8 +553,8 @@ Runs in order:
    CWE-tagged rule quick wins, comment immunity, git porcelain regression,
    `Promise.all` concurrency stability).
 3. `test-ast.js` — AST grammar load smoke test.
-4. `ifds-self-test.js` — IFDS Dart taint engine fixtures (sources,
-   sinks, sanitizers, inter-procedural propagation).
+4. Rust engine smoke tests live under the Rust workflow and verify direct
+   Dart taint flows through `engine-cli`.
 
 ## Requirements
 

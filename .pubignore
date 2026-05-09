@@ -1,0 +1,15 @@
+/.github/
+/.claude/
+/.cursor/
+/.continue/
+/.dart_tool/
+/engine/
+/goals/
+/memory-bank/
+/test/
+/validation_runs/
+/vscode-extension/
+/.DS_Store
+/.sast-telemetry.json
+/.sast-baseline.json
+*.vsix

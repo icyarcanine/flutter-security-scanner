@@ -3,7 +3,8 @@ name: release-binaries
 # Builds the engine-cli sidecar for darwin-arm64, darwin-x64, and linux-x64
 # on each platform's native GitHub runner, then uploads the binaries as a
 # workflow artifact and (on tagged release) attaches them to the GitHub
-# Release.
+# Release. The release job also packages the VS Code extension after all
+# native sidecar binaries are available.
 #
 # Run modes:
 #   - workflow_dispatch: any time, produces a `engine-cli-binaries` artifact.
@@ -84,8 +85,45 @@ jobs:
           path: staging/${{ matrix.artifact_name }}
           retention-days: 14
 
-  publish:
+  package-vsix:
     needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: vscode-extension/package-lock.json
+
+      - name: Install extension dependencies
+        working-directory: vscode-extension
+        run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: engine-artifacts
+
+      - name: Stage engine binaries into extension package
+        run: |
+          mkdir -p vscode-extension/bin
+          find engine-artifacts -type f -name 'engine-cli-*' -exec cp {} vscode-extension/bin/ \;
+          chmod +x vscode-extension/bin/engine-cli-*
+          ls -la vscode-extension/bin
+
+      - name: Package VSIX
+        working-directory: vscode-extension
+        run: npm run package:vsix -- --out ../flutter-supabase-helper.vsix
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flutter-supabase-helper-vsix
+          path: flutter-supabase-helper.vsix
+          retention-days: 14
+
+  publish:
+    needs: [build, package-vsix]
     if: startsWith(github.ref, 'refs/tags/engine-v')
     runs-on: ubuntu-latest
     steps:

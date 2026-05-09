@@ -6,10 +6,8 @@
 // surface the install hint to the user (see ProjectScanner.scan
 // integration).
 //
-// The YAML rules live in `vscode-extension/rules/` and are shipped alongside
-// the extension. For the in-tree Dart scanner, the rules dir is resolved
-// relative to the repo root. If the Dart scanner gets published as its own
-// pub package later, the rules will need to live under `lib/rules/`.
+// The YAML rules live in top-level `rules/` for the Dart package and are
+// mirrored under `vscode-extension/rules/` for the extension package.
 
 import 'dart:convert';
 import 'dart:io';
@@ -55,7 +53,7 @@ class EngineRunResult {
 
 /// YAML rule descriptors that the engine-cli can run.
 ///
-/// These correspond to the `.yaml` files in `vscode-extension/rules/`.
+/// These correspond to the `.yaml` files in top-level `rules/`.
 const _engineRules = <_RuleDesc>[
   _RuleDesc(
     ruleFile: 'dart-sql-injection.yaml',
@@ -81,8 +79,8 @@ class _RuleDesc {
 ///
 /// Search order:
 ///   1. The `FLUTTER_SECURITY_SCANNER_ROOT` environment variable (explicit override).
-///   2. Walk up from [Platform.script] looking for a `vscode-extension/rules/` dir.
-///   3. Walk up from the working directory looking for the same marker.
+///   2. Walk up from [Platform.script] looking for a package rules dir.
+///   3. Walk up from the working directory looking for the same markers.
 ///   4. Fall back to [fallbackRoot] (the scanned project directory) — in this
 ///      case rules won't be found and the engine pass will be skipped gracefully.
 String _findRepoRoot({String? fallbackRoot}) {
@@ -91,10 +89,6 @@ String _findRepoRoot({String? fallbackRoot}) {
   if (envRoot != null && envRoot.isNotEmpty) {
     return envRoot;
   }
-
-  // Try the binary's discovered location: if the resolver found engine-cli
-  // at `<repo>/engine/target/release/engine-cli`, the repo root is 4 up.
-  // This is handled by checking for the rules dir marker below.
 
   for (final start in [
     // From Platform.script (the running Dart script).
@@ -105,8 +99,7 @@ String _findRepoRoot({String? fallbackRoot}) {
   ]) {
     var dir = Directory(start);
     while (true) {
-      final rulesDir = Directory('${dir.path}/vscode-extension/rules');
-      if (rulesDir.existsSync()) {
+      if (_candidateRuleDirs(dir.path).any((d) => d.existsSync())) {
         return dir.path;
       }
       final parent = dir.parent;
@@ -121,8 +114,19 @@ String _findRepoRoot({String? fallbackRoot}) {
 /// Resolve the path to a YAML rule file.
 /// Uses the repository root detected from the filesystem or environment.
 String _resolveRulePath(String repoRoot, String ruleFile) {
-  return '$repoRoot/vscode-extension/rules/$ruleFile';
+  for (final dir in _candidateRuleDirs(repoRoot)) {
+    final path = '${dir.path}/$ruleFile';
+    if (File(path).existsSync()) {
+      return path;
+    }
+  }
+  return '$repoRoot/rules/$ruleFile';
 }
+
+List<Directory> _candidateRuleDirs(String root) => [
+      Directory('$root/rules'),
+      Directory('$root/vscode-extension/rules'),
+    ];
 
 /// Run the Rust engine against [context], invoking engine-cli once per YAML
 /// rule via [Process.run]. Returns an aggregate result. When the binary cannot
